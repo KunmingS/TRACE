@@ -1,0 +1,20 @@
+@use '../../settings/Settings' as *;
+
+.EditorView {
+  position: absolute;
+  height: 100vh;
+  width: 100vw;
+  margin: 0;
+  padding: 0;
+  background-color: $surface-1;
+  font-family: $font-ui;
+
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  &.withPopup {
+    opacity: 0.3;
+    pointer-events: none;
+  }
+}

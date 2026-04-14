@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Left detection bracket -->
+  <path d="M11 5 L6 5 L6 27 L11 27"
+        stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round"
+        opacity="0.75"/>
+  <!-- Right detection bracket -->
+  <path d="M21 5 L26 5 L26 27 L21 27"
+        stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round"
+        opacity="0.75"/>
+  <!-- Behavior waveform pulse (accent blue) -->
+  <path d="M6 16 L10.5 16 L12.5 9 L16 23 L19.5 11 L21.5 16 L26 16"
+        stroke="#3b9eff" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

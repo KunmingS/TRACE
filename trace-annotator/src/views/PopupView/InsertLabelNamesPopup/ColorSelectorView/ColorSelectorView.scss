@@ -1,0 +1,22 @@
+.ColorSelectorView {
+  width: 30px;
+  height: 30px;
+  border-radius: 2px;
+
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  justify-content: center;
+  align-items: center;
+  align-content: center;
+
+  > img {
+
+    width: 20px;
+    height: 20px;
+  }
+
+  &:hover {
+    cursor: pointer;
+  }
+}

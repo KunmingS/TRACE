@@ -1,0 +1,148 @@
+.TestPanel {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 4px 0;
+
+    .PanelHeader {
+        h2 {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--color-text-primary, rgba(0, 0, 0, 0.88));
+            margin: 0 0 6px;
+        }
+        p {
+            font-size: 17px;
+            color: var(--color-text-muted, rgba(0, 0, 0, 0.4));
+            margin: 0;
+            line-height: 1.5;
+        }
+    }
+
+    .FormSection {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .FieldLabel {
+        font-size: 16px;
+        font-weight: 500;
+        color: var(--color-text-secondary, rgba(0, 0, 0, 0.55));
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .ModelList {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+
+        .ModelCard {
+            padding: 10px 14px;
+            background: var(--color-surface-1, #f5f6f8);
+            border: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
+            border-radius: var(--radius-md, 8px);
+            cursor: pointer;
+            text-align: left;
+            transition: all 0.15s;
+
+            &.active {
+                border-color: var(--leading-color, #2563eb);
+                background: rgba(59, 158, 255, 0.08);
+            }
+
+            &:hover:not(.active) {
+                border-color: rgba(0, 0, 0, 0.12);
+            }
+
+            .ModelName {
+                font-size: 17px;
+                color: var(--color-text-primary, rgba(0, 0, 0, 0.88));
+                font-weight: 500;
+            }
+
+            .ModelMeta {
+                font-size: 15px;
+                color: var(--color-text-muted, rgba(0, 0, 0, 0.28));
+                margin-top: 3px;
+            }
+        }
+    }
+
+    .ModelDetail {
+        font-size: 16px;
+        color: var(--color-text-secondary, rgba(0, 0, 0, 0.55));
+        font-family: var(--font-mono, monospace);
+    }
+
+    .ActionBtn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 10px 20px;
+        border: none;
+        border-radius: var(--radius-md, 8px);
+        font-size: 17px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s;
+
+        &.primary {
+            background: var(--leading-color, #2563eb);
+            color: #fff;
+            &:hover:not(:disabled) { background: #5aafff; }
+        }
+
+        &:disabled { opacity: 0.35; cursor: not-allowed; }
+    }
+
+    .MetricsCard {
+        border: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
+        border-radius: var(--radius-md, 8px);
+        padding: 14px;
+        background: var(--color-surface-1, #f5f6f8);
+
+        .MetricsTitle {
+            font-size: 16px;
+            font-weight: 500;
+            color: var(--color-text-secondary, rgba(0, 0, 0, 0.55));
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 10px;
+        }
+
+        .MetricRow {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 0;
+            font-size: 17px;
+            color: var(--color-text-secondary, rgba(0, 0, 0, 0.55));
+
+            &.primary {
+                font-size: 19px;
+                color: var(--color-text-primary, rgba(0, 0, 0, 0.88));
+            }
+
+            .MetricValue {
+                font-weight: 600;
+                font-family: var(--font-mono, monospace);
+                color: #34d399;
+            }
+        }
+    }
+
+    .ErrorState {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        background: rgba(255, 107, 107, 0.08);
+        border: 1px solid rgba(255, 107, 107, 0.15);
+        border-radius: var(--radius-md, 8px);
+        color: #ff6b6b;
+        font-size: 16px;
+    }
+}

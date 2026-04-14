@@ -1,0 +1,410 @@
+@use '../../settings/Settings' as *;
+
+// ─── Palette (derive from global tokens) ───
+$glow-blue: $accent;
+$glow-cyan: #38a3d6;
+$accent-bg: $accent-muted;
+$accent-border: $accent-glow;
+
+.MainView {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  color: $text-primary;
+  font-family: $font-ui;
+  background: #f8f9fc;
+
+  // ─── Background layers ───
+
+  .BgGrid {
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: radial-gradient(ellipse 80% 70% at 30% 40%, black 10%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .BgGlow {
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(circle 600px at 8% 28%, rgba($glow-blue, 0.06), transparent),
+      radial-gradient(circle 400px at 75% 12%, rgba($glow-cyan, 0.04), transparent),
+      radial-gradient(circle 500px at 50% 90%, rgba(100, 140, 200, 0.03), transparent);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .BgNoise {
+    position: fixed;
+    inset: 0;
+    background-image: url('./noise-tile.png');
+    background-repeat: repeat;
+    background-size: 256px;
+    opacity: 0.02;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  // ═══════════════════════════════════════
+  //  GRID: 2-row layout
+  //  Row 1: Brand banner (spans full width)
+  //  Row 2: SideNav (left) + WorkspacePanel (right)
+  // ═══════════════════════════════════════
+
+  .MainShell {
+    position: relative;
+    z-index: 10;
+    width: min(1320px, calc(100vw - clamp(32px, 6vw, 80px)));
+    min-height: 100vh;
+    margin: 0 auto;
+    padding: clamp(28px, 5vh, 56px) 0 clamp(36px, 6vh, 60px);
+    display: grid;
+    grid-template-columns: minmax(220px, 300px) minmax(520px, 1fr);
+    grid-template-rows: auto 1fr;
+    gap: 0 clamp(32px, 4vw, 56px);
+    align-items: start;
+  }
+
+  // ─── Brand Banner (top, spans both columns) ───
+
+  .BrandBanner {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-bottom: clamp(24px, 4vh, 44px);
+    animation: brandIn 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .BrandRow {
+    display: flex;
+    align-items: center;
+    gap: clamp(16px, 2vw, 24px);
+  }
+
+  .LogoMark {
+    width: 52px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(37, 99, 235, 0.06);
+    border: 1px solid rgba(37, 99, 235, 0.14);
+    border-radius: $radius-xl;
+    color: rgba(30, 64, 175, 0.85);
+    flex-shrink: 0;
+
+    svg {
+      width: 30px;
+      height: 30px;
+    }
+  }
+
+  .BrandText {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .Wordmark {
+    margin: 0;
+    font-family: $font-mono;
+    font-size: clamp(2.2rem, 4vw, 3.2rem);
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.1em;
+    color: $glow-blue;
+    text-shadow: none;
+  }
+
+  .Expansion {
+    font-size: clamp(11px, 1.1vw, 13px);
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+    color: rgba(0, 0, 0, 0.35);
+
+    .AWord .hi {
+      color: $glow-blue;
+      font-weight: 600;
+    }
+
+    .AOf {
+      color: rgba(0, 0, 0, 0.2);
+    }
+  }
+
+  .Tagline {
+    margin: 0;
+    max-width: 52ch;
+    font-size: 17px;
+    line-height: 1.6;
+    color: $text-secondary;
+    padding-left: 76px; // Align with text after logo (52px logo + 24px gap)
+  }
+
+  // ─── Divider line between banner and content ───
+
+  .BrandBanner::after {
+    content: '';
+    display: block;
+    height: 1px;
+    margin-top: clamp(16px, 3vh, 28px);
+    background: linear-gradient(
+      90deg,
+      rgba($glow-blue, 0.2),
+      rgba($glow-blue, 0.06) 40%,
+      rgba(0, 0, 0, 0.04) 100%
+    );
+  }
+
+  // ─── Side Navigation (bottom-left) ───
+
+  .SideNav {
+    position: sticky;
+    top: clamp(28px, 5vh, 56px);
+    padding-top: 4px;
+  }
+
+  // ═══════════════════════════════════════
+  //  TAB NAVIGATION
+  // ═══════════════════════════════════════
+
+  .TabNav {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .TabNavLabel {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: $text-muted;
+    margin-bottom: 4px;
+  }
+
+  .TabGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .TabBtn {
+    appearance: none; background: none; border: none; margin: 0; padding: 0; text-align: inherit; color: inherit; font: inherit;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 14px;
+    border-radius: $radius-lg;
+    border-left: 2px solid transparent;
+    font-size: 17px;
+    font-weight: 500;
+    color: $text-secondary;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+
+    svg {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+      color: inherit;
+    }
+
+    &:hover {
+      background: rgba(0, 0, 0, 0.04);
+      color: $text-primary;
+    }
+
+    &.active {
+      background: $accent-bg;
+      border-left-color: $glow-blue;
+      color: $glow-blue;
+      font-weight: 600;
+    }
+  }
+
+  // ─── Step Toggles ───
+
+  .StepToggles {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 4px 0 0 14px;
+    border-left: 1.5px solid rgba($glow-blue, 0.2);
+    margin-left: 15px;
+    animation: togglesIn 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .StepToggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    cursor: pointer;
+
+    input[type='checkbox'] {
+      display: none;
+    }
+
+    .ToggleTrack {
+      width: 28px;
+      height: 16px;
+      border-radius: $radius-md;
+      background: rgba(0, 0, 0, 0.10);
+      position: relative;
+      transition: background 0.2s;
+      flex-shrink: 0;
+
+      .ToggleThumb {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 12px;
+        height: 12px;
+        border-radius: $radius-circle;
+        background: rgba(0, 0, 0, 0.25);
+        transition: transform 0.2s, background 0.2s;
+      }
+    }
+
+    input:checked + .ToggleTrack {
+      background: rgba($glow-blue, 0.2);
+
+      .ToggleThumb {
+        transform: translateX(12px);
+        background: $glow-blue;
+      }
+    }
+
+    .ToggleLabel {
+      font-size: 16px;
+      font-weight: 500;
+      color: $text-secondary;
+      transition: color 0.2s;
+    }
+
+    input:checked ~ .ToggleLabel {
+      color: $text-primary;
+    }
+  }
+
+  // ─── Workspace Panel (bottom-right) ───
+
+  .WorkspacePanel {
+    padding: clamp(20px, 3vw, 32px);
+    border-radius: $radius-xl;
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow:
+      0 1px 3px rgba(0, 0, 0, 0.04),
+      0 8px 24px rgba(0, 0, 0, 0.06);
+    animation: panelIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both;
+    min-height: 340px;
+  }
+}
+
+// ─── Animations ───
+
+@keyframes brandIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes panelIn {
+  from { opacity: 0; transform: translateY(20px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes togglesIn {
+  from { opacity: 0; transform: translateX(-4px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+// ─── Responsive ───
+
+@media (max-width: 1080px) {
+  .MainView {
+    .MainShell {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto auto;
+      gap: 24px;
+    }
+
+    .BrandBanner {
+      grid-column: 1;
+      padding-bottom: 16px;
+    }
+
+    .BrandBanner::after {
+      display: none;
+    }
+
+    .Tagline {
+      padding-left: 0;
+    }
+
+    .SideNav {
+      position: static;
+    }
+
+    .TabGroup {
+      flex-direction: row;
+      gap: 4px;
+    }
+
+    .TabBtn {
+      border-left: none;
+      border-bottom: 2px solid transparent;
+      border-radius: $radius-md $radius-md 0 0;
+
+      &.active {
+        border-left-color: transparent;
+        border-bottom-color: $glow-blue;
+      }
+    }
+
+    .StepToggles {
+      flex-direction: row;
+      border-left: none;
+      padding-left: 0;
+      margin-left: 0;
+      gap: 16px;
+    }
+  }
+}
+
+@media (max-width: 720px) {
+  .MainView {
+    .MainShell {
+      width: min(1320px, calc(100vw - 32px));
+      padding: 24px 0 36px;
+      gap: 20px;
+    }
+
+    .Wordmark {
+      font-size: 2rem;
+    }
+
+    .LogoMark {
+      width: 40px;
+      height: 40px;
+
+      svg {
+        width: 24px;
+        height: 24px;
+      }
+    }
+
+    .WorkspacePanel {
+      padding: 16px;
+      border-radius: $radius-xl;
+    }
+  }
+}

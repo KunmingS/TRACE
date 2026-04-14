@@ -1,0 +1,397 @@
+@use '../../settings/Settings' as *;
+
+// Local aliases — colors inherit from _Settings.scss via `@use`
+$glow-blue: $accent;
+$green: $accentSuccess;
+$red: $recording;
+$amber: $accentWarning;
+
+// ═══════════════════════════════════
+//  Shell
+// ═══════════════════════════════════
+
+.PipelineView {
+  position: absolute;
+  inset: 0;
+  background: $surface-1;
+  font-family: $font-ui;
+  color: $text-primary;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+// ─── Top Bar ───
+
+.PipelineTopBar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 48px;
+  padding: 0 20px;
+  background: $surface-0;
+  border-bottom: 1px solid $border-default;
+  flex-shrink: 0;
+
+  .BackBtn {
+    appearance: none; background: none; border: none; margin: 0; padding: 0; text-align: inherit; color: inherit; font: inherit;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 10px 0 6px;
+    border-radius: $radius-md;
+    cursor: pointer;
+    user-select: none;
+    font-size: 16px;
+    font-weight: 600;
+    color: rgba(0,0,0,0.45);
+    transition: background 0.15s, color 0.15s;
+
+    &__logo { width: 18px; height: 18px; opacity: 0.7; }
+    svg { flex-shrink: 0; transition: transform 0.2s cubic-bezier(0.22,1,0.36,1), color 0.15s; }
+    &:hover { background: rgba(0,0,0,0.05); color: rgba(0,0,0,0.88);
+      svg { transform: translateX(-2px); color: $glow-blue; }
+    }
+  }
+
+  .PageTitle { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: 0.04em; }
+
+  .TopBarRight { margin-left: auto; display: flex; gap: 8px; }
+
+  .CancelBtn, .ResetBtn {
+    appearance: none; background: none; border: none; margin: 0; padding: 0; text-align: inherit; color: inherit; font: inherit;
+    padding: 5px 14px;
+    border-radius: $radius-md;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid $border-default;
+    color: $text-secondary;
+    transition: all 0.15s;
+    &:hover { background: rgba(0,0,0,0.05); color: $text-primary; }
+  }
+  .CancelBtn { border-color: rgba($red, 0.3); color: $red;
+    &:hover { background: rgba($red, 0.08); }
+  }
+}
+
+// ═══════════════════════════════════
+//  Two-Column Layout
+// ═══════════════════════════════════
+
+.PipelineColumns {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  min-height: 0;
+  overflow: hidden;
+}
+
+// ─── Left: DAG Panel ───
+
+.DagPanel {
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  border-right: 1px solid $border-default;
+  background: $surface-0;
+  overflow-y: auto;
+}
+
+.DagHeader {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: $text-muted;
+  margin-bottom: 16px;
+}
+
+.DagSvg {
+  width: 100%;
+  max-width: 240px;
+  margin: 0 auto;
+}
+
+// ── DAG Edges ──
+
+.DagEdge {
+  stroke: rgba(0,0,0,0.1);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  transition: stroke 0.3s, opacity 0.3s;
+
+  &.hidden { opacity: 0.08; stroke-dasharray: 2 4; }
+  &.done { stroke: $green; stroke-dasharray: none; opacity: 0.6; }
+}
+
+// ── DAG Nodes ──
+
+.DagNodeRect {
+  stroke: rgba(0,0,0,0.08);
+  stroke-width: 1;
+  transition: fill 0.3s, stroke 0.3s;
+}
+
+.DagNode {
+  &.enabled .DagNodeRect { stroke: rgba($glow-blue, 0.3); }
+  &.running .DagNodeRect { stroke: $glow-blue; stroke-width: 1.5; }
+  &.completed .DagNodeRect { stroke: rgba($green, 0.4); }
+  &.failed .DagNodeRect { stroke: rgba($red, 0.4); }
+  &.off { opacity: 0.35; }
+  &.active .DagNodeRect { stroke: $glow-blue; stroke-width: 2; }
+}
+
+.DagNodeLabel {
+  font-size: 15px;
+  font-weight: 600;
+  fill: rgba(0,0,0,0.75);
+  font-family: $font-ui;
+  pointer-events: none;
+
+  .DagNode.off & { fill: rgba(0,0,0,0.25); }
+}
+
+.DagPulse {
+  fill: $glow-blue;
+  animation: dagPulse 1.2s ease-in-out infinite;
+}
+
+.DagCheck { font-size: 15px; fill: $green; font-weight: 700; }
+.DagFail  { font-size: 16px; fill: $red; font-weight: 700; }
+
+@keyframes dagPulse {
+  0%, 100% { opacity: 1; r: 4; }
+  50% { opacity: 0.3; r: 6; }
+}
+
+// ── DAG Legend ──
+
+.DagLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid $border-subtle;
+}
+
+.LegendItem {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 14px;
+  color: $text-muted;
+}
+
+.LegendDot {
+  width: 8px;
+  height: 8px;
+  border-radius: $radius-circle;
+
+  &.enabled   { background: rgba($glow-blue, 0.4); border: 1px solid rgba($glow-blue, 0.6); }
+  &.running   { background: $glow-blue; }
+  &.completed { background: $green; }
+  &.failed    { background: $red; }
+}
+
+// ── DAG Status Badge ──
+
+.DagStatus {
+  margin-top: 12px;
+  text-align: center;
+}
+
+.StatusBadge {
+  display: inline-block;
+  padding: 4px 14px;
+  border-radius: $radius-xl;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+
+  &.running   { background: rgba($glow-blue, 0.12); color: $glow-blue; }
+  &.completed { background: rgba($green, 0.12); color: $green; }
+  &.failed    { background: rgba($red, 0.12); color: $red; }
+  &.cancelled { background: rgba($amber, 0.12); color: $amber; }
+}
+
+// ═══════════════════════════════════
+//  Right: Config Panel
+// ═══════════════════════════════════
+
+.ConfigPanel {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0,0,0,0.08) transparent;
+}
+
+// ── Task Cards ──
+
+.TaskCard {
+  position: relative;
+  background: $surface-2;
+  border: 1px solid $border-default;
+  border-radius: $radius-lg;
+  overflow: visible;
+  transition: border-color 0.2s, opacity 0.2s;
+
+  &:nth-child(1) { z-index: 30; }
+  &:nth-child(2) { z-index: 20; }
+  &:nth-child(3) { z-index: 10; }
+  &:focus-within { z-index: 50; }
+
+  &.enabled { border-color: rgba($glow-blue, 0.2); }
+  &.disabled { opacity: 0.5; }
+}
+
+.TaskHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+}
+
+.TaskToggle {
+  flex-shrink: 0;
+  cursor: pointer;
+  input { display: none; }
+
+  .ToggleTrack {
+    display: block;
+    width: 32px;
+    height: 18px;
+    border-radius: $radius-lg;
+    background: rgba(0,0,0,0.08);
+    position: relative;
+    transition: background 0.2s;
+
+    .ToggleThumb {
+      position: absolute;
+      top: 2px; left: 2px;
+      width: 14px; height: 14px;
+      border-radius: $radius-circle;
+      background: rgba(0,0,0,0.25);
+      transition: transform 0.2s, background 0.2s;
+    }
+  }
+
+  input:checked + .ToggleTrack {
+    background: rgba($glow-blue, 0.3);
+    .ToggleThumb { transform: translateX(14px); background: $glow-blue; }
+  }
+}
+
+.TaskInfo { display: flex; flex-direction: column; gap: 1px; }
+.TaskName { font-size: 17px; font-weight: 600; }
+.TaskDesc { font-size: 15px; color: $text-secondary; }
+
+.TaskFields {
+  padding: 0 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 1px solid $border-subtle;
+  padding-top: 12px;
+}
+
+.FormField { display: flex; flex-direction: column; gap: 3px; }
+.FieldLabel { font-size: 15px; font-weight: 600; color: $text-primary; }
+.FieldHint { font-size: 14px; color: $text-muted; margin-bottom: 1px; }
+
+.SizeToggle { display: flex; gap: 4px; }
+
+.SizeBtn {
+  appearance: none; background: none; border: none; margin: 0; padding: 0; text-align: inherit; color: inherit; font: inherit;
+  padding: 4px 14px;
+  border-radius: $radius-md;
+  font-size: 15px;
+  font-weight: 600;
+  color: $text-secondary;
+  background: rgba(0,0,0,0.04);
+  border: 1px solid $border-subtle;
+  cursor: pointer;
+  transition: all 0.15s;
+
+  &:hover { background: rgba(0,0,0,0.05); color: $text-primary; }
+  &.active { background: rgba($glow-blue, 0.12); border-color: rgba($glow-blue, 0.3); color: $glow-blue; }
+}
+
+// ── Run ──
+
+.RunSection {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.ValidationHint { font-size: 15px; color: $amber; text-align: right; }
+
+.RunBtn {
+  appearance: none; background: none; border: none; margin: 0; padding: 0; text-align: inherit; color: inherit; font: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 22px;
+  border-radius: $radius-md;
+  font-size: 17px;
+  font-weight: 700;
+  color: white;
+  background: linear-gradient(135deg, rgba(37,99,235,0.9), rgba(59,130,246,0.95));
+  box-shadow: 0 6px 20px rgba(37,99,235,0.15);
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.15s;
+
+  &:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 10px 28px rgba(37,99,235,0.2); }
+  &:disabled { opacity: 0.4; cursor: not-allowed; }
+}
+
+// ── Execution Panel ──
+
+.ExecutionPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.DoneActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.DoneStatus {
+  font-size: 17px;
+  font-weight: 600;
+  &.success { color: $green; }
+  &.error   { color: $red; }
+  &.warning { color: $amber; }
+}
+
+// ═══════════════════════════════════
+//  Responsive: collapse to single column
+// ═══════════════════════════════════
+
+@media (max-width: 800px) {
+  .PipelineColumns {
+    grid-template-columns: 1fr;
+  }
+
+  .DagPanel {
+    border-right: none;
+    border-bottom: 1px solid $border-default;
+    max-height: 240px;
+
+    .DagSvg { max-width: 180px; }
+  }
+}

@@ -1,0 +1,147 @@
+.TrainPanel {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 4px 0;
+
+    .PanelHeader {
+        h2 {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--color-text-primary, rgba(0, 0, 0, 0.88));
+            margin: 0 0 6px;
+        }
+
+        p {
+            font-size: 17px;
+            color: var(--color-text-muted, rgba(0, 0, 0, 0.4));
+            margin: 0;
+            line-height: 1.5;
+        }
+    }
+
+    .FormSection {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .FieldLabel {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 16px;
+        font-weight: 500;
+        color: var(--color-text-secondary, rgba(0, 0, 0, 0.55));
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .FieldRow {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+
+        .PathPicker {
+            flex: 1;
+        }
+    }
+
+    .ReadyBadge {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 16px;
+        color: #34d399;
+
+        .ReadyDetail {
+            color: var(--color-text-muted, rgba(0, 0, 0, 0.28));
+            font-family: var(--font-mono, monospace);
+            font-size: 15px;
+        }
+    }
+
+    .SizeToggle {
+        display: flex;
+        gap: 0;
+        border: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
+        border-radius: var(--radius-md, 8px);
+        overflow: hidden;
+        width: fit-content;
+
+        .SizeBtn {
+            padding: 8px 20px;
+            background: transparent;
+            border: none;
+            color: var(--color-text-secondary, rgba(0, 0, 0, 0.55));
+            font-size: 17px;
+            cursor: pointer;
+            transition: all 0.15s;
+
+            &:not(:last-child) {
+                border-right: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
+            }
+
+            &.active {
+                background: rgba(59, 158, 255, 0.12);
+                color: var(--leading-color, #2563eb);
+            }
+
+            &:hover:not(.active) {
+                background: rgba(0, 0, 0, 0.04);
+            }
+        }
+    }
+
+    .ActionBtn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 10px 20px;
+        border: none;
+        border-radius: var(--radius-md, 8px);
+        font-size: 17px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s;
+        white-space: nowrap;
+
+        &.primary {
+            background: var(--leading-color, #2563eb);
+            color: #fff;
+
+            &:hover:not(:disabled) {
+                background: #5aafff;
+            }
+        }
+
+        &.secondary {
+            background: rgba(0, 0, 0, 0.05);
+            color: var(--color-text-secondary, rgba(0, 0, 0, 0.55));
+            border: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
+
+            &:hover:not(:disabled) {
+                background: rgba(0, 0, 0, 0.08);
+                color: var(--color-text-primary, rgba(0, 0, 0, 0.88));
+            }
+        }
+
+        &:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+    }
+
+    .ErrorState {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        background: rgba(255, 107, 107, 0.08);
+        border: 1px solid rgba(255, 107, 107, 0.15);
+        border-radius: var(--radius-md, 8px);
+        color: #ff6b6b;
+        font-size: 16px;
+    }
+}

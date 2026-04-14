@@ -1,0 +1,78 @@
+@use '../../../settings/Settings' as *;
+
+$secondary-color: white;
+$main-color: transparent;
+$width: 300px;
+
+* {
+  box-sizing: border-box;
+}
+
+.TextInput {
+  height: calc($width/6);
+  overflow: hidden;
+  position: relative;
+}
+
+label {
+  position: absolute;
+  top: calc($width/15);
+  color: $textSecondary;
+  font: 400 calc($width/15);
+  cursor: text;
+  transition: .25s ease;
+}
+
+input {
+  display: block;
+  width: 100%;
+  padding-top: calc($width/15);
+  border: none;
+  border-radius: 0; // For iOS
+  color: $textPrimary;
+  background: $main-color;
+  font-size: calc($width/20);
+  transition: .3s ease;
+  &:valid {
+    ~label {
+      top: 0;
+      font: 700 calc($width/25);
+      color: $textSecondary;
+    }
+  }
+  &:focus {
+    outline: none;
+    ~label {
+      top: 0;
+      font: 700 calc($width/25);
+      color: $secondaryColor; // fallback if new css variables are not supported by browser
+      color: var(--leading-color);
+    }
+
+    ~ .Bar {
+      height: 2px;
+    }
+  }
+
+  // Stop Chrome's hideous pale yellow background on auto-fill
+
+  &:-webkit-autofill {
+    -webkit-box-shadow: 0 0 0px 1000px $main-color inset;
+    -webkit-text-fill-color: inherit !important;
+  }
+}
+
+.Bar {
+  background: $secondaryColor;
+  background: var(--leading-color);
+  content: '';
+  width: $width;
+  height: 1px;
+  transition: .3s ease;
+  position: relative;
+}
+
+::selection {
+  background: rgba($secondaryColor, .3);
+  background: rgba(var(--leading-color), .3);
+}

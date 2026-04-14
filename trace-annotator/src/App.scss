@@ -1,0 +1,39 @@
+@use './settings/Settings' as *;
+
+.App {
+    --leading-color: #{$accent};
+    --button-text-color: #fff;
+    --hue-value: 200deg;
+    --success-color: #{$accentSuccess};
+    --warning-color: #{$accentWarning};
+    --error-color: #ff6b6b;
+    --font-xs: 15px;
+    --font-sm: 17px;
+    --font-base: 18px;
+    --font-lg: 20px;
+    --font-xl: 23px;
+    --font-mono: #{$font-mono};
+    --font-ui: #{$font-ui};
+    --color-surface-0: #{$surface-0};
+    --color-surface-1: #{$surface-1};
+    --color-surface-2: #{$surface-2};
+    --color-surface-3: #{$surface-3};
+    --color-border: #{$border-default};
+    --color-border-subtle: #{$border-subtle};
+    --color-text-primary: #{$text-primary};
+    --color-text-secondary: #{$text-secondary};
+    --color-text-muted: #{$text-muted};
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --radius-sm: #{$radius-sm};
+    --radius-md: #{$radius-md};
+    --radius-lg: #{$radius-lg};
+    --radius-xl: #{$radius-xl};
+    font-family: $font-ui;
+    font-size: var(--font-base);
+    color: $text-primary;
+}

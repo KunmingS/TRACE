@@ -1,0 +1,99 @@
+@use '../../../settings/Settings' as *;
+
+.BehaviorShortcutsBar {
+  height: $behaviorBarHeight;
+  background: $surface-1;
+  border-top: 1px solid $border-subtle;
+  border-bottom: 1px solid $border-subtle;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 8px;
+  overflow-x: auto;
+  flex-shrink: 0;
+
+  &::-webkit-scrollbar {
+    height: 3px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.12);
+    border-radius: 2px;
+  }
+
+  .BarLabel {
+    font-family: $font-ui;
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: $text-muted;
+    flex-shrink: 0;
+    margin-right: 4px;
+  }
+
+  .ShortcutBadge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 3px;
+    background: $surface-2;
+    border: 1px solid $border-subtle;
+    cursor: pointer;
+    white-space: nowrap;
+    font-family: $font-ui;
+    font-size: 16px;
+    color: $text-secondary;
+    transition: all 150ms;
+    flex-shrink: 0;
+
+    &:hover {
+      border-color: $border-strong;
+      color: $text-primary;
+      background: $surface-3;
+    }
+
+    .KeyBadge {
+      font-family: $font-mono;
+      font-size: 14px;
+      font-weight: 500;
+      background: $surface-0;
+      padding: 1px 5px;
+      border-radius: 2px;
+      border: 1px solid $border-default;
+      color: $text-muted;
+      line-height: 1.4;
+    }
+
+    .ColorDot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .BehaviorName {
+      font-weight: 500;
+    }
+
+    &.recording {
+      border-color: $recording;
+      background: rgba(239, 68, 68, 0.06);
+      color: $text-primary;
+
+      .RecDot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: $recording;
+        flex-shrink: 0;
+        animation: rec-pulse 1.5s ease-in-out infinite;
+      }
+    }
+  }
+}
+
+@keyframes rec-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.3); }
+  50% { opacity: 0.5; box-shadow: 0 0 0 4px transparent; }
+}

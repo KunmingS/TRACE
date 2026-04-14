@@ -1,0 +1,134 @@
+@use '../../../settings/Settings' as *;
+
+.EditorContainer {
+  --file-browser-width: #{$fileBrowserWidth};
+  --file-browser-collapsed-width: #{$fileBrowserCollapsedWidth};
+  --file-browser-resize-handle-width: 10px;
+  --editor-zoom-scale: 1;
+  align-self: stretch;
+  flex: 1;
+  height: calc(100vh - #{$topNavigationBarHeight});
+  width: 100%;
+  background:
+    radial-gradient(circle at 30% 0%, rgba(59, 158, 255, 0.08), transparent 28%),
+    $surface-1;
+  display: flex;
+  flex-direction: row;
+  position: relative;
+  overflow: hidden;
+
+  &.resizing {
+    cursor: col-resize;
+  }
+
+  .MainContent {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    z-index: 1;
+
+    .VideoSection {
+      flex: 1;
+      min-height: 0;
+      background: #000;
+      overflow: hidden;
+    }
+
+    .ClipsSection {
+      flex: 0 0 auto;
+      max-height: $clipsTableMaxHeight;
+      overflow-y: auto;
+      background: $surface-1;
+      border-top: 1px solid $border-subtle;
+
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+      &::-webkit-scrollbar { width: 4px; }
+      &::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.12);
+        border-radius: 2px;
+      }
+    }
+
+    .EmptyEditorState {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: $surface-0;
+
+      .EmptyEditorContent {
+        text-align: center;
+        color: $text-muted;
+
+        svg {
+          opacity: 0.3;
+          margin-bottom: 16px;
+        }
+
+        h3 {
+          font-size: 20px;
+          font-weight: 500;
+          color: $text-secondary;
+          margin: 0 0 8px;
+        }
+
+        p {
+          font-size: 17px;
+          margin: 0;
+          max-width: 280px;
+        }
+      }
+    }
+  }
+
+  .FileBrowserResizeHandle {
+    width: var(--file-browser-resize-handle-width);
+    flex: 0 0 var(--file-browser-resize-handle-width);
+    position: relative;
+    cursor: col-resize;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0)),
+      transparent;
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 1px;
+      transform: translateX(-50%);
+      background: rgba(255, 255, 255, 0.08);
+      transition: background 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    span {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 3px;
+      height: 46px;
+      border-radius: 999px;
+      transform: translate(-50%, -50%);
+      background: linear-gradient(180deg, rgba(59, 158, 255, 0), rgba(59, 158, 255, 0.6), rgba(59, 158, 255, 0));
+      opacity: 0.45;
+      transition: opacity 0.15s ease, transform 0.15s ease;
+    }
+
+    &:hover,
+    .EditorContainer.resizing & {
+      &::before {
+        background: rgba(59, 158, 255, 0.32);
+        box-shadow: 0 0 16px rgba(59, 158, 255, 0.16);
+      }
+
+      span {
+        opacity: 1;
+        transform: translate(-50%, -50%) scaleY(1.08);
+      }
+    }
+  }
+}

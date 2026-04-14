@@ -1,0 +1,35 @@
+.ClipHandleZone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 2;
+  background: transparent;
+  transition: background 100ms ease;
+
+  &:hover,
+  &:active {
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  &.ClipHandleLeft {
+    left: 0;
+    border-radius: 10px 0 0 10px;
+  }
+
+  &.ClipHandleRight {
+    right: 0;
+    border-radius: 0 10px 10px 0;
+  }
+}
+
+.SnapIndicator {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 0;
+  border-left: 1px dashed rgba(82, 151, 255, 0.8);
+  pointer-events: none;
+  z-index: 10;
+}

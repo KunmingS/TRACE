@@ -1,0 +1,44 @@
+@use './settings/Settings' as *;
+
+body {
+  height: 100vh;
+  width: 100vw;
+  margin: 0;
+  padding: 0;
+
+  font-family: $font-ui;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  overflow-x: hidden;
+  overflow-y: hidden;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+code {
+  font-family: $font-mono;
+}
+
+// ── Global focus-visible for keyboard accessibility ──
+// Ensures all interactive elements have a visible focus ring
+// when navigated via keyboard (Tab/Shift-Tab).
+
+*:focus-visible {
+  outline: 2px solid $accent;
+  outline-offset: 2px;
+}
+
+// For elements using `all: unset`, re-apply focus-visible
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+label:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid $accent;
+  outline-offset: 2px;
+}

@@ -1,0 +1,28 @@
+.FeatureInProgress {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  justify-content: center;
+  align-items: center;
+  align-content: center;
+  text-align: center;
+  width: 150px;
+  color: white;
+  font-size: 20px;
+  user-select: none;
+
+  > img {
+    filter: brightness(0) invert(1);
+    max-width: 100px;
+    max-height: 100px;
+    user-select: none;
+    margin: 20px;
+  }
+
+  > p {
+    &.extraBold {
+      font-size: 22px;
+      font-weight: 600;
+    }
+  }
+}

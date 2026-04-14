@@ -1,0 +1,95 @@
+@use '../../../settings/Settings' as *;
+
+.GenericYesNoPopup {
+  max-height: 600px;
+  max-width: 500px;
+  width: 50%;
+  border-radius: 12px;
+  user-select: none;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+
+  .Header {
+    align-self: stretch;
+    height: 48px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    color: $textPrimary;
+    font-weight: 700;
+    font-size: 20px;
+    letter-spacing: 0.01em;
+    background-color: $darkThemeFirstColor;
+
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    justify-content: center;
+    align-items: center;
+    align-content: center;
+  }
+
+  .Content {
+    align-self: stretch;
+    font-size: 18px;
+    color: $textSecondary;
+    background-color: $darkThemeSecondColor;
+    flex: 1;
+    padding: 24px 32px;
+
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    justify-content: center;
+    align-items: center;
+    align-content: center;
+  }
+
+  .Footer {
+    padding: 0 32px;
+    height: 72px;
+    align-self: stretch;
+    background-color: $darkThemeSecondColor;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    align-items: center;
+    align-content: flex-end;
+
+    .TextButton {
+      margin-left: 16px;
+      border-radius: 8px;
+      box-shadow: $secondaryColor 0 0 0 2px inset; // fallback if new css variables are not supported by browser
+      box-shadow: var(--leading-color) 0 0 0 2px inset;
+      background-color: $secondaryColor; // fallback if new css variables are not supported by browser
+      background-color: var(--leading-color);
+      color: white; // fallback if new css variables are not supported by browser
+      color: var(--button-text-color);
+      transition: background-color 0.2s ease, color 0.2s ease;
+
+      &:hover {
+        background-color: transparent;
+        color: $secondaryColor; // fallback if new css variables are not supported by browser
+        color: var(--leading-color);
+      }
+
+      &.disabled {
+        box-shadow: $darkThemeThirdColor 0 0 0 2px inset;
+        background-color: $darkThemeThirdColor;
+        cursor: default;
+        opacity: 0.5;
+
+        &:hover {
+          box-shadow: $darkThemeThirdColor 0 0 0 2px inset;
+          background-color: $darkThemeThirdColor;
+          color: white;
+        }
+      }
+    }
+  }
+}

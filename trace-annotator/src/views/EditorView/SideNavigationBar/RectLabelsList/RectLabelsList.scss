@@ -1,0 +1,129 @@
+@use '../../../../settings/Settings' as *;
+
+.ClipsTable {
+  background: $surface-1;
+  overflow-y: auto;
+  font-family: $font-ui;
+
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+  &::-webkit-scrollbar { width: 4px; }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 2px;
+  }
+
+  .EmptyState {
+    padding: 12px 16px;
+    font-size: 15px;
+    color: $text-muted;
+    text-align: center;
+  }
+
+  .ClipRow {
+    height: 32px;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    gap: 8px;
+    border-bottom: 1px solid $border-subtle;
+    border-left: 2px solid transparent;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background 120ms;
+
+    &:hover {
+      background: $surface-2;
+      .Actions { opacity: 1; }
+    }
+
+    &.active {
+      background: $accent-muted;
+      border-left-color: $accent;
+    }
+
+    &.ongoing {
+      .OngoingLabel {
+        color: $recording;
+        font-size: 15px;
+        font-style: italic;
+        animation: ongoing-pulse 2s ease-in-out infinite;
+      }
+    }
+
+    .ColorDot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .BehaviorName {
+      flex: 0 0 100px;
+      color: $text-primary;
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .Timestamp {
+      font-family: $font-mono;
+      font-size: 15px;
+      color: $text-secondary;
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: 2px;
+      transition: all 120ms;
+      white-space: nowrap;
+
+      &:hover {
+        background: $surface-3;
+        color: $accent;
+      }
+    }
+
+    .Arrow {
+      color: $text-muted;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+
+    .Duration {
+      font-family: $font-mono;
+      font-size: 15px;
+      color: $text-muted;
+      flex: 0 0 48px;
+      text-align: right;
+    }
+
+    .Actions {
+      margin-left: auto;
+      display: flex;
+      gap: 4px;
+      opacity: 0;
+      transition: opacity 120ms;
+
+      .DeleteBtn {
+        background: none;
+        border: none;
+        color: $text-muted;
+        cursor: pointer;
+        font-size: 20px;
+        line-height: 1;
+        padding: 0 4px;
+        border-radius: 2px;
+
+        &:hover {
+          color: $recording;
+          background: rgba(239, 68, 68, 0.1);
+        }
+      }
+    }
+  }
+}
+
+@keyframes ongoing-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}

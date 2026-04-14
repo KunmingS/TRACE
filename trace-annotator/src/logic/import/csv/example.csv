@@ -1,0 +1,5 @@
+image_name,start_frame,end_frame,behavior
+example1.jpg,10,50,walking
+example1.jpg,60,100,running
+example2.jpg,20,80,jumping
+example2.jpg,90,120,standing

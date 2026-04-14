@@ -1,0 +1,21 @@
+# Config files (Python-based configs, included as package data)
+recursive-include configs *.py
+
+# Entry-point scripts
+recursive-include tools *.py
+
+# Bundled frontend assets (built by `trace build-frontend`)
+recursive-include trace_tad/static *
+
+# Documentation
+include README.md
+include LICENSE
+
+# Exclude dev/test files
+exclude .gitignore
+prune trace-annotator
+prune exps
+prune data
+prune pretrained
+prune figures
+prune literature_review

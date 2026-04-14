@@ -1,0 +1,825 @@
+@use '../../../settings/Settings' as *;
+
+// Local aliases
+$accent-bg: $accent-muted;
+$accent-border: $accent-glow;
+$success: $accentSuccess;
+$error: $recording;
+$warning: $accentWarning;
+
+.PipelineBuilder {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+// ═══════════════════════════════════
+//  Two-Column Layout (inline in WorkspacePanel)
+// ═══════════════════════════════════
+
+.PipelineColumns {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 0;
+    min-height: 0;
+}
+
+// ── Left: DAG Column ──
+
+.DagColumn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 14px 16px 0;
+    border-right: 1px solid $border-subtle;
+}
+
+.DagLabel {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: $text-muted;
+    margin-bottom: 12px;
+    align-self: flex-start;
+}
+
+.DagSvg {
+    width: 100%;
+    max-width: 176px;
+}
+
+// ── DAG Edges ──
+
+.DagEdge {
+    stroke: rgba(255, 255, 255, 0.10);
+    stroke-width: 1.2;
+    stroke-dasharray: 4 3;
+    transition: stroke 0.3s, opacity 0.3s;
+
+    &.hidden { opacity: 0.06; stroke-dasharray: 2 4; }
+    &.done { stroke: $success; stroke-dasharray: none; opacity: 0.5; }
+}
+
+// ── DAG Nodes ──
+
+.DagNodeRect {
+    stroke: rgba(255, 255, 255, 0.06);
+    stroke-width: 1;
+    transition: fill 0.3s, stroke 0.3s;
+}
+
+.DagNode {
+    &.enabled .DagNodeRect { stroke: rgba($accent, 0.25); }
+    &.running .DagNodeRect { stroke: $accent; stroke-width: 1.5; }
+    &.completed .DagNodeRect { stroke: rgba($success, 0.35); }
+    &.failed .DagNodeRect { stroke: rgba($error, 0.35); }
+    &.off { opacity: 0.3; }
+    &.active .DagNodeRect { stroke: $accent; stroke-width: 1.5; }
+}
+
+.DagNodeLabel {
+    font-size: 14px;
+    font-weight: 600;
+    fill: rgba(255, 255, 255, 0.75);
+    font-family: $font-ui;
+    pointer-events: none;
+    .DagNode.off & { fill: rgba(255, 255, 255, 0.25); }
+}
+
+.DagPulse {
+    fill: $accent;
+    animation: dagPulse 1.2s ease-in-out infinite;
+}
+
+.DagCheck { font-size: 14px; fill: $success; font-weight: 700; }
+.DagFail  { font-size: 15px; fill: $error; font-weight: 700; }
+
+@keyframes dagPulse {
+    0%, 100% { opacity: 1; r: 3.5; }
+    50% { opacity: 0.3; r: 5; }
+}
+
+// ── DAG Legend ──
+
+.DagLegend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid $border-subtle;
+}
+
+.LegendItem {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: $text-muted;
+}
+
+.LegendDot {
+    width: 6px;
+    height: 6px;
+    border-radius: $radius-circle;
+
+    &.enabled   { background: rgba($accent, 0.35); border: 1px solid rgba($accent, 0.5); }
+    &.running   { background: $accent; }
+    &.completed { background: $success; }
+    &.failed    { background: $error; }
+}
+
+// ── DAG Status Badge ──
+
+.DagStatus {
+    margin-top: 10px;
+    text-align: center;
+}
+
+.StatusBadge {
+    display: inline-block;
+    padding: 3px 12px;
+    border-radius: $radius-xl;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+
+    &.running   { background: rgba($accent, 0.12); color: $accent; }
+    &.completed { background: rgba($success, 0.12); color: $success; }
+    &.failed    { background: rgba($error, 0.12); color: $error; }
+    &.cancelled { background: rgba($warning, 0.12); color: $warning; }
+}
+
+// ═══════════════════════════════════
+//  Right: Config Column
+// ═══════════════════════════════════
+
+.ConfigColumn {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 0 16px 20px;
+    overflow-y: auto;
+    max-height: 520px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.06) transparent;
+}
+
+// ── Task Cards ──
+
+.TaskCard {
+    position: relative;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid $border-subtle;
+    border-radius: $radius-lg;
+    overflow: visible;
+    transition: border-color 0.2s, opacity 0.2s;
+
+    &:nth-child(1) { z-index: 30; }
+    &:nth-child(2) { z-index: 20; }
+    &:nth-child(3) { z-index: 10; }
+    &:focus-within { z-index: 50; }
+
+    &.enabled { border-color: rgba($accent, 0.15); }
+    &.disabled { opacity: 0.45; }
+}
+
+.TaskHeader {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+}
+
+.TaskToggle {
+    flex-shrink: 0;
+    cursor: pointer;
+    input { display: none; }
+
+    .ToggleTrack {
+        display: block;
+        width: 30px;
+        height: 16px;
+        border-radius: $radius-md;
+        background: rgba(255, 255, 255, 0.08);
+        position: relative;
+        transition: background 0.2s;
+
+        .ToggleThumb {
+            position: absolute;
+            top: 2px; left: 2px;
+            width: 12px; height: 12px;
+            border-radius: $radius-circle;
+            background: rgba(255, 255, 255, 0.3);
+            transition: transform 0.2s, background 0.2s;
+        }
+    }
+
+    input:checked + .ToggleTrack {
+        background: rgba($accent, 0.3);
+        .ToggleThumb { transform: translateX(14px); background: $accent; }
+    }
+}
+
+.TaskInfo { display: flex; flex-direction: column; gap: 1px; }
+.TaskName { font-size: 16px; font-weight: 600; }
+.TaskDesc { font-size: 14px; color: $text-secondary; }
+
+.TaskFields {
+    padding: 0 14px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border-top: 1px solid $border-subtle;
+    padding-top: 10px;
+}
+
+.FormField { display: flex; flex-direction: column; gap: 3px; }
+.FieldLabel { font-size: 14px; font-weight: 600; color: $text-primary; }
+.FieldHint { font-size: 13px; color: $text-muted; margin-bottom: 1px; }
+
+.SizeToggle {
+    display: flex;
+    gap: 1px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: $radius-md;
+    overflow: hidden;
+    width: fit-content;
+
+    .SizeBtn {
+        appearance: none; background: none; border: none; margin: 0; padding: 0; text-align: inherit; color: inherit; font: inherit;
+        padding: 5px 16px;
+        font-size: 15px;
+        font-weight: 500;
+        color: $text-secondary;
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s;
+
+        &:hover { background: rgba(255, 255, 255, 0.04); color: $text-primary; }
+        &.active { background: $accent-bg; color: $accent; }
+    }
+}
+
+// ── Run ──
+
+.RunSection {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    padding-top: 4px;
+}
+
+.ValidationHint { font-size: 14px; color: $warning; text-align: right; }
+
+.RunBtn {
+    appearance: none; background: none; border: none; margin: 0; padding: 0; text-align: inherit; color: inherit; font: inherit;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 20px;
+    border-radius: $radius-md;
+    font-size: 16px;
+    font-weight: 700;
+    color: white;
+    background: linear-gradient(135deg, rgba(26, 109, 212, 0.9), rgba(59, 158, 255, 0.95));
+    box-shadow: 0 4px 16px rgba(30, 112, 201, 0.18);
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.15s;
+
+    &:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(30, 112, 201, 0.25); }
+    &:disabled { opacity: 0.35; cursor: not-allowed; }
+}
+
+// ── Execution View ──
+
+.ExecutionView {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+// ── Job Info Bar ──
+
+.JobInfoBar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px;
+    border-radius: $radius-md;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid $border-subtle;
+}
+
+.JobInfoLeft {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+}
+
+.JobStepLabel {
+    font-size: 15px;
+    color: $text-secondary;
+
+    strong {
+        color: $accent;
+        text-transform: capitalize;
+    }
+}
+
+.JobIdLabel {
+    font-size: 15px;
+    color: $text-muted;
+
+    code {
+        font-family: $font-mono;
+        font-size: 14px;
+        color: $text-secondary;
+        background: rgba(255, 255, 255, 0.04);
+        padding: 1px 6px;
+        border-radius: $radius-sm;
+        user-select: all;
+    }
+}
+
+.CancelPipelineBtn {
+    appearance: none; background: none; border: none; margin: 0; padding: 0; text-align: inherit; color: inherit; font: inherit;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    border-radius: $radius-md;
+    font-size: 15px;
+    font-weight: 600;
+    color: $error;
+    background: rgba($error, 0.08);
+    border: 1px solid rgba($error, 0.2);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s;
+
+    svg { flex-shrink: 0; }
+
+    &:hover {
+        background: rgba($error, 0.14);
+    }
+}
+
+// ── Results (reused from PipelineResults component) ──
+
+.PipelineResults {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-top: 8px;
+    border-top: 1px solid $border-subtle;
+}
+
+.ResultSection { display: flex; flex-direction: column; gap: 6px; }
+
+.ResultSectionTitle {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: $text-secondary;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    .ResultCount { font-weight: 400; color: $text-muted; text-transform: none; letter-spacing: 0; }
+}
+
+.MetricRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: $radius-md;
+    background: rgba(255, 255, 255, 0.02);
+    font-size: 16px;
+    color: $text-secondary;
+
+    &.primary { background: $accent-bg; border: 1px solid $accent-border; }
+    .MetricValue { font-family: $font-mono; font-weight: 600; color: $text-primary; }
+}
+
+.VideoResult {
+    border-radius: $radius-md;
+    background: rgba(255, 255, 255, 0.02);
+    padding: 6px 10px;
+
+    .VideoName { font-size: 15px; font-weight: 600; color: $text-primary; margin-bottom: 3px; }
+    .DetList { display: flex; flex-direction: column; gap: 2px; }
+    .DetRow {
+        display: flex; gap: 10px; font-size: 14px; color: $text-secondary; padding: 1px 0;
+        .DetTime { font-family: $font-mono; min-width: 90px; }
+        .DetLabel { color: $text-primary; }
+        .DetScore { margin-left: auto; font-family: $font-mono; color: $text-muted; }
+    }
+    .DetOverflow { font-size: 14px; color: $text-muted; padding: 2px 0; }
+}
+
+// ── Done Actions ──
+
+.DoneActions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-top: 6px;
+}
+
+.DoneStatus {
+    font-size: 15px;
+    font-weight: 600;
+    &.success { color: $success; }
+    &.error   { color: $error; }
+    &.warning { color: $warning; }
+}
+
+.ResetBtn {
+    appearance: none; background: none; border: none; margin: 0; padding: 0; text-align: inherit; color: inherit; font: inherit;
+    padding: 5px 14px;
+    border-radius: $radius-md;
+    font-size: 15px;
+    font-weight: 500;
+    color: $text-secondary;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    &:hover { background: rgba(255, 255, 255, 0.06); color: $text-primary; }
+}
+
+// ── Progress stepper (used during execution) ──
+
+.PipelineProgress { display: flex; flex-direction: column; gap: 0; }
+
+.ProgressStep {
+    display: flex; gap: 10px; min-height: 32px;
+
+    .StepSpine { display: flex; flex-direction: column; align-items: center; width: 18px; flex-shrink: 0; }
+    .StepDot {
+        width: 18px; height: 18px; border-radius: $radius-circle;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 14px; font-weight: 600; flex-shrink: 0;
+        border: 1.5px solid rgba(255, 255, 255, 0.12); color: $text-muted; background: rgba(255, 255, 255, 0.02);
+        transition: all 0.2s;
+        &.running { border-color: $accent; color: $accent; background: $accent-bg; animation: stepPulse 1.5s ease-in-out infinite; }
+        &.completed { border-color: $success; color: $success; background: rgba($success, 0.08); }
+        &.failed { border-color: $error; color: $error; background: rgba($error, 0.08); }
+        &.cancelled { border-color: $warning; color: $warning; background: rgba($warning, 0.08); }
+    }
+    .StepLine { flex: 1; width: 1.5px; min-height: 10px; background: rgba(255, 255, 255, 0.08); }
+    .StepContent { display: flex; flex-direction: column; gap: 1px; padding: 1px 0 6px; }
+    .StepLabel { font-size: 16px; font-weight: 500; color: $text-primary; }
+    .StepError { font-size: 14px; color: $error; }
+    &.active .StepLabel { color: $accent; }
+    &:not(.active) .StepLabel { color: $text-secondary; }
+    &.skipped .StepLabel { color: $text-muted; text-decoration: line-through; }
+}
+
+@keyframes stepPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+// ═══════════════════════════════════
+//  Job Dashboard
+// ═══════════════════════════════════
+
+.JobDashboard {
+    margin-top: 6px;
+    border-top: 1px solid $border-subtle;
+    padding-top: 10px;
+}
+
+.DashboardToggle {
+    appearance: none; background: none; border: none; margin: 0; padding: 0; text-align: inherit; color: inherit; font: inherit;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 4px 0;
+    cursor: pointer;
+    user-select: none;
+
+    .ToggleChevron {
+        transition: transform 0.2s;
+        color: $text-muted;
+        flex-shrink: 0;
+        &.open { transform: rotate(0deg); }
+        &:not(.open) { transform: rotate(-90deg); }
+    }
+}
+
+.DashboardTitle {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: $text-muted;
+}
+
+.ActiveCount {
+    font-size: 13px;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: $radius-pill;
+    background: rgba($accent, 0.12);
+    color: $accent;
+    animation: stepPulse 2s ease-in-out infinite;
+}
+
+.TotalCount {
+    font-size: 13px;
+    color: $text-muted;
+    margin-left: auto;
+}
+
+.DashboardBody {
+    padding-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    animation: dashIn 0.2s ease-out;
+}
+
+@keyframes dashIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.DashboardEmpty {
+    font-size: 14px;
+    color: $text-muted;
+    padding: 8px 0;
+}
+
+.JobSection {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.JobSectionLabel {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: $text-muted;
+    padding-bottom: 2px;
+}
+
+.JobRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: $radius-md;
+    background: rgba(255, 255, 255, 0.015);
+    font-size: 14px;
+    transition: background 0.12s;
+    cursor: pointer;
+
+    &:hover { background: rgba(255, 255, 255, 0.035); }
+
+    &.selected {
+        background: rgba($accent, 0.06);
+        border: 1px solid rgba($accent, 0.12);
+    }
+
+    &.status-running {
+        background: rgba($accent, 0.04);
+        border: 1px solid rgba($accent, 0.1);
+    }
+}
+
+.JobStatusDot {
+    width: 6px;
+    height: 6px;
+    border-radius: $radius-circle;
+    flex-shrink: 0;
+
+    &.running  { background: $accent; animation: stepPulse 1.5s ease-in-out infinite; }
+    &.pending  { background: rgba(255, 255, 255, 0.2); }
+    &.completed { background: $success; }
+    &.failed   { background: $error; }
+    &.cancelled { background: $warning; }
+}
+
+.JobType {
+    font-weight: 600;
+    color: $text-primary;
+    text-transform: capitalize;
+    min-width: 36px;
+}
+
+.JobId {
+    font-family: $font-mono;
+    font-size: 13px;
+    color: $text-muted;
+    user-select: all;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 90px;
+}
+
+.JobTime {
+    color: $text-muted;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.JobDuration {
+    color: $text-secondary;
+    font-family: $font-mono;
+    font-size: 13px;
+    white-space: nowrap;
+    margin-left: auto;
+}
+
+.JobStatusLabel {
+    font-size: 13px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: $radius-pill;
+    text-transform: capitalize;
+
+    &.completed { background: rgba($success, 0.1); color: $success; }
+    &.failed    { background: rgba($error, 0.1); color: $error; }
+    &.cancelled { background: rgba($warning, 0.1); color: $warning; }
+}
+
+.JobCancelBtn {
+    appearance: none; background: none; border: none; margin: 0; padding: 0; text-align: inherit; color: inherit; font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: $error;
+    padding: 2px 8px;
+    border-radius: $radius-sm;
+    background: rgba($error, 0.08);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s;
+
+    &:hover { background: rgba($error, 0.16); }
+    &:disabled { opacity: 0.4; cursor: default; }
+}
+
+// ── Job Detail Panel ──
+
+.JobDetail {
+    margin: 2px 0 6px;
+    padding: 10px;
+    border-radius: $radius-md;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid $border-subtle;
+    animation: dashIn 0.15s ease-out;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.JobDetailGrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 16px;
+}
+
+.JobDetailField {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+
+    &.full { grid-column: 1 / -1; }
+}
+
+.JobDetailKey {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: $text-muted;
+}
+
+.JobDetailValue {
+    font-size: 14px;
+    color: $text-primary;
+    word-break: break-all;
+
+    &.selectable {
+        font-family: $font-mono;
+        user-select: all;
+    }
+
+    &.error { color: $error; }
+
+    &.status-text-running   { color: $accent; }
+    &.status-text-completed { color: $success; }
+    &.status-text-failed    { color: $error; }
+    &.status-text-cancelled { color: $warning; }
+}
+
+.JobDetailArgs {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 0;
+}
+
+.ArgRow {
+    display: flex;
+    gap: 8px;
+    font-size: 14px;
+}
+
+.ArgKey {
+    color: $text-secondary;
+    font-family: $font-mono;
+    font-size: 13px;
+    min-width: 80px;
+    flex-shrink: 0;
+}
+
+.ArgValue {
+    color: $text-primary;
+    font-family: $font-mono;
+    font-size: 13px;
+    word-break: break-all;
+}
+
+// ── Job Log Panel ──
+
+.JobLogPanel {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid $border-subtle;
+    border-radius: $radius-md;
+    overflow: hidden;
+}
+
+.JobLogHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: $text-secondary;
+    border-bottom: 1px solid $border-subtle;
+    background: rgba(255, 255, 255, 0.015);
+}
+
+.JobLogLines {
+    font-weight: 400;
+    color: $text-muted;
+}
+
+.JobLogContainer {
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 6px 10px;
+    font-family: $font-mono;
+    font-size: 14px;
+    line-height: 1.6;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.06) transparent;
+}
+
+.JobLogLine {
+    color: $text-secondary;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.JobLogPlaceholder {
+    color: $text-muted;
+    font-style: italic;
+    padding: 8px 0;
+}
+
+// ═══════════════════════════════════
+//  Responsive: collapse DAG above config
+// ═══════════════════════════════════
+
+@media (max-width: 720px) {
+    .PipelineColumns {
+        grid-template-columns: 1fr;
+    }
+
+    .DagColumn {
+        border-right: none;
+        border-bottom: 1px solid $border-subtle;
+        padding: 12px 0;
+        .DagSvg { max-width: 140px; }
+    }
+
+    .ConfigColumn {
+        padding: 12px 0;
+        max-height: none;
+    }
+}

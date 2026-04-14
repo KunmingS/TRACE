@@ -1,0 +1,289 @@
+@use '../../../settings/Settings' as *;
+
+.EditorBottomNavigationBar {
+  --timeline-label-column-width: 132px;
+  --timeline-info-width: 164px;
+  align-self: stretch;
+  height: $editorBottomNavigationBarHeight;
+  flex-shrink: 0;
+  border-top: 1px solid $border-default;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.01), rgba(0, 0, 0, 0)),
+    $surface-0;
+  user-select: none;
+  overflow: hidden;
+
+  display: grid;
+  grid-template-columns: var(--timeline-label-column-width) minmax(0, 1fr) var(--timeline-info-width);
+  grid-template-rows: 44px minmax(0, 1fr);
+
+  &.compact {
+    .TimelineSummary {
+      gap: 6px;
+    }
+
+    .SummaryPill {
+      min-width: 0;
+      padding: 6px 8px;
+    }
+  }
+
+  .TimelineSidebar {
+    grid-row: 1 / span 2;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid $border-subtle;
+    background: rgba(0, 0, 0, 0.02);
+  }
+
+  .TimelineSidebarHeader {
+    min-height: 44px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 0 14px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+
+    .TimelineEyebrow {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: rgba(30, 64, 175, 0.85);
+    }
+
+    .TimelineSubtitle {
+      font-size: 14px;
+      color: $text-muted;
+    }
+  }
+
+  .RowLabels {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding-top: 30px;
+    overflow-y: auto;
+    scrollbar-width: none;
+    &::-webkit-scrollbar { display: none; }
+
+    .RowLabelsEmpty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      color: $text-muted;
+      font-size: 15px;
+    }
+
+    .RowLabel {
+      height: 36px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 12px;
+      overflow: hidden;
+
+      .RowLabelDot {
+        width: 7px;
+        height: 7px;
+        border-radius: $radius-circle;
+        flex-shrink: 0;
+        box-shadow: 0 0 8px rgba(0, 0, 0, 0.08);
+      }
+
+      span {
+        font-family: $font-ui;
+        font-size: 15px;
+        color: $text-secondary;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+  }
+
+  .TimelineMain {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    display: grid;
+    grid-template-rows: 44px minmax(0, 1fr);
+    min-width: 0;
+  }
+
+  .TimelineHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 14px 0 16px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    background: rgba(0, 0, 0, 0.015);
+    min-width: 0;
+  }
+
+  .TransportControls {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .TransportButton {
+    min-width: 42px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(0, 0, 0, 0.10);
+    border-radius: $radius-pill;
+    background: rgba(0, 0, 0, 0.03);
+    color: $text-secondary;
+    font-family: $font-mono;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease;
+
+    &:hover {
+      background: rgba(0, 0, 0, 0.06);
+      border-color: rgba(0, 0, 0, 0.16);
+      color: $text-primary;
+      transform: translateY(-1px);
+    }
+
+    &.TransportButtonPrimary {
+      min-width: 58px;
+      background: rgba(37, 99, 235, 0.1);
+      color: rgba(30, 64, 175, 0.9);
+      border-color: rgba(37, 99, 235, 0.2);
+
+      &.active {
+        background: rgba(239, 68, 68, 0.1);
+        color: #dc2626;
+        border-color: rgba(239, 68, 68, 0.2);
+      }
+    }
+  }
+
+  .TimelineSummary {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .SummaryPill {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: fit-content;
+    padding: 6px 10px;
+    border-radius: $radius-pill;
+    background: rgba(0, 0, 0, 0.03);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    color: $text-muted;
+    font-size: 14px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+
+    strong {
+      font-size: 14px;
+      color: $text-primary;
+      font-family: $font-mono;
+      letter-spacing: 0;
+    }
+  }
+
+  .TimelineWrapper {
+    min-width: 0;
+    min-height: 0;
+    overflow-x: auto;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.12) transparent;
+    background:
+      linear-gradient(180deg, rgba(37, 99, 235, 0.03), transparent 36%),
+      rgba(0, 0, 0, 0.01);
+
+    &::-webkit-scrollbar { height: 4px; }
+    &::-webkit-scrollbar-thumb {
+      background-color: rgba(0, 0, 0, 0.12);
+      border-radius: 2px;
+    }
+
+    display: flex;
+    align-items: stretch;
+    height: 100%;
+  }
+
+  .TimeInfo {
+    grid-row: 1 / span 2;
+    grid-column: 3;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 12px;
+    border-left: 1px solid $border-subtle;
+    background: rgba(0, 0, 0, 0.02);
+
+    .PlaybackState {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: $text-secondary;
+      font-size: 15px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .StateDot {
+      width: 8px;
+      height: 8px;
+      border-radius: $radius-circle;
+      background: rgba(0, 0, 0, 0.15);
+
+      &.active {
+        background: $recording;
+        box-shadow: 0 0 12px rgba(239, 68, 68, 0.35);
+      }
+    }
+
+    .InfoCard {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 10px 12px;
+      border-radius: $radius-xl;
+      background: rgba(0, 0, 0, 0.025);
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      min-width: 0;
+    }
+
+    .InfoLabel {
+      color: $text-muted;
+      font-size: 14px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    strong {
+      color: $text-primary;
+      font-size: 19px;
+      font-family: $font-mono;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .InfoValueSubtle {
+      color: $text-secondary;
+      font-size: 14px;
+      font-family: $font-mono;
+    }
+  }
+
+}

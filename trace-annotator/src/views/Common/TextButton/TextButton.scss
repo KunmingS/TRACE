@@ -1,0 +1,42 @@
+@use '../../../settings/Settings' as *;
+
+.TextButton {
+  display: block;
+  cursor: pointer;
+  user-select: none;
+  line-height: 1.2;
+  white-space: normal;
+  overflow-wrap: break-word;
+  padding: 12px 20px;
+  text-decoration: none;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
+  margin: initial;
+  border-radius: 6px;
+  transition: all 0.2s ease-in-out;
+  background: transparent;
+  font-weight: 600;
+  font-size: 18px;
+
+  > a {
+    text-decoration: none;
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  &:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.35);
+    color: white;
+
+    > a {
+      text-decoration: none;
+      color: white;
+    }
+  }
+
+  &.disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+}

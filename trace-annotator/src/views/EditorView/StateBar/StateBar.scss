@@ -1,0 +1,21 @@
+@use '../../../settings/Settings' as *;
+
+.StateBar {
+  align-self: stretch;
+  height: $stateBarHeight;
+  background-color: $darkThemeFirstColor;
+
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  align-items: center;
+  align-content: flex-start;
+
+  .done {
+    align-self: stretch;
+    background-color: $secondaryColor; // fallback if new css variables are not supported by browser
+    background-color: var(--leading-color);
+    transition: width 0.4s ease-out;
+  }
+}

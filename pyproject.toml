@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trace-tad"
+dynamic = ["version"]
+description = "TRACE: Temporal action detection for animal behavior analysis"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.9"
+keywords = ["temporal-action-detection", "animal-behavior", "video-analysis", "deep-learning", "pytorch"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+]
+dependencies = [
+    "torch>=2.0.1",
+    "torchvision>=0.15.2",
+    "decord>=0.6.0",
+    "einops>=0.6.0",
+    "scipy>=1.9.0",
+    "pandas>=1.5.0",
+    "tqdm>=4.64.0",
+    "numpy>=1.23.5",
+    "opencv-python-headless>=4.6.0",
+    "fastapi",
+    "uvicorn",
+    "python-multipart",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "flake8",
+]
+
+[project.urls]
+Homepage = "https://github.com/KunmingS/TRACE"
+Repository = "https://github.com/KunmingS/TRACE"
+Issues = "https://github.com/KunmingS/TRACE/issues"
+
+[project.scripts]
+trace = "trace_tad.cli:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "trace_tad.version.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["trace_tad*", "tools*", "configs*"]
+
+[tool.setuptools.package-data]
+"configs" = ["**/*.py"]
+"trace_tad" = ["static/annotator/**/*"]

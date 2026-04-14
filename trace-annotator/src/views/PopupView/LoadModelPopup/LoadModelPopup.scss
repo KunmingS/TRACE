@@ -1,0 +1,61 @@
+@use '../../../settings/Settings' as *;
+
+.LoadModelPopupContent {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  justify-content: center;
+  align-items: center;
+  align-content: center;
+  padding-top: 30px;
+  flex: 1;
+
+  .Message {
+    align-self: stretch;
+    color: white;
+    font-size: 19px;
+    padding: 0 40px 30px 40px;
+  }
+
+  .Companion {
+    align-self: stretch;
+    padding-bottom: 30px;
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    justify-content: center;
+    align-items: center;
+    align-content: center;
+    height: 150px;
+
+    .Options {
+      align-self: stretch;
+      flex: 1;
+      padding: 0 40px;
+
+      .OptionsItem {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        align-items: center;
+        align-content: flex-start;
+        color: white;
+
+        cursor: pointer;
+        user-select: none;
+        font-size: 19px;
+        padding: 5px 0;
+
+        > img {
+          max-width: 20px;
+          max-height: 20px;
+          margin-right: 10px;
+          filter: invert(1) brightness(35%) sepia(100%) hue-rotate(172deg) saturate(2000%); // fallback if new css variables are not supported by browser
+          filter: invert(1) brightness(35%) sepia(100%) hue-rotate(var(--hue-value)) saturate(2000%);
+          user-select: none;
+        }
+      }
+    }
+  }
+}

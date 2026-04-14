@@ -1,0 +1,474 @@
+@use '../../../settings/Settings' as *;
+
+// Use global tokens from _Settings.scss
+// Local aliases for readability
+$accent-dim: $accent-muted;
+$text-1: $text-primary;
+$text-2: $text-secondary;
+$text-3: $text-muted;
+$danger: #dc2626;
+$info: #2563eb;
+
+.ImagesDropZone {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  font-family: $font-ui;
+
+  .ModeSwitch {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .ModeButton {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 68px;
+    padding: 14px 16px;
+    border-radius: $radius-xl;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: rgba(0, 0, 0, 0.02);
+    color: $text-2;
+    cursor: pointer;
+    text-align: left;
+    transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+
+    &:hover {
+      transform: translateY(-1px);
+      border-color: rgba(0, 0, 0, 0.16);
+    }
+
+    &.active {
+      background:
+        linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(37, 99, 235, 0.03)),
+        rgba(0, 0, 0, 0.01);
+      border-color: rgba(37, 99, 235, 0.3);
+      color: $text-1;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    }
+  }
+
+  .ModeKicker {
+    width: 34px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: $radius-lg;
+    background: rgba(37, 99, 235, 0.06);
+    border: 1px solid rgba(37, 99, 235, 0.12);
+    font-family: $font-mono;
+    font-size: 15px;
+    color: $info;
+    flex-shrink: 0;
+  }
+
+  .ModeLabel {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .LeadBlock {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .LeadTitle {
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    color: $text-1;
+  }
+
+  .LeadText {
+    max-width: 58ch;
+    font-size: 18px;
+    line-height: 1.65;
+    color: $text-2;
+  }
+
+  .IntakePanel {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 20px;
+    border-radius: $radius-xl;
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    animation: surfaceIn 0.26s ease-out;
+
+    &.local {
+      gap: 16px;
+    }
+  }
+
+  .Section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .SectionLabel {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 15px;
+    font-weight: 600;
+    color: $text-2;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+
+    svg {
+      color: $text-3;
+    }
+
+    .CountBadge {
+      background: $accent-dim;
+      color: $accent;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 1px 7px;
+      border-radius: $radius-lg;
+      margin-left: 4px;
+    }
+  }
+
+  .PathInputRow {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+  }
+
+  .LoadBtn,
+  .GhostButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 0 14px;
+    border-radius: $radius-md;
+    font-family: $font-ui;
+    font-size: 17px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .LoadBtn {
+    background: $surface-2;
+    border: 1px solid $border-default;
+    color: $text-1;
+
+    svg {
+      opacity: 0.6;
+      transition: opacity 0.15s;
+    }
+
+    &:hover:not(:disabled) {
+      background: $surface-3;
+      border-color: rgba(0, 0, 0, 0.18);
+
+      svg {
+        opacity: 1;
+      }
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+  }
+
+  .LoadBtn {
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.9), rgba(59, 130, 246, 0.95));
+    border-color: transparent;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+    align-self: flex-end;
+  }
+
+  .GhostButton {
+    min-height: 42px;
+    padding: 0 16px;
+    border: 1px solid rgba(0, 0, 0, 0.14);
+    background: rgba(0, 0, 0, 0.02);
+    color: $text-1;
+
+    &:hover {
+      background: rgba(0, 0, 0, 0.05);
+      border-color: rgba(0, 0, 0, 0.22);
+    }
+  }
+
+  .DropSurface {
+    position: relative;
+    border-radius: $radius-xl;
+    border: 1px dashed rgba(37, 99, 235, 0.35);
+    background:
+      radial-gradient(circle at top, rgba(37, 99, 235, 0.06), transparent 50%),
+      #fafbfd;
+    min-height: 220px;
+    transition: border-color 0.18s ease, transform 0.18s ease, background 0.18s ease;
+
+    &.dragging {
+      border-color: rgba(37, 99, 235, 0.6);
+      transform: scale(1.01);
+      background:
+        radial-gradient(circle at top, rgba(37, 99, 235, 0.1), transparent 54%),
+        #f0f4ff;
+    }
+  }
+
+  .DropSurfaceInner {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 28px;
+    text-align: center;
+  }
+
+  .DropIcon {
+    width: 56px;
+    height: 56px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: $radius-xl;
+    background: rgba(37, 99, 235, 0.08);
+    border: 1px solid rgba(37, 99, 235, 0.16);
+    color: #3b82f6;
+  }
+
+  .DropTitle {
+    font-size: 22px;
+    font-weight: 600;
+    color: $text-1;
+    letter-spacing: -0.02em;
+  }
+
+  .DropText,
+  .PromptText {
+    font-size: 17px;
+    line-height: 1.6;
+    color: $text-2;
+  }
+
+  .UploadPrompt {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .PromptTitle {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: $text-3;
+  }
+
+  .SelectedFilesPanel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px;
+    border-radius: $radius-xl;
+    background: rgba(0, 0, 0, 0.02);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+  }
+
+  .UploadMeta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 16px;
+    color: $text-2;
+  }
+
+  .LocalFilesList {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .LocalFileItem,
+  .LocalFileOverflow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: $radius-lg;
+    background: $surface-1;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+  }
+
+  .LocalFileName,
+  .LocalFileSize,
+  .LocalFileOverflow {
+    font-family: $font-mono;
+    font-size: 16px;
+  }
+
+  .LocalFileName {
+    color: $text-1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .LocalFileSize,
+  .LocalFileOverflow {
+    color: $text-3;
+    flex-shrink: 0;
+  }
+
+  .LoadingState {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 20px;
+    color: $text-2;
+    font-size: 17px;
+
+    .LoadingDots {
+      display: flex;
+      gap: 4px;
+
+      span {
+        width: 5px;
+        height: 5px;
+        background: $accent;
+        border-radius: $radius-circle;
+        animation: dotPulse 1.2s infinite ease-in-out;
+
+        &:nth-child(1) { animation-delay: 0s; }
+        &:nth-child(2) { animation-delay: 0.15s; }
+        &:nth-child(3) { animation-delay: 0.3s; }
+      }
+    }
+  }
+
+  .InfoState,
+  .ErrorState {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    border-radius: $radius-lg;
+    padding: 10px 14px;
+    font-size: 16px;
+    line-height: 1.4;
+
+    svg {
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+  }
+
+  .InfoState {
+    background: rgba(37, 99, 235, 0.06);
+    border: 1px solid rgba(37, 99, 235, 0.16);
+    color: rgba(30, 64, 175, 0.9);
+  }
+
+  .ErrorState {
+    background: rgba($danger, 0.06);
+    border: 1px solid rgba($danger, 0.16);
+    color: rgba(185, 28, 28, 0.95);
+  }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes dropdownIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes surfaceIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dotPulse {
+  0%, 80%, 100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 900px) {
+  .ImagesDropZone {
+    .PathInputRow {
+      flex-direction: column;
+    }
+
+    .LoadBtn {
+      min-height: 36px;
+    }
+
+    .UploadMeta {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+  }
+}
+
+@media (max-width: 640px) {
+  .ImagesDropZone {
+    gap: 18px;
+
+    .ModeSwitch {
+      grid-template-columns: 1fr;
+    }
+
+    .LeadTitle {
+      font-size: 22px;
+    }
+
+    .IntakePanel {
+      padding: 16px;
+      border-radius: $radius-xl;
+    }
+
+    .DropSurface {
+      min-height: 190px;
+      border-radius: $radius-xl;
+    }
+
+    .DropSurfaceInner {
+      padding: 22px 18px;
+    }
+  }
+}

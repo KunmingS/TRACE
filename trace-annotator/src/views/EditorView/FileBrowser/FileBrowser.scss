@@ -1,0 +1,358 @@
+@use '../../../settings/Settings' as *;
+
+.FileBrowser {
+  width: var(--file-browser-width, #{$fileBrowserWidth});
+  min-width: var(--file-browser-width, #{$fileBrowserWidth});
+  background: $surface-0;
+  border-left: 1px solid $border-default;
+  display: flex;
+  flex-direction: column;
+  font-family: $font-ui;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.01), rgba(0, 0, 0, 0)),
+    $surface-0;
+
+  &.collapsed {
+    width: var(--file-browser-collapsed-width, #{$fileBrowserCollapsedWidth});
+    min-width: var(--file-browser-collapsed-width, #{$fileBrowserCollapsedWidth});
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-left: 1px solid $border-default;
+    background: $surface-0;
+
+    &:hover { background: $surface-1; }
+
+    .ToggleIcon {
+      color: $text-muted;
+      font-size: 18px;
+      writing-mode: vertical-rl;
+    }
+  }
+
+  .BrowserHeader {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 12px 0 14px;
+    border-bottom: 1px solid $border-subtle;
+    flex-shrink: 0;
+    background: rgba(0, 0, 0, 0.02);
+
+    .HeaderCopy {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .HeaderLabel {
+      font-size: 14px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: $text-muted;
+    }
+
+    .HeaderSubtext {
+      font-size: 14px;
+      color: rgba(0, 0, 0, 0.38);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .FileCount {
+      font-family: $font-mono;
+      font-size: 14px;
+      color: rgba(30, 64, 175, 0.9);
+      margin-left: auto;
+      background: rgba(37, 99, 235, 0.08);
+      padding: 4px 7px;
+      border-radius: $radius-pill;
+      border: 1px solid rgba(37, 99, 235, 0.16);
+    }
+
+    .CollapseBtn {
+      background: none;
+      border: none;
+      color: $text-muted;
+      cursor: pointer;
+      font-size: 18px;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border-radius: $radius-pill;
+      flex-shrink: 0;
+
+      &:hover { color: $text-secondary; background: $surface-2; }
+    }
+  }
+
+  .DirSection {
+    padding: 8px;
+    border-bottom: 1px solid $border-subtle;
+    flex-shrink: 0;
+    position: relative;
+
+    .DirInputWrapper {
+      display: flex;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.02);
+      border: 1px solid $border-subtle;
+      border-radius: $radius-lg;
+      min-height: 36px;
+      padding: 0 8px;
+
+      &:focus-within {
+        border-color: $accent;
+        box-shadow: 0 0 0 1px $accent-glow;
+      }
+
+      .Prompt {
+        font-family: $font-mono;
+        font-size: 15px;
+        color: $text-muted;
+        margin-right: 4px;
+        flex-shrink: 0;
+      }
+
+      input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        outline: none;
+        color: $text-primary;
+        font-family: $font-mono;
+        font-size: 15px;
+        min-width: 0;
+      }
+
+      .LoadBtn {
+        background: none;
+        border: none;
+        color: $text-muted;
+        cursor: pointer;
+        font-size: 18px;
+        width: 26px;
+        height: 26px;
+        border-radius: $radius-md;
+        padding: 0;
+        flex-shrink: 0;
+
+        &:hover {
+          color: $accent;
+          background: rgba(37, 99, 235, 0.08);
+        }
+        &:disabled { opacity: 0.3; cursor: default; }
+      }
+    }
+
+    .SuggestionsDropdown {
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      top: 42px;
+      background: rgba(255, 255, 255, 0.98);
+      border: 1px solid $border-default;
+      border-radius: $radius-lg;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 100;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+
+      .SuggestionItem {
+        min-height: 32px;
+        display: flex;
+        align-items: center;
+        padding: 0 10px;
+        font-size: 16px;
+        color: $text-secondary;
+        cursor: pointer;
+        font-family: $font-mono;
+
+        &:hover, &.active {
+          background: $surface-2;
+          color: $text-primary;
+        }
+      }
+    }
+  }
+
+  .FileList {
+    flex: 1;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.12) transparent;
+    padding: 8px 0 10px;
+
+    &::-webkit-scrollbar { width: 4px; }
+    &::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.12);
+      border-radius: 2px;
+    }
+
+    .LoadingIndicator,
+    .EmptyState {
+      padding: 18px 16px;
+      font-size: 15px;
+      color: $text-muted;
+      text-align: center;
+    }
+
+    .EmptyState {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: center;
+      justify-content: center;
+      min-height: 140px;
+    }
+
+    .EmptyStateTitle {
+      font-size: 16px;
+      color: $text-secondary;
+      letter-spacing: 0.02em;
+    }
+
+    .EmptyStateText {
+      max-width: 24ch;
+      line-height: 1.5;
+    }
+
+    .FileItem {
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 0 8px;
+      padding: 6px 10px;
+      cursor: pointer;
+      border-left: 2px solid transparent;
+      border-radius: $radius-lg;
+      transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+
+      &:hover {
+        background: rgba(0, 0, 0, 0.04);
+        transform: translateX(-1px);
+      }
+
+      &.active {
+        background:
+          linear-gradient(90deg, rgba(37, 99, 235, 0.1), rgba(37, 99, 235, 0.04)),
+          rgba(0, 0, 0, 0.01);
+        border-left-color: $accent;
+
+        .FileBase { color: $text-primary; }
+        .FileExt { color: $accent; }
+      }
+
+      &.unplayable {
+        opacity: 0.6;
+        cursor: default;
+
+        &:hover {
+          background: transparent;
+          transform: none;
+        }
+      }
+
+      .FileMain {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: baseline;
+      }
+
+      .FileBase {
+        font-size: 16px;
+        color: $text-secondary;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .FileExt {
+        font-size: 15px;
+        color: $text-muted;
+        margin-left: 2px;
+        flex-shrink: 0;
+      }
+
+      .FileMeta {
+        flex-shrink: 0;
+        margin-left: 6px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .CodecBadge {
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        padding: 2px 6px;
+        border-radius: $radius-pill;
+        text-transform: uppercase;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+
+        &.ready {
+          background: rgba(22, 163, 74, 0.1);
+          color: #16a34a;
+        }
+
+        &.converting {
+          background: rgba(217, 119, 6, 0.1);
+          color: #d97706;
+
+          .ConvertSpinner {
+            width: 8px;
+            height: 8px;
+            border: 1.5px solid rgba(217, 119, 6, 0.25);
+            border-top-color: #d97706;
+            border-radius: $radius-circle;
+            animation: spin 0.6s linear infinite;
+          }
+        }
+
+        &.convert-btn {
+          appearance: none; background: none; border: none; margin: 0; padding: 0; text-align: inherit; color: inherit; font: inherit;
+          font-size: 13px;
+          font-weight: 600;
+          letter-spacing: 0.04em;
+          padding: 2px 8px;
+          border-radius: $radius-pill;
+          background: rgba(217, 119, 6, 0.1);
+          color: #d97706;
+          cursor: pointer;
+          transition: background 0.15s, color 0.15s;
+
+          &:hover {
+            background: rgba(217, 119, 6, 0.2);
+            color: #b45309;
+          }
+        }
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
+      .CsvBadge {
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        padding: 2px 6px;
+        border-radius: $radius-pill;
+        background: rgba(22, 163, 74, 0.1);
+        color: #16a34a;
+        text-transform: uppercase;
+      }
+    }
+  }
+}

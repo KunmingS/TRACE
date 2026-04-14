@@ -1,0 +1,64 @@
+// === Backgrounds — 4-level depth system (light theme) ===
+$surface-0: #ffffff;
+$surface-1: #f5f6f8;
+$surface-2: #eceef2;
+$surface-3: #e0e3e9;
+
+// Legacy aliases
+$darkThemeFirstColor: $surface-0;
+$darkThemeSecondColor: $surface-1;
+$darkThemeThirdColor: $surface-2;
+$darkThemeForthColor: $surface-3;
+
+// === Borders ===
+$border-subtle: rgba(0, 0, 0, 0.06);
+$border-default: rgba(0, 0, 0, 0.10);
+$border-strong: rgba(0, 0, 0, 0.16);
+$borderColor: $border-default;
+
+// === Text hierarchy ===
+$text-primary: rgba(0, 0, 0, 0.88);
+$text-secondary: rgba(0, 0, 0, 0.55);
+$text-muted: rgba(0, 0, 0, 0.32);
+$textPrimary: $text-primary;
+$textSecondary: $text-secondary;
+$textMuted: $text-muted;
+
+// === Accent ===
+$accent: #2563eb;
+$accent-muted: rgba(37, 99, 235, 0.10);
+$accent-glow: rgba(37, 99, 235, 0.15);
+$primaryColor: $accent;
+$secondaryColor: $accent;
+
+// === Status ===
+$recording: #ef4444;
+$recording-pulse: rgba(239, 68, 68, 0.3);
+$accentSuccess: #34d399;
+$accentWarning: #f59e0b;
+
+// === Typography ===
+$font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+$font-mono: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+
+// === Border Radius ===
+$radius-sm: 4px;
+$radius-md: 8px;
+$radius-lg: 12px;
+$radius-xl: 20px;
+$radius-pill: 999px;
+$radius-circle: 50%;
+
+// === Dimensions ===
+$topNavigationBarHeight: 48px;
+$stateBarHeight: 2px;
+$fileBrowserWidth: 280px;
+$fileBrowserCollapsedWidth: 24px;
+$behaviorBarHeight: 36px;
+$clipsTableMaxHeight: 160px;
+$timelineHeight: 240px;
+$sideNavigationBarCompanionWidth: 23px;
+$sideNavigationBarContentWidth: 300px;
+$editorBottomNavigationBarHeight: 240px;
+$editorTopNavigationBarHeight: 40px;
+$toolboxWidth: 50px;

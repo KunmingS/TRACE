@@ -1,0 +1,54 @@
+.Playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 20;
+  pointer-events: none;
+  // Transform so the line is centered on the pixel position
+  transform: translateX(-50%);
+
+  &__handle {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    width: 20px;
+    height: 30px;
+    cursor: grab;
+    pointer-events: auto;
+    padding-top: 2px;
+    z-index: 21;
+
+    &:hover .Playhead__triangle path {
+      fill: #5db0ff;
+    }
+
+    &--dragging {
+      cursor: grabbing;
+
+      .Playhead__triangle path {
+        fill: #7fc3ff;
+      }
+    }
+  }
+
+  &__triangle {
+    display: block;
+    filter: drop-shadow(0 1px 3px rgba(59, 158, 255, 0.5));
+  }
+
+  &__line {
+    position: absolute;
+    top: 30px;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 1px;
+    background: rgba(151, 212, 255, 0.92);
+    box-shadow: 0 0 4px rgba(59, 158, 255, 0.5);
+    pointer-events: none;
+  }
+}

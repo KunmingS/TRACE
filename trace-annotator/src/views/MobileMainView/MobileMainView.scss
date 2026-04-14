@@ -1,0 +1,209 @@
+@use '../../settings/Settings' as *;
+
+.MobileMainView {
+  position: absolute;
+  height: 100vh;
+  width: 100vw;
+  margin: 0;
+  padding: 0;
+
+  background-image: linear-gradient(to top right, $primaryColor, $secondaryColor);
+
+  .MobileMainViewContent {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    justify-content: center;
+    align-items: center;
+    justify-items: center;
+    overflow: hidden;
+
+    .FirstStage {
+      position: relative;
+      align-self: stretch;
+      height: 400px;
+      background-color: $darkThemeFirstColor;
+
+      display: flex;
+      flex-direction: column;
+      flex-wrap: nowrap;
+      justify-content: center;
+      align-items: center;
+      justify-items: center;
+
+      img {
+        max-width: 300px;
+        max-height: 300px;
+        user-select: none;
+      }
+
+      .TriangleHorizontal.Bottom {
+        .TriangleHorizontalContent {
+          transform: skew(80deg) translateY(50%);
+        }
+      }
+    }
+
+    .SecondStage {
+      align-self: stretch;
+      padding-top: 100px;
+      padding-bottom: 100px;
+
+      .EditorFeaturesTiles {
+        color: black;
+
+        img {
+          filter: none;
+          user-select: none;
+        }
+      }
+    }
+
+    .ThirdStage {
+      position: relative;
+      align-self: stretch;
+      background-color: $darkThemeFirstColor;
+      padding-bottom: 50px;
+
+      .TriangleHorizontal.Top {
+        .TriangleHorizontalContent {
+          transform: skew(75deg);
+        }
+      }
+
+      .TriangleHorizontal.Bottom {
+        .TriangleHorizontalContent {
+          transform: skew(97deg) translateY(50%);
+        }
+      }
+    }
+
+    .FourthStage {
+      align-self: stretch;
+      padding-top: 100px;
+      padding-bottom: 100px;
+
+      display: flex;
+      flex-direction: column;
+      flex-wrap: nowrap;
+      justify-content: center;
+      align-items: center;
+      justify-items: center;
+
+      .Message {
+        width: 80%;
+        max-width: 400px;
+        margin-bottom: 50px;
+
+        text-align: center;
+        user-select: none;
+      }
+
+      .SocialMediaWrapper {
+        width: 100%;
+        max-width: 200px;
+
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        justify-content: space-around;
+        align-items: center;
+        justify-items: center;
+      }
+    }
+  }
+
+  .TriangleHorizontal {
+    height: 600px;
+    width: 100%;
+    position: absolute;
+    background-color: transparent;
+    overflow: hidden;
+    pointer-events: none;
+
+    &.Top {
+      top: -600px;
+      .TriangleHorizontalContent {
+        bottom: -300px;
+      }
+    }
+
+    &.Bottom {
+      bottom: -600px;
+      .TriangleHorizontalContent {
+        top: -300.1px;
+      }
+    }
+
+    .TriangleHorizontalContent {
+      height: 600px;
+      width: 100%;
+      position: absolute;
+      left: 0;
+      background-color: $darkThemeFirstColor;
+    }
+  }
+
+  .MobileTopNavigationBar {
+    position: fixed;
+    height: 50px;
+    width: 100%;
+    z-index: 1000;
+    background-color: $darkThemeFirstColor;
+
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    align-items: center;
+    align-content: space-between;
+
+    &.Show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    &.Hide {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .NavigationBarGroupWrapper {
+      align-self: stretch;
+      margin: 0 10px;
+
+      display: flex;
+      flex-wrap: nowrap;
+      justify-content: center;
+      align-items: center;
+      align-content: center;
+    }
+
+    .Header {
+      align-self: stretch;
+
+      display: flex;
+      flex-wrap: nowrap;
+      justify-content: center;
+      align-items: center;
+      align-content: center;
+
+      > img {
+        width: 35px;
+        height: 35px;
+        margin-right: 10px;
+        user-select: none;
+      }
+
+      font-size: 22px;
+      color: white;
+      font-weight: bolder;
+      user-select: none;
+    }
+
+    .TriangleHorizontal.Bottom {
+      .TriangleHorizontalContent {
+        transform: skew(94deg) translateY(50%);
+      }
+    }
+  }
+}
