@@ -1,18 +1,16 @@
 """CLI entry point for TRACE.
 
 Usage:
-    trace serve              # Start server (serves bundled frontend + API)
-    trace serve --dev        # Dev mode: Vite HMR + backend on separate ports
-    trace build-frontend     # Build frontend and copy into package for distribution
-    trace train              # Train with small model (default)
-    trace train --model large  # Train with large model
-    trace train --dataset-path /my/data  # Auto-clip + train (simplified)
-    trace test --model-path /my/model --dataset-path /my/data  # Simplified test
-    trace infer --model-path /my/model --input /my/video.mp4  # Simplified infer
-    trace run <config>   # Run the full pipeline: train -> infer -> export
-    trace api            # Start the pipeline API server
+    trace app
+    trace prepare
+    trace train --model large --work-dir /my/data --pairs video.mp4=video.csv
+    trace eval --model-dir /my/data/model_20260507_143012
+    trace predict --model-dir /my/data/model_20260507_143012 --input /my/video.mp4
+    trace pipeline <config>
+    trace update
 """
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -21,12 +19,34 @@ import sys
 import time
 
 from trace_tad.config import DictAction
+from trace_tad.model_artifacts import (
+    create_eval_dir,
+    create_model_dir,
+    resolve_model_dir,
+)
+from trace_tad.version import __version__
+from trace_tad.weights import model_weight_choices
 
 
 MODEL_CONFIGS = {
-    "small": "configs/tridet/tridet_small.py",
-    "large": "configs/tridet/tridet_large.py",
+    "small": "configs/small.py",
+    "large": "configs/large.py",
 }
+PYPI_PROJECT_NAME = "trace-tad"
+PYPI_JSON_URL = f"https://pypi.org/pypi/{PYPI_PROJECT_NAME}/json"
+
+
+def _require_cuda():
+    """Exit with a clear message if no CUDA-capable GPU is available."""
+    import torch
+    if not torch.cuda.is_available():
+        print(
+            "Error: TRACE requires a CUDA-capable GPU.\n"
+            "  torch.cuda.is_available() returned False.\n"
+            "  Check: nvidia-smi, your PyTorch CUDA build, and CUDA_VISIBLE_DEVICES.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
 
 def _resolve_config(args):
@@ -47,51 +67,56 @@ def _resolve_config(args):
     return rel
 
 
-def _resolve_model_path(args):
-    """Resolve checkpoint and class_map from --model-path if provided."""
-    model_path = getattr(args, "model_path", None)
-    if model_path is None:
-        return
-
-    model_path = os.path.abspath(model_path)
-    best_pth = os.path.join(model_path, "best.pth")
-    classmap = os.path.join(model_path, "classmap.txt")
-
-    if not os.path.isfile(best_pth):
-        print(f"Error: {best_pth} not found in model path.")
-        sys.exit(1)
-    if not os.path.isfile(classmap):
-        print(f"Error: {classmap} not found in model path.")
-        sys.exit(1)
-
-    # Set checkpoint and class_map from model path (only if not explicitly set)
-    if hasattr(args, "checkpoint") and args.checkpoint is None:
-        args.checkpoint = best_pth
-    if hasattr(args, "class_map") and args.class_map is None:
-        args.class_map = classmap
+def _write_prep_result(model_dir, dataset_json, classmap_path):
+    result = {
+        "model_dir": model_dir,
+        "dataset_json": dataset_json,
+        "classmap_path": classmap_path,
+    }
+    with open(os.path.join(model_dir, "prep_result.json"), "w", encoding="utf-8") as f:
+        json.dump(result, f, indent=2)
+    return result
 
 
-def _resolve_dataset_path(args):
-    """Resolve data_path, annotation, class_map from --dataset-path if provided."""
-    dataset_path = getattr(args, "dataset_path", None)
-    if dataset_path is None:
-        return
-
+def _prepare_pairs_into(work_dir, output_dir, args, force_cache_mode=None):
+    """Prepare explicit video/CSV pairs into ``output_dir``."""
     from trace_tad.data_prep import prepare_dataset
 
-    dataset_path = os.path.abspath(dataset_path)
-    print(f"Preparing dataset from: {dataset_path}")
-    clips_dir, json_path, classmap_path = prepare_dataset(dataset_path)
+    work_dir = os.path.abspath(work_dir)
+    explicit_pairs = getattr(args, "explicit_pairs", None)
+    if not explicit_pairs:
+        print("Error: --pairs is required. Pass each video/CSV as VIDEO_PATH=CSV_PATH.")
+        sys.exit(1)
 
-    # Override individual flags (only if not explicitly set)
-    if args.data_path is None:
-        args.data_path = clips_dir
-    if args.annotation is None:
-        args.annotation = json_path
-    if hasattr(args, "class_map") and args.class_map is None:
-        args.class_map = classmap_path
-
+    print(f"Preparing pairs from: {work_dir}")
+    print(f"Selected pairs: {', '.join(explicit_pairs)}")
+    reencode_clips = getattr(args, "reencode_clips", False)
+    cache_mode = force_cache_mode or getattr(args, "cache_mode", None)
+    if cache_mode is None:
+        cache_mode = "physical" if reencode_clips else "virtual"
+    output_dir, dataset_json, classmap_path = prepare_dataset(
+        work_dir,
+        clip_frames=getattr(args, "clip_frames", 768),
+        train_ratio=getattr(args, "train_ratio", 0.8),
+        virtual_clips=cache_mode == "virtual",
+        cache_mode=cache_mode,
+        cache_resolution=getattr(args, "cache_resolution", 144),
+        cache_crf=getattr(args, "cache_crf", 23),
+        cache_workers=getattr(args, "cache_workers", None),
+        explicit_pairs=explicit_pairs,
+        output_dir=output_dir,
+    )
+    _write_prep_result(output_dir, dataset_json, classmap_path)
     print()
+    return output_dir, dataset_json, classmap_path
+
+
+def _model_info_or_exit(model_dir):
+    try:
+        return resolve_model_dir(model_dir)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"Error: {exc}")
+        sys.exit(1)
 
 
 def find_annotator_dir():
@@ -117,6 +142,30 @@ def _find_bundled_index():
     if os.path.isfile(index):
         return static_dir
     return None
+
+
+def _fetch_latest_pypi_version(timeout=5.0, url=PYPI_JSON_URL):
+    """Return the latest version published on PyPI."""
+    import urllib.error
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"PyPI returned HTTP {exc.code}") from exc
+    except urllib.error.URLError as exc:
+        reason = getattr(exc, "reason", exc)
+        raise RuntimeError(f"Could not reach PyPI: {reason}") from exc
+    except TimeoutError as exc:
+        raise RuntimeError("Timed out while checking PyPI") from exc
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("PyPI returned invalid JSON") from exc
+
+    latest = payload.get("info", {}).get("version")
+    if not latest:
+        raise RuntimeError("PyPI response did not include a version")
+    return str(latest)
 
 
 def _get_access_urls(host, port):
@@ -147,6 +196,9 @@ def serve(args):
     """Start the TRACE annotation server."""
     annotator_dir = find_annotator_dir()
     processes = []
+
+    if args.port is None:
+        args.port = 3001 if args.dev else 8000
 
     def cleanup(signum=None, frame=None):
         for p in processes:
@@ -195,6 +247,7 @@ def serve(args):
                 print(f"Starting frontend dev server on port {args.frontend_port}...")
                 env = os.environ.copy()
                 env["PORT"] = str(args.frontend_port)
+                env["VITE_PROXY_API_TARGET"] = f"http://localhost:{args.port}"
                 frontend_proc = subprocess.Popen(
                     ["npm", "run", "dev"],
                     cwd=annotator_dir,
@@ -232,7 +285,7 @@ def serve(args):
         if bundled is None:
             print("Warning: No bundled frontend found.")
             print("  The API will start, but there is no frontend to serve.")
-            print("  Run 'trace build-frontend' first, or use 'trace serve --dev'.")
+            print("  Run 'trace dev build-frontend' first, or use 'trace app --dev'.")
             print()
 
         print(f"Starting TRACE server on http://{args.host}:{args.port}")
@@ -290,27 +343,71 @@ def build_frontend(args):
     shutil.copytree(dist_dir, static_dir)
 
     print(f"Frontend assets copied to: {static_dir}")
-    print("Done. Run 'trace serve' to start the server.")
+    print("Done. Run 'trace app' to start the server.")
+
+
+def _download_weights_selection(selection):
+    """Download the selected model weights and print their local paths."""
+    from trace_tad.weights import download_model_weights
+
+    paths = download_model_weights(selection)
+    for path in paths:
+        print(path)
+    return paths
+
+
+def prepare(args):
+    """Prepare local assets needed by TRACE."""
+    if args.weights == "none":
+        print("No prepare tasks selected.")
+        return []
+
+    print(f"Preparing model weights: {args.weights}")
+    paths = _download_weights_selection(args.weights)
+    print()
+    print("TRACE is ready.")
+    return paths
+
+
+def update(args):
+    """Check whether the installed TRACE package matches the PyPI version."""
+    try:
+        latest = _fetch_latest_pypi_version(timeout=args.timeout)
+    except RuntimeError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(2)
+
+    current = __version__
+    if latest == current:
+        print(f"TRACE is up to date ({current}).")
+    else:
+        print(f"TRACE {latest} is available on PyPI.")
+        print(f"Installed version: {current}")
+        print()
+        print("Update with:")
+        print(f"  python -m pip install --upgrade {PYPI_PROJECT_NAME}")
+    return 0
 
 
 def train(args):
     """Run a training job."""
+    _require_cuda()
     from trace_tad.jobs import JobManager, TrainRequest
 
-    # Resolve --dataset-path into individual paths
-    _resolve_dataset_path(args)
+    model_dir = create_model_dir(args.work_dir)
+    model_dir, dataset_json, classmap_path = _prepare_pairs_into(args.work_dir, model_dir, args)
 
     request = TrainRequest(
         config_path=_resolve_config(args),
+        model_dir=model_dir,
         nproc=args.nproc,
         seed=args.seed,
-        exp_id=args.id,
         resume=args.resume,
         not_eval=args.not_eval,
         disable_deterministic=args.disable_deterministic,
-        dataset_dir=args.data_path,
-        annotation_path=args.annotation,
-        class_map=args.class_map,
+        dataset_dir=model_dir,
+        annotation_path=dataset_json,
+        class_map=classmap_path,
         pretrained=args.pretrained,
         cfg_options=args.cfg_options,
     )
@@ -324,6 +421,7 @@ def train(args):
 
     if job.status.value == "completed":
         print(f"\nTraining completed successfully.")
+        print(f"Model directory: {model_dir}")
     else:
         print(f"\nTraining {job.status.value}: {job.error_message or ''}")
     sys.exit(job.return_code or (0 if job.status.value == "completed" else 1))
@@ -331,35 +429,37 @@ def train(args):
 
 def test(args):
     """Run a test/inference job."""
+    _require_cuda()
     from trace_tad.jobs import JobManager, TestRequest
 
-    # Resolve --model-path and --dataset-path
-    _resolve_model_path(args)
-    _resolve_dataset_path(args)
-
-    if args.checkpoint is None:
-        print("Error: --checkpoint or --model-path is required.")
+    model_info = _model_info_or_exit(args.model_dir)
+    dataset_dir = model_info["model_dir"]
+    annotation_path = model_info["dataset_json"]
+    if args.explicit_pairs and not args.work_dir:
+        print("Error: --pairs requires --work-dir for evaluation data.")
+        sys.exit(1)
+    output_dir = create_eval_dir(model_info["model_dir"])
+    if args.work_dir:
+        dataset_dir, annotation_path, _ = _prepare_pairs_into(
+            args.work_dir,
+            output_dir,
+            args,
+            force_cache_mode="cached_video",
+        )
+    elif not annotation_path:
+        print("Error: model_dir has no dataset.json. Pass --work-dir and --pairs for evaluation data.")
         sys.exit(1)
 
-    # Warn if model-path is set but no dataset specified
-    if getattr(args, "model_path", None) and not getattr(args, "dataset_path", None) \
-            and args.data_path is None and args.annotation is None:
-        print("Warning: --model-path set but no dataset specified (--dataset-path or --data-path).")
-        print("  Using config defaults for data. Pass --dataset-path to override.")
-        print()
-
     request = TestRequest(
-        config_path=_resolve_config(args),
-        checkpoint=args.checkpoint,
+        model_dir=model_info["model_dir"],
+        output_dir=output_dir,
         nproc=args.nproc,
         seed=args.seed,
-        exp_id=args.id,
         not_eval=args.not_eval,
         profile=args.profile,
         auto_tune=args.auto_tune,
-        dataset_dir=args.data_path,
-        annotation_path=args.annotation,
-        class_map=args.class_map,
+        dataset_dir=dataset_dir,
+        annotation_path=annotation_path,
         cfg_options=args.cfg_options,
     )
 
@@ -379,28 +479,20 @@ def test(args):
 
 def infer(args):
     """Run inference on video files."""
+    _require_cuda()
     from trace_tad.jobs import JobManager, InferRequest
 
-    # Resolve --model-path
-    _resolve_model_path(args)
-
-    if args.checkpoint is None:
-        print("Error: --checkpoint or --model-path is required.")
-        sys.exit(1)
-    if args.class_map is None:
-        print("Error: --class-map or --model-path is required.")
-        sys.exit(1)
+    model_info = _model_info_or_exit(args.model_dir)
 
     request = InferRequest(
-        config_path=_resolve_config(args),
-        checkpoint=args.checkpoint,
+        model_dir=model_info["model_dir"],
         input=args.input,
-        class_map=args.class_map,
         output=args.output,
         seed=args.seed,
-        exp_id=args.id,
         profile=args.profile,
         auto_tune=args.auto_tune,
+        annotated_video=args.annotated_video,
+        threshold=args.threshold,
         cfg_options=args.cfg_options,
     )
 
@@ -418,11 +510,174 @@ def infer(args):
     sys.exit(job.return_code or (0 if job.status.value == "completed" else 1))
 
 
+def _pipeline_spec_mode_requested(args):
+    """Return True when `trace pipeline` is using the UI-shaped flag mode."""
+    return (
+        not getattr(args, "config", None)
+        or getattr(args, "train", False)
+        or getattr(args, "extra_test", False)
+        or getattr(args, "infer", False)
+        or bool(getattr(args, "work_dir", None))
+        or bool(getattr(args, "explicit_pairs", None))
+        or bool(getattr(args, "model_dir", None))
+        or bool(getattr(args, "input", None))
+        or bool(getattr(args, "include_stems", None))
+    )
+
+
+def _read_json(path):
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _wait_or_exit(manager, job, label):
+    print(f"Job {job.job_id} submitted (log: {job.log_file})")
+    print()
+    completed = manager.wait_for_job(job.job_id, stream_to=sys.stdout)
+    if completed.status.value != "completed":
+        print(f"\n{label} {completed.status.value}: {completed.error_message or ''}")
+        sys.exit(completed.return_code or 1)
+    return completed
+
+
+def _run_pipeline_spec(spec):
+    """Run the UI-shaped pipeline spec through the same job queue primitives."""
+    from trace_tad.jobs import (
+        JobManager,
+        PrepRequest,
+        TrainRequest,
+        TrainTuneRequest,
+        TestRequest,
+        InferRequest,
+    )
+    from trace_tad.model_artifacts import resolve_model_dir
+    from trace_tad.pipeline_plan import (
+        prep_pairs,
+        prep_work_dir,
+        eval_resource_cfg_options,
+        prep_cache_mode,
+        resource_profile_by_name,
+        resource_settings_from_profile,
+        train_resource_cfg_options,
+        train_resource_settings,
+    )
+
+    if spec.steps.train or spec.steps.extra_test or spec.steps.infer:
+        _require_cuda()
+
+    manager = JobManager(max_concurrency=1)
+    prep_result = None
+    active_model = None
+    config_path = _resolve_config(argparse.Namespace(model=spec.model_size, config=None))
+
+    if spec.steps.train or spec.steps.extra_test:
+        print("\n--- Preparing dataset ---")
+        prep_cache_workers = (
+            spec.resources.test.num_workers
+            if spec.steps.extra_test
+            else train_resource_settings(spec).num_workers
+        )
+        prep_job = manager.start_prep_job(PrepRequest(
+            work_dir=prep_work_dir(spec),
+            train_ratio=spec.train_ratio,
+            cache_mode=prep_cache_mode(spec),
+            cache_resolution=spec.cache_resolution,
+            cache_workers=prep_cache_workers,
+            explicit_pairs=prep_pairs(spec),
+        ))
+        completed_prep = _wait_or_exit(manager, prep_job, "Dataset prep")
+        prep_result = _read_json(os.path.join(completed_prep.work_dir, "prep_result.json"))
+
+    if spec.steps.train:
+        print("\n--- Training ---")
+        cfg_options = {
+            "scheduler.max_epoch": spec.epochs,
+            "workflow.end_epoch": spec.epochs,
+            "workflow.val_start_epoch": spec.val_start_epoch,
+            "workflow.val_eval_interval": spec.val_interval,
+        }
+
+        if spec.resource_profile == "auto":
+            print("\n--- Tuning train resources ---")
+            tune_job = manager.start_train_tune_job(TrainTuneRequest(
+                config_path=config_path,
+                model_dir=prep_result["model_dir"],
+                annotation_path=prep_result["dataset_json"],
+                class_map=prep_result["classmap_path"],
+            ))
+            completed_tune = _wait_or_exit(manager, tune_job, "Train resource tuning")
+            tune_result = _read_json(os.path.join(completed_tune.work_dir, "train_tune_result.json"))
+            resource_profile = resource_profile_by_name(tune_result.get("recommended_profile"))
+            train_settings = resource_settings_from_profile(resource_profile.id)
+        else:
+            train_settings = train_resource_settings(spec)
+
+        cfg_options.update(train_resource_cfg_options(
+            train_settings,
+            spec.cache_resolution,
+            spec.model_size,
+        ))
+
+        train_job = manager.start_train_job(TrainRequest(
+            config_path=config_path,
+            model_dir=prep_result["model_dir"],
+            dataset_dir=prep_result["model_dir"],
+            annotation_path=prep_result["dataset_json"],
+            class_map=prep_result["classmap_path"],
+            cfg_options=cfg_options,
+        ))
+        _wait_or_exit(manager, train_job, "Training")
+        active_model = resolve_model_dir(prep_result["model_dir"])
+
+    if not spec.steps.train and (spec.steps.extra_test or spec.steps.infer):
+        active_model = resolve_model_dir(spec.model_dir)
+
+    if spec.steps.extra_test:
+        print("\n--- Extra test ---")
+        test_request = TestRequest(
+            model_dir=active_model["model_dir"],
+            auto_tune=False,
+            cfg_options=eval_resource_cfg_options(spec.resources.test),
+        )
+        if prep_result:
+            test_request.dataset_dir = prep_result["model_dir"]
+            test_request.annotation_path = prep_result["dataset_json"]
+        test_job = manager.start_test_job(test_request)
+        _wait_or_exit(manager, test_job, "Extra test")
+
+    if spec.steps.infer:
+        print("\n--- Inference ---")
+        infer_job = manager.start_infer_job(InferRequest(
+            model_dir=active_model["model_dir"],
+            input=spec.input_selection.folder,
+            included_stems=spec.input_selection.stems,
+            annotated_video=spec.annotated_video,
+            threshold=spec.threshold,
+            auto_tune=False,
+            cfg_options=eval_resource_cfg_options(spec.resources.infer),
+        ))
+        _wait_or_exit(manager, infer_job, "Inference")
+
+    print("\nPipeline completed successfully.")
+
+
 def run(args):
     """Run the TRACE pipeline: train -> infer -> export."""
-    from trace_tad.pipeline import run_pipeline
+    if _pipeline_spec_mode_requested(args):
+        from trace_tad.pipeline_plan import PipelineSpecError, spec_from_cli_args, validate_pipeline_spec
+
+        spec = spec_from_cli_args(args)
+        try:
+            validate_pipeline_spec(spec)
+        except PipelineSpecError as exc:
+            print(f"Error: {exc}")
+            sys.exit(1)
+        return _run_pipeline_spec(spec)
 
     # Determine mode
+    _require_cuda()
+    from trace_tad.pipeline import run_pipeline
+
     if args.train_only:
         mode = "train_only"
     elif args.infer_only:
@@ -449,161 +704,241 @@ def run(args):
         sys.exit(1)
 
 
-def api(args):
-    """Start the TRACE pipeline API server."""
-    print(f"Starting pipeline API server on {args.host}:{args.port}...")
-    subprocess.run(
-        [
-            sys.executable, "-m", "uvicorn",
-            "trace_tad.api:app",
-            "--host", args.host,
-            "--port", str(args.port),
-            "--reload",
-        ],
-    )
+def _add_serve_args(parser, *, default_dev=False):
+    parser.add_argument("--host", default="0.0.0.0", help="Host (default: 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=None,
+        help="Server port (default: 8000 in prod, 3001 in dev)")
+    if default_dev:
+        parser.set_defaults(dev=True)
+    else:
+        parser.add_argument("--dev", action="store_true",
+            help="Development mode: start Vite dev server + backend separately (requires Node.js)")
+    parser.add_argument("--frontend-port", type=int, default=3000,
+        help="Frontend port in dev mode (default: 3000)")
+    parser.add_argument("--backend-only", action="store_true",
+        help="Only start backend (dev mode only)")
+    parser.add_argument("--frontend-only", action="store_true",
+        help="Only start frontend (dev mode only)")
+    parser.set_defaults(func=serve)
 
 
-def main():
+def _add_build_frontend_args(parser):
+    parser.add_argument("--skip-npm", action="store_true",
+        help="Skip npm build, just copy existing dist/")
+    parser.set_defaults(func=build_frontend)
+
+
+def _add_model_config_args(parser):
+    parser.add_argument("--model", type=str, choices=["small", "large"], default="small",
+        help="Model size (default: small)")
+    parser.add_argument("--config", type=str, default=None,
+        help="Custom config file path (overrides --model)")
+
+
+def _add_work_dir_arg(parser, *, required=True):
+    parser.add_argument("--work-dir", type=str, required=required,
+        help="Directory containing video/CSV files. Relative --pairs are resolved against this path.")
+
+
+def _add_model_dir_arg(parser):
+    parser.add_argument("--model-dir", type=str, required=True,
+        help="Model artifact directory produced by `trace train`")
+
+
+def _add_pair_args(parser, *, required=True):
+    parser.add_argument("--pairs", dest="explicit_pairs",
+        nargs="+", required=required, metavar="VIDEO=CSV",
+        help="Explicit video/annotation pairs to use from --work-dir. Each item "
+             "must be VIDEO_PATH=CSV_PATH. Relative paths are resolved against "
+             "--work-dir; absolute paths are accepted.")
+
+
+def _add_common_job_args(parser, *, include_nproc=False, include_profile=False, include_auto_tune=False):
+    if include_nproc:
+        parser.add_argument("--nproc", type=int, default=1, help="Number of GPUs (default: 1)")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
+    if include_profile:
+        parser.add_argument("--profile", action="store_true",
+            help="Enable inference profiling (CPU + GPU timing breakdown)")
+    if include_auto_tune:
+        parser.add_argument("--auto-tune", action=argparse.BooleanOptionalAction, default=False,
+            help="Run benchmark-based dataloader tuning (default: disabled)")
+    parser.add_argument("--cfg-options", nargs="+", action=DictAction,
+        help="Override config settings (key=value pairs)")
+
+
+def _add_train_args(parser):
+    _add_model_config_args(parser)
+    _add_work_dir_arg(parser)
+    _add_pair_args(parser)
+    parser.add_argument("--pretrained", type=str, default=None,
+        help="Pretrained backbone weights path (overrides config's pretrain)")
+    parser.add_argument("--reencode-clips", action="store_true",
+        help="During dataset prep, physically extract each clip with ffmpeg "
+             "(CRF-18 re-encode). Default is virtual clips: zero quality loss, "
+             "~10x faster prep, half the disk usage. Use this flag if you need "
+             "self-contained clip files (e.g. shipping the dataset elsewhere).")
+    _add_common_job_args(parser, include_nproc=True)
+    parser.add_argument("--resume", type=str, default=None, help="Resume from checkpoint path")
+    parser.add_argument("--not-eval", action="store_true", help="Skip evaluation, inference only")
+    parser.add_argument("--disable-deterministic", action="store_true",
+        help="Disable deterministic for faster speed")
+    parser.set_defaults(func=train)
+
+
+def _add_eval_args(parser):
+    _add_model_dir_arg(parser)
+    _add_work_dir_arg(parser, required=False)
+    _add_pair_args(parser, required=False)
+    parser.add_argument("--cache-workers", type=int, default=None,
+        help="Parallel workers for cached evaluation clip writing")
+    _add_common_job_args(parser, include_nproc=True, include_profile=True, include_auto_tune=True)
+    parser.add_argument("--not-eval", action="store_true", help="Skip evaluation, inference only")
+    parser.set_defaults(func=test)
+
+
+def _add_predict_args(parser):
+    _add_model_dir_arg(parser)
+    parser.add_argument("--input", type=str, required=True,
+        help="Input video file or directory of videos "
+             "(supported: .mp4, .avi, .mov, .mkv, .webm)")
+    parser.add_argument("--output", type=str, default=None,
+        help="Output JSON path (default: predictions.json in work_dir)")
+    parser.add_argument("--annotated-video", action="store_true",
+        help="Render annotated MP4 video(s) with prediction overlays")
+    parser.add_argument("--threshold", type=float, default=0.0,
+        help="Minimum prediction score for JSON, CSV, and annotated video output")
+    _add_common_job_args(parser, include_profile=True, include_auto_tune=True)
+    parser.set_defaults(func=infer)
+
+
+def _add_pipeline_args(parser):
+    parser.add_argument("config", metavar="FILE", type=str, nargs="?",
+        help="Path to config file (legacy pipeline mode)")
+    parser.add_argument("--train-only", action="store_true", help="Only run training")
+    parser.add_argument("--infer-only", action="store_true", help="Only run inference (requires --checkpoint)")
+    parser.add_argument("--checkpoint", type=str, default=None, help="Checkpoint path for inference")
+    parser.add_argument("--infer-videos", nargs="+", default=None, help="Video file paths for inference")
+    parser.add_argument("--export", choices=["csv"], default=None, help="Export results format")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
+    parser.add_argument("--cfg-options", nargs="+", action=DictAction, help="Override config settings")
+    parser.add_argument("--model", type=str, choices=["small", "large"], default="small",
+        help="Model size for UI-shaped pipeline mode (default: small)")
+    parser.add_argument("--train", action="store_true",
+        help="UI-shaped pipeline mode: train a model")
+    parser.add_argument("--extra-test", action="store_true",
+        help="UI-shaped pipeline mode: run an additional evaluation pass")
+    parser.add_argument("--infer", action="store_true",
+        help="UI-shaped pipeline mode: run inference")
+    parser.add_argument("--model-dir", type=str, default=None,
+        help="Model artifact directory when not training")
+    parser.add_argument("--work-dir", type=str, default=None,
+        help="Dataset folder for train or extra-test prep")
+    parser.add_argument("--pairs", dest="explicit_pairs", nargs="+", metavar="VIDEO=CSV",
+        help="Explicit video/annotation pairs for train or extra-test prep")
+    parser.add_argument("--cache-mode", choices=["cached_video", "virtual"], default="cached_video",
+        help="Dataset cache mode for prep (default: cached_video)")
+    parser.add_argument("--cache-resolution", type=int, choices=[112, 144, 192, 224], default=144,
+        help="Square resolution for cached_video clips (default: 144)")
+    parser.add_argument("--train-ratio", type=float, default=0.8,
+        help="Train/validation split ratio for prep (default: 0.8)")
+    parser.add_argument("--epochs", type=int, default=100,
+        help="Total training epochs (default: 100)")
+    parser.add_argument("--val-start-epoch", type=int, default=50,
+        help="Validation start epoch (default: 50)")
+    parser.add_argument("--val-interval", type=int, default=10,
+        help="Validation interval in epochs (default: 10)")
+    parser.add_argument("--resource-profile", choices=["auto", "low", "balanced", "high"], default="balanced",
+        help="Training dataloader resource profile (default: balanced)")
+    parser.add_argument("--train-workers", type=int, default=None,
+        help="Override training dataloader workers")
+    parser.add_argument("--train-decode-threads", type=int, default=None,
+        help="Override training video decode threads")
+    parser.add_argument("--train-prefetch", type=int, default=None,
+        help="Override training dataloader prefetch factor")
+    parser.add_argument("--test-resource-profile", choices=["low", "balanced", "high"], default="balanced",
+        help="Evaluation dataloader resource profile (default: balanced)")
+    parser.add_argument("--test-batch-size", type=int, default=None,
+        help="Override evaluation batch size")
+    parser.add_argument("--test-workers", type=int, default=None,
+        help="Override evaluation dataloader workers")
+    parser.add_argument("--test-decode-threads", type=int, default=None,
+        help="Override evaluation video decode threads")
+    parser.add_argument("--test-prefetch", type=int, default=None,
+        help="Override evaluation dataloader prefetch factor")
+    parser.add_argument("--infer-resource-profile", choices=["low", "balanced", "high"], default="balanced",
+        help="Prediction dataloader resource profile (default: balanced)")
+    parser.add_argument("--infer-batch-size", type=int, default=None,
+        help="Override prediction batch size")
+    parser.add_argument("--infer-workers", type=int, default=None,
+        help="Override prediction dataloader workers")
+    parser.add_argument("--infer-decode-threads", type=int, default=None,
+        help="Override prediction video decode threads")
+    parser.add_argument("--infer-prefetch", type=int, default=None,
+        help="Override prediction dataloader prefetch factor")
+    parser.add_argument("--input", type=str, default=None,
+        help="Input video file or folder for inference")
+    parser.add_argument("--include-stems", dest="include_stems", nargs="+",
+        help="Restrict inference to selected video stems")
+    parser.add_argument("--annotated-video", action="store_true",
+        help="Render annotated MP4 video(s) for pipeline inference")
+    parser.add_argument("--threshold", type=float, default=0.0,
+        help="Minimum prediction score for pipeline inference outputs")
+    parser.set_defaults(func=run)
+
+
+def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="trace",
         description="TRACE - Temporal Action Detection for Animal Behavior",
     )
-    subparsers = parser.add_subparsers(dest="command")
+    subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
 
-    # serve command
-    serve_parser = subparsers.add_parser("serve", help="Start annotation server")
-    serve_parser.add_argument("--host", default="0.0.0.0", help="Host (default: 0.0.0.0)")
-    serve_parser.add_argument("--port", type=int, default=8000, help="Server port (default: 8000)")
-    serve_parser.add_argument("--dev", action="store_true",
-        help="Development mode: start Vite dev server + backend separately (requires Node.js)")
-    serve_parser.add_argument("--frontend-port", type=int, default=3000,
-        help="Frontend port in --dev mode (default: 3000)")
-    serve_parser.add_argument("--backend-only", action="store_true",
-        help="Only start backend (--dev mode only)")
-    serve_parser.add_argument("--frontend-only", action="store_true",
-        help="Only start frontend (--dev mode only)")
+    app_parser = subparsers.add_parser("app", help="Start the TRACE annotator app")
+    _add_serve_args(app_parser)
 
-    # build-frontend command
-    build_parser = subparsers.add_parser("build-frontend",
-        help="Build frontend and copy to package for distribution")
-    build_parser.add_argument("--skip-npm", action="store_true",
-        help="Skip npm build, just copy existing dist/")
+    prepare_parser = subparsers.add_parser("prepare",
+        help="Download local assets needed before using TRACE")
+    prepare_parser.add_argument("--weights", choices=("none", *model_weight_choices()), default="all",
+        help="Model weights to download (default: all)")
+    prepare_parser.set_defaults(func=prepare)
 
-    # train command
+    update_parser = subparsers.add_parser("update",
+        help="Check PyPI for a newer TRACE package")
+    update_parser.add_argument("--timeout", type=float, default=5.0,
+        help="Seconds to wait for the PyPI version check (default: 5)")
+    update_parser.set_defaults(func=update)
+
     train_parser = subparsers.add_parser("train", help="Train a model")
-    train_parser.add_argument("--model", type=str, choices=["small", "large"], default="small",
-        help="Model size (default: small)")
-    train_parser.add_argument("--config", type=str, default=None,
-        help="Custom config file path (overrides --model)")
-    train_parser.add_argument("--dataset-path", type=str, default=None,
-        help="Dataset directory with videos+CSVs (auto-clips and generates annotations)")
-    train_parser.add_argument("--data-path", type=str, default=None,
-        help="Video clip directory (overrides config's data_path)")
-    train_parser.add_argument("--annotation", type=str, default=None,
-        help="Annotation JSON path (overrides config's annotation_path)")
-    train_parser.add_argument("--class-map", type=str, default=None,
-        help="Class map file (overrides config; auto-generated from annotations if omitted)")
-    train_parser.add_argument("--pretrained", type=str, default=None,
-        help="Pretrained backbone weights path (overrides config's pretrain)")
-    train_parser.add_argument("--nproc", type=int, default=1, help="Number of GPUs (default: 1)")
-    train_parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
-    train_parser.add_argument("--id", type=int, default=0, help="Experiment repeat ID (default: 0)")
-    train_parser.add_argument("--resume", type=str, default=None, help="Resume from checkpoint path")
-    train_parser.add_argument("--not-eval", action="store_true", help="Skip evaluation, inference only")
-    train_parser.add_argument("--disable-deterministic", action="store_true",
-        help="Disable deterministic for faster speed")
-    train_parser.add_argument("--cfg-options", nargs="+", action=DictAction,
-        help="Override config settings (key=value pairs)")
+    _add_train_args(train_parser)
 
-    # test command
-    test_parser = subparsers.add_parser("test", help="Test/evaluate a model")
-    test_parser.add_argument("--model", type=str, choices=["small", "large"], default="small",
-        help="Model size (default: small)")
-    test_parser.add_argument("--config", type=str, default=None,
-        help="Custom config file path (overrides --model)")
-    test_parser.add_argument("--model-path", type=str, default=None,
-        help="Model directory containing best.pth and classmap.txt")
-    test_parser.add_argument("--checkpoint", type=str, default=None,
-        help="Checkpoint path (required if --model-path not set)")
-    test_parser.add_argument("--dataset-path", type=str, default=None,
-        help="Dataset directory with videos+CSVs (auto-clips and generates annotations)")
-    test_parser.add_argument("--data-path", type=str, default=None,
-        help="Video clip directory (overrides config's data_path)")
-    test_parser.add_argument("--annotation", type=str, default=None,
-        help="Annotation JSON path (overrides config's annotation_path)")
-    test_parser.add_argument("--class-map", type=str, default=None,
-        help="Class map file (overrides config; auto-generated from annotations if omitted)")
-    test_parser.add_argument("--nproc", type=int, default=1, help="Number of GPUs (default: 1)")
-    test_parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
-    test_parser.add_argument("--id", type=int, default=0, help="Experiment repeat ID (default: 0)")
-    test_parser.add_argument("--not-eval", action="store_true", help="Skip evaluation, inference only")
-    test_parser.add_argument("--profile", action="store_true",
-        help="Enable inference profiling (CPU + GPU timing breakdown)")
-    test_parser.add_argument("--auto-tune", action=argparse.BooleanOptionalAction, default=True,
-        help="Auto-tune dataloader params (default: enabled, use --no-auto-tune to disable)")
-    test_parser.add_argument("--cfg-options", nargs="+", action=DictAction,
-        help="Override config settings (key=value pairs)")
+    eval_parser = subparsers.add_parser("eval", help="Evaluate a trained model")
+    _add_eval_args(eval_parser)
 
-    # infer command
-    infer_parser = subparsers.add_parser("infer",
-        help="Run inference on videos (no annotations needed)")
-    infer_parser.add_argument("--model", type=str, choices=["small", "large"], default="small",
-        help="Model size (default: small)")
-    infer_parser.add_argument("--config", type=str, default=None,
-        help="Custom config file path (overrides --model)")
-    infer_parser.add_argument("--model-path", type=str, default=None,
-        help="Model directory containing best.pth and classmap.txt")
-    infer_parser.add_argument("--checkpoint", type=str, default=None,
-        help="Model checkpoint path (required if --model-path not set)")
-    infer_parser.add_argument("--input", type=str, required=True,
-        help="Input video file or directory of videos")
-    infer_parser.add_argument("--class-map", type=str, default=None,
-        help="Class map file (required if --model-path not set)")
-    infer_parser.add_argument("--output", type=str, default=None,
-        help="Output JSON path (default: predictions.json in work_dir)")
-    infer_parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
-    infer_parser.add_argument("--id", type=int, default=0, help="Experiment repeat ID (default: 0)")
-    infer_parser.add_argument("--profile", action="store_true",
-        help="Enable inference profiling (CPU + GPU timing breakdown)")
-    infer_parser.add_argument("--auto-tune", action=argparse.BooleanOptionalAction, default=True,
-        help="Auto-tune dataloader params (default: enabled, use --no-auto-tune to disable)")
-    infer_parser.add_argument("--cfg-options", nargs="+", action=DictAction,
-        help="Override config settings (key=value pairs)")
+    predict_parser = subparsers.add_parser("predict",
+        help="Run prediction on videos (no annotations needed)")
+    _add_predict_args(predict_parser)
 
-    # run command (pipeline orchestrator)
-    run_parser = subparsers.add_parser("run", help="Run the pipeline: train -> infer -> export")
-    run_parser.add_argument("config", metavar="FILE", type=str, help="Path to config file")
-    run_parser.add_argument("--train-only", action="store_true", help="Only run training")
-    run_parser.add_argument("--infer-only", action="store_true", help="Only run inference (requires --checkpoint)")
-    run_parser.add_argument("--checkpoint", type=str, default=None, help="Checkpoint path for inference")
-    run_parser.add_argument("--infer-videos", nargs="+", default=None, help="Video file paths for inference")
-    run_parser.add_argument("--export", choices=["csv"], default=None, help="Export results format")
-    run_parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
-    run_parser.add_argument("--cfg-options", nargs="+", action=DictAction, help="Override config settings")
+    pipeline_parser = subparsers.add_parser("pipeline",
+        help="Run the pipeline: train -> predict -> export")
+    _add_pipeline_args(pipeline_parser)
 
-    # api command
-    api_parser = subparsers.add_parser("api", help="Start the pipeline API server")
-    api_parser.add_argument("--host", default="0.0.0.0", help="API host (default: 0.0.0.0)")
-    api_parser.add_argument("--port", type=int, default=8001, help="API port (default: 8001)")
+    dev_parser = subparsers.add_parser("dev", help="Developer utilities")
+    dev_subparsers = dev_parser.add_subparsers(dest="dev_command", metavar="COMMAND", required=True)
+    dev_serve_parser = dev_subparsers.add_parser("serve",
+        help="Start backend and frontend dev servers")
+    _add_serve_args(dev_serve_parser, default_dev=True)
+    dev_build_parser = dev_subparsers.add_parser("build-frontend",
+        help="Build frontend and copy to the Python package")
+    _add_build_frontend_args(dev_build_parser)
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    handler = getattr(args, "func", None)
 
-    if args.command is None:
+    if handler is None:
         parser.print_help()
-    elif args.command == "serve":
-        serve(args)
-    elif args.command == "build-frontend":
-        build_frontend(args)
-    elif args.command == "train":
-        train(args)
-    elif args.command == "test":
-        test(args)
-    elif args.command == "infer":
-        infer(args)
-    elif args.command == "run":
-        run(args)
-    elif args.command == "api":
-        api(args)
+        return None
+    return handler(args)
 
 
 if __name__ == "__main__":

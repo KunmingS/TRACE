@@ -16,11 +16,11 @@
   overflow-y: auto;
   position: relative;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
 
   &::-webkit-scrollbar { height: 4px; }
   &::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.15);
+    background-color: rgba(0, 0, 0, 0.15);
     border-radius: 2px;
   }
 
@@ -36,7 +36,7 @@
     height: 30px;
     flex-shrink: 0;
     border-bottom: 1px solid $border-subtle;
-    background: rgba(255, 255, 255, 0.015);
+    background: rgba(0, 0, 0, 0.015);
     user-select: none;
     cursor: pointer;
   }
@@ -49,8 +49,8 @@
   .TrackRow {
     position: relative;
     height: 36px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-    background-image: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+    background-image: linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
     background-size: 56px 100%;
   }
 
@@ -91,6 +91,56 @@
       }
     }
 
+    &.selected {
+      opacity: 1;
+      outline: 2px solid rgba(255, 255, 255, 0.95);
+      outline-offset: -2px;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35), 0 0 0 2px rgba(30, 120, 255, 0.55), 0 10px 24px rgba(0, 0, 0, 0.22);
+    }
+
+    // Short clips (natural width < 32px) render a transparent button for a larger
+    // click target; the visible mark sits at the clip's true pixel range via CSS vars,
+    // so it never overshoots the end time.
+    &.short {
+      background-color: transparent !important;
+      box-shadow: none;
+      padding: 0;
+      gap: 0;
+      overflow: visible;
+
+      &:hover {
+        transform: none;
+        box-shadow: none;
+
+        .ClipMark {
+          filter: brightness(1.08);
+          box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55), 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+      }
+
+      &.selected {
+        outline: none;
+        box-shadow: none;
+
+        .ClipMark {
+          box-shadow: 0 0 0 2px rgba(30, 120, 255, 0.75), 0 0 0 3px rgba(255, 255, 255, 0.95);
+        }
+      }
+
+      .ClipMark {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: var(--clip-mark-left, 0);
+        width: var(--clip-mark-width, 2px);
+        background-color: var(--clip-color, #5297FF);
+        border-radius: 4px;
+        pointer-events: none;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+        transition: filter 120ms ease, box-shadow 120ms ease;
+      }
+    }
+
     .ActionName,
     .ActionMeta {
       overflow: hidden;
@@ -99,14 +149,14 @@
     }
 
     .ActionName {
-      font-size: 15px;
+      font-size: 18px;
       font-weight: 600;
       letter-spacing: 0.01em;
       font-family: $font-ui;
     }
 
     .ActionMeta {
-      font-size: 14px;
+      font-size: 17px;
       font-family: $font-mono;
       color: rgba(255, 255, 255, 0.76);
       flex-shrink: 0;

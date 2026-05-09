@@ -14,7 +14,25 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Generator, Optional
 
-from .models import JobInfo, JobStatus, JobType, TrainRequest, TestRequest, InferRequest, PrepRequest
+from .models import (
+    JobInfo,
+    JobStatus,
+    JobType,
+    TrainRequest,
+    TrainTuneRequest,
+    TestRequest,
+    InferRequest,
+    PrepRequest,
+)
+from trace_tad.model_artifacts import (
+    create_eval_dir,
+    create_model_dir,
+    create_predict_dir_for_input,
+    resolve_model_dir,
+)
+
+JOB_REQUEST_METADATA = {"run_id", "run_steps"}
+LEGACY_MODEL_RUN_TYPES = {JobType.PREP.value, JobType.TRAIN.value}
 
 
 def _find_project_root():
@@ -74,26 +92,95 @@ class JobManager:
     def start_train_job(self, request: TrainRequest) -> JobInfo:
         """Submit a training job to the queue."""
         cmd = self._build_train_command(request)
-        args = request.model_dump(exclude_none=True)
-        return self._enqueue_job(JobType.TRAIN, request.config_path, cmd, args)
+        args = request.model_dump(exclude_none=True, exclude=JOB_REQUEST_METADATA)
+        log_file = str(Path(request.model_dir) / "job.log")
+        return self._enqueue_job(
+            JobType.TRAIN,
+            request.config_path,
+            cmd,
+            args,
+            work_dir=request.model_dir,
+            log_file=log_file,
+            run_id=request.run_id,
+            stage="train",
+            run_steps=request.run_steps,
+        )
+
+    def start_train_tune_job(self, request: TrainTuneRequest) -> JobInfo:
+        """Submit a train resource tuning job to the queue."""
+        cmd = self._build_train_tune_command(request)
+        args = request.model_dump(exclude_none=True, exclude=JOB_REQUEST_METADATA)
+        log_file = str(Path(request.model_dir) / "train_tune.log")
+        return self._enqueue_job(
+            JobType.TRAIN_TUNE,
+            request.config_path,
+            cmd,
+            args,
+            work_dir=request.model_dir,
+            log_file=log_file,
+            run_id=request.run_id,
+            stage="train-tune",
+            run_steps=request.run_steps,
+        )
 
     def start_test_job(self, request: TestRequest) -> JobInfo:
         """Submit a test/evaluation job to the queue."""
+        self._resolve_model_request(request)
+        if not request.output_dir:
+            request.output_dir = create_eval_dir(request.model_dir)
         cmd = self._build_test_command(request)
-        args = request.model_dump(exclude_none=True)
-        return self._enqueue_job(JobType.TEST, request.config_path, cmd, args)
+        args = request.model_dump(exclude_none=True, exclude=JOB_REQUEST_METADATA)
+        log_file = str(Path(request.output_dir) / "job.log")
+        return self._enqueue_job(
+            JobType.TEST,
+            request.config_path or request.model_dir,
+            cmd,
+            args,
+            work_dir=request.output_dir,
+            log_file=log_file,
+            run_id=request.run_id,
+            stage="test",
+            run_steps=request.run_steps,
+        )
 
     def start_infer_job(self, request: InferRequest) -> JobInfo:
         """Submit an inference job to the queue."""
+        self._resolve_model_request(request)
+        if not request.output_dir:
+            request.output_dir = create_predict_dir_for_input(request.input)
         cmd = self._build_infer_command(request)
-        args = request.model_dump(exclude_none=True)
-        return self._enqueue_job(JobType.INFER, request.config_path, cmd, args)
+        args = request.model_dump(exclude_none=True, exclude=JOB_REQUEST_METADATA)
+        log_file = str(Path(request.output_dir) / "job.log")
+        return self._enqueue_job(
+            JobType.INFER,
+            request.config_path or request.model_dir,
+            cmd,
+            args,
+            work_dir=request.output_dir,
+            log_file=log_file,
+            run_id=request.run_id,
+            stage="infer",
+            run_steps=request.run_steps,
+        )
 
     def start_prep_job(self, request: PrepRequest) -> JobInfo:
         """Submit a dataset preparation job to the queue."""
+        if not request.model_dir:
+            request.model_dir = create_model_dir(request.work_dir)
         cmd = self._build_prep_command(request)
-        args = request.model_dump(exclude_none=True)
-        return self._enqueue_job(JobType.PREP, request.dataset_path, cmd, args)
+        args = request.model_dump(exclude_none=True, exclude=JOB_REQUEST_METADATA)
+        log_file = str(Path(request.model_dir) / "prep.log")
+        return self._enqueue_job(
+            JobType.PREP,
+            request.work_dir,
+            cmd,
+            args,
+            work_dir=request.model_dir,
+            log_file=log_file,
+            run_id=request.run_id,
+            stage="prep",
+            run_steps=request.run_steps,
+        )
 
     def cancel_job(self, job_id: str) -> JobInfo:
         """Cancel a queued or running job."""
@@ -125,6 +212,36 @@ class JobManager:
         # Try to start next queued job
         self._try_start_next()
         return job
+
+    def delete_job(self, job_id: str) -> None:
+        """Remove a finished job from the registry and delete its log file.
+
+        Refuses to delete jobs that are still queued or running — caller must
+        cancel them first.
+        """
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                raise KeyError(f"Job {job_id} not found")
+            if job.status in (JobStatus.QUEUED, JobStatus.RUNNING):
+                raise ValueError(
+                    f"Job {job_id} is {job.status}; cancel before deleting"
+                )
+
+            log_path = Path(job.log_file) if job.log_file else None
+            self._jobs.pop(job_id, None)
+            self._processes.pop(job_id, None)
+            try:
+                self._queue.remove(job_id)
+            except ValueError:
+                pass
+            self._persist()
+
+        if log_path and log_path.is_file():
+            try:
+                log_path.unlink()
+            except OSError:
+                pass
 
     def get_job(self, job_id: str) -> JobInfo:
         """Get info for a single job."""
@@ -239,19 +356,35 @@ class JobManager:
     # ── Private Methods ─────────────────────────────────────────────
 
     def _enqueue_job(
-        self, job_type: JobType, config_path: str, cmd: list[str], args: dict
+        self,
+        job_type: JobType,
+        config_path: str,
+        cmd: list[str],
+        args: dict,
+        *,
+        work_dir: Optional[str] = None,
+        log_file: Optional[str] = None,
+        run_id: Optional[str] = None,
+        stage: Optional[str] = None,
+        run_steps: Optional[list[str]] = None,
     ) -> JobInfo:
         """Create a job and add it to the queue."""
         job_id = uuid.uuid4().hex[:12]
-        log_file = str(_logs_dir() / f"{job_id}.log")
+        log_file = log_file or str(_logs_dir() / f"{job_id}.log")
+        Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+        run_id = run_id or job_id
 
         job = JobInfo(
             job_id=job_id,
             job_type=job_type,
+            run_id=run_id,
+            stage=stage or job_type.value,
+            run_steps=run_steps,
             status=JobStatus.QUEUED,
             config_path=config_path,
             created_at=_now(),
             log_file=log_file,
+            work_dir=work_dir,
             args=args,
         )
 
@@ -307,7 +440,8 @@ class JobManager:
             job.status = JobStatus.RUNNING
             job.started_at = _now()
             job.pid = proc.pid
-            job.work_dir = str(self._project_root) if self._project_root else None
+            if not job.work_dir:
+                job.work_dir = str(self._project_root) if self._project_root else None
             self._processes[job.job_id] = proc
             self._persist()
 
@@ -346,6 +480,15 @@ class JobManager:
 
         self._try_start_next()
 
+    def _resolve_model_request(self, request):
+        info = resolve_model_dir(request.model_dir)
+        if not request.config_path:
+            request.config_path = info["config_path"]
+        if not request.checkpoint:
+            request.checkpoint = info["checkpoint"]
+        if not request.class_map:
+            request.class_map = info["class_map"]
+
     def _build_train_command(self, request: TrainRequest) -> list[str]:
         """Build the subprocess command for a training job."""
         if request.nproc > 1:
@@ -358,7 +501,6 @@ class JobManager:
             cmd = [sys.executable, "tools/train.py", request.config_path]
 
         cmd.extend(["--seed", str(request.seed)])
-        cmd.extend(["--id", str(request.exp_id)])
         if request.resume:
             cmd.extend(["--resume", request.resume])
         if request.not_eval:
@@ -367,7 +509,7 @@ class JobManager:
             cmd.append("--disable_deterministic")
 
         # Build --cfg-options from user-friendly flags + raw cfg_options
-        cfg_opts = []
+        cfg_opts = [f"work_dir={request.model_dir}"]
         if request.dataset_dir:
             cfg_opts.append(f"data_path={request.dataset_dir}")
         if request.annotation_path:
@@ -397,7 +539,6 @@ class JobManager:
 
         cmd.extend(["--checkpoint", request.checkpoint])
         cmd.extend(["--seed", str(request.seed)])
-        cmd.extend(["--id", str(request.exp_id)])
         if request.not_eval:
             cmd.append("--not_eval")
         if request.profile:
@@ -406,7 +547,7 @@ class JobManager:
             cmd.append("--auto-tune")
 
         # Build --cfg-options from user-friendly flags + raw cfg_options
-        cfg_opts = []
+        cfg_opts = [f"work_dir={request.output_dir}"]
         if request.dataset_dir:
             cfg_opts.append(f"data_path={request.dataset_dir}")
         if request.annotation_path:
@@ -421,6 +562,25 @@ class JobManager:
 
         return cmd
 
+    def _build_train_tune_command(self, request: TrainTuneRequest) -> list[str]:
+        """Build the subprocess command for a train resource tuning job."""
+        cmd = [
+            sys.executable,
+            "tools/tune_train.py",
+            request.config_path,
+            "--model-dir",
+            request.model_dir,
+            "--annotation-path",
+            request.annotation_path,
+            "--class-map",
+            request.class_map,
+            "--output",
+            str(Path(request.model_dir) / "train_tune_result.json"),
+        ]
+        if request.profiles:
+            cmd.extend(["--profiles-json", json.dumps([p.model_dump() for p in request.profiles])])
+        return cmd
+
     def _build_infer_command(self, request: InferRequest) -> list[str]:
         """Build the subprocess command for an inference job."""
         cmd = [
@@ -429,26 +589,45 @@ class JobManager:
             "--input", request.input,
             "--class-map", request.class_map,
             "--seed", str(request.seed),
-            "--id", str(request.exp_id),
         ]
         if request.output:
             cmd.extend(["--output", request.output])
+        cmd.extend(["--threshold", str(request.threshold)])
+        if request.annotated_video:
+            cmd.append("--annotated-video")
         if request.profile:
             cmd.append("--profile")
         if request.auto_tune:
             cmd.append("--auto-tune")
+        if request.included_stems:
+            cmd.extend(["--include-stems", *request.included_stems])
         if request.cfg_options:
             cfg_opts = [f"{k}={v}" for k, v in request.cfg_options.items()]
+        else:
+            cfg_opts = []
+        cfg_opts.insert(0, f"work_dir={request.output_dir}")
+        if cfg_opts:
             cmd.extend(["--cfg-options"] + cfg_opts)
         return cmd
 
     def _build_prep_command(self, request: PrepRequest) -> list[str]:
         """Build the subprocess command for a dataset preparation job."""
         cmd = [
-            sys.executable, "tools/prep_dataset.py", request.dataset_path,
+            sys.executable, "tools/prep_dataset.py", request.work_dir,
             "--clip-frames", str(request.clip_frames),
             "--train-ratio", str(request.train_ratio),
+            "--cache-mode", request.cache_mode,
+            "--cache-resolution", str(request.cache_resolution),
+            "--cache-crf", str(request.cache_crf),
+            "--output-dir", request.model_dir,
+            "--output", str(Path(request.model_dir) / "prep_result.json"),
         ]
+        if request.cache_workers:
+            cmd.extend(["--cache-workers", str(request.cache_workers)])
+        if request.explicit_pairs:
+            cmd.extend(["--pairs", *request.explicit_pairs])
+        if request.included_stems:
+            cmd.extend(["--include-stems", *request.included_stems])
         return cmd
 
     # ── Persistence ─────────────────────────────────────────────────
@@ -485,6 +664,13 @@ class JobManager:
                     d["status"] = JobStatus.CANCELLED
                     d["error_message"] = "Server restarted while job was queued"
                     d["finished_at"] = _now()
+                if not d.get("stage"):
+                    d["stage"] = d.get("job_type")
+                if not d.get("run_id"):
+                    legacy_model_dir = _legacy_model_dir(d)
+                    d["run_id"] = f"legacy:{legacy_model_dir}" if legacy_model_dir else job_id
+                if not d.get("run_steps"):
+                    d["run_steps"] = _legacy_run_steps(d)
                 self._jobs[job_id] = JobInfo(**d)
         except (json.JSONDecodeError, OSError):
             pass  # Corrupted file, start fresh
@@ -493,3 +679,27 @@ class JobManager:
 def _now() -> str:
     """Return current UTC time as ISO string."""
     return datetime.now(timezone.utc).isoformat()
+
+
+def _legacy_model_dir(job_data: dict) -> Optional[str]:
+    """Infer old prep/train run identity from persisted jobs without run_id."""
+    if job_data.get("job_type") not in LEGACY_MODEL_RUN_TYPES:
+        return None
+    args = job_data.get("args") or {}
+    if isinstance(args, dict):
+        model_dir = args.get("model_dir")
+        if isinstance(model_dir, str) and model_dir:
+            return model_dir
+    work_dir = job_data.get("work_dir")
+    if isinstance(work_dir, str) and work_dir:
+        return work_dir
+    return None
+
+
+def _legacy_run_steps(job_data: dict) -> Optional[list[str]]:
+    stage = job_data.get("stage") or job_data.get("job_type")
+    if stage == "prep":
+        return ["train"]
+    if stage in {"train", "test", "infer"}:
+        return [stage]
+    return None

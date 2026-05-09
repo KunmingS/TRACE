@@ -15,8 +15,8 @@ interface ModelInfo {
 }
 
 interface PrepResult {
-    clips_dir: string;
-    json_path: string;
+    model_dir: string;
+    dataset_json: string;
     classmap_path: string;
 }
 
@@ -74,15 +74,9 @@ const TestPanel: React.FC = () => {
         setError('');
         setMetrics(null);
 
-        const model = selectedModel;
-        const configPath = model?.config_path || 'configs/tridet/tridet_small.py';
-        const checkpoint = `${modelPath}/best.pth`;
-        const classMap = `${modelPath}/classmap.txt`;
-        const expId = Math.floor(Date.now() / 1000) % 100000;
-
         try {
             // First prepare dataset
-            await prepRunner.submit('prep', { dataset_path: datasetPath });
+            await prepRunner.submit('prep', { work_dir: datasetPath });
 
             // Wait for prep to complete
             await new Promise<void>((resolve, reject) => {
@@ -100,14 +94,11 @@ const TestPanel: React.FC = () => {
             const prepArtifact = await prepRunner.fetchArtifact<PrepResult>('prep_result.json');
 
             const body: Record<string, any> = {
-                config_path: configPath,
-                checkpoint,
-                class_map: classMap,
-                exp_id: expId,
+                model_dir: modelPath,
             };
             if (prepArtifact) {
-                body.dataset_dir = prepArtifact.clips_dir;
-                body.annotation_path = prepArtifact.json_path;
+                body.dataset_dir = prepArtifact.model_dir;
+                body.annotation_path = prepArtifact.dataset_json;
             }
 
             await testRunner.submit('test', body);

@@ -1,6 +1,5 @@
 import os
 import argparse
-import shutil
 import sys
 import torch
 from torch.amp import GradScaler
@@ -29,7 +28,6 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train a Temporal Action Detector")
     parser.add_argument("config", metavar="FILE", type=str, help="path to config file")
     parser.add_argument("--seed", type=int, default=42, help="random seed")
-    parser.add_argument("--id", type=int, default=0, help="repeat experiment id")
     parser.add_argument("--resume", type=str, default=None, help="resume from a checkpoint")
     parser.add_argument("--not_eval", action="store_true", help="whether not to eval, only do inference")
     parser.add_argument("--disable_deterministic", action="store_true", help="disable deterministic for faster speed")
@@ -64,7 +62,7 @@ def main():
 
     # set random seed, create work_dir, and save config
     set_seed(args.seed, args.disable_deterministic)
-    cfg = update_workdir(cfg, args.id, 1)
+    cfg = update_workdir(cfg)
     create_folder(cfg.work_dir)
     save_config(args.config, cfg.work_dir)
 
@@ -221,24 +219,26 @@ def main():
                     best_metric = primary_metric
                     logger.info(f"New best metric: {best_metric:.4f}, saving best checkpoint...")
                     save_best_checkpoint(model, model_ema, epoch, work_dir=cfg.work_dir)
-    # Save model folder (best.pth + classmap.txt) to ./model/ for easy deployment
+    # Make the work_dir itself a self-contained model folder.
     best_pth = os.path.join(cfg.work_dir, "checkpoint", "best.pth")
     if os.path.isfile(best_pth):
-        model_dir = os.path.abspath("model")
-        os.makedirs(model_dir, exist_ok=True)
-        shutil.copy2(best_pth, os.path.join(model_dir, "best.pth"))
+        model_dir = os.path.abspath(cfg.work_dir)
+        root_best = os.path.join(model_dir, "best.pth")
+        if os.path.abspath(best_pth) != os.path.abspath(root_best):
+            import shutil
+            shutil.copy2(best_pth, root_best)
 
-        # Generate classmap from the training dataset's class_map list
+        # Generate classmap from the training dataset's class_map list.
         with open(os.path.join(model_dir, "classmap.txt"), "w") as f:
             for name in train_dataset.class_map:
                 f.write(name + "\n")
 
-        # Save config path so model folder is self-contained
+        # Save config path so model folder is self-contained.
         with open(os.path.join(model_dir, "config.txt"), "w") as f:
             f.write(args.config + "\n")
 
         logger.info(f"Model folder saved to: {model_dir}")
-        logger.info(f"  best.pth + classmap.txt + config.txt ready for --model-path usage")
+        logger.info("  best.pth + dataset.json + classmap.txt + config.txt are ready")
     else:
         logger.warning("No best.pth found — evaluation may not have run. "
                        "Model folder not created.")

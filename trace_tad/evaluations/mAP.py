@@ -6,6 +6,31 @@ import multiprocessing as mp
 from .builder import EVALUATORS, remove_duplicate_annotations
 
 
+# Module-level worker functions (not bound methods) so that workers under
+# spawn/forkserver only pickle the data they need — not the whole mAP instance.
+def _compute_ap_chunk(ground_truth, prediction, cidx_list, tiou_thresholds, result_dict):
+    for cidx in cidx_list:
+        gt_idx = ground_truth["label"] == cidx
+        pred_idx = prediction["label"] == cidx
+        result_dict[cidx] = compute_average_precision_detection(
+            ground_truth.loc[gt_idx].reset_index(drop=True),
+            prediction.loc[pred_idx].reset_index(drop=True),
+            tiou_thresholds=tiou_thresholds,
+        )
+
+
+def _compute_topkx_recall_chunk(ground_truth, prediction, cidx_list, tiou_thresholds, top_k, result_dict):
+    for cidx in cidx_list:
+        gt_idx = ground_truth["label"] == cidx
+        pred_idx = prediction["label"] == cidx
+        result_dict[cidx] = compute_topkx_recall_detection(
+            ground_truth.loc[gt_idx].reset_index(drop=True),
+            prediction.loc[pred_idx].reset_index(drop=True),
+            tiou_thresholds=tiou_thresholds,
+            top_k=top_k,
+        )
+
+
 @EVALUATORS.register_module()
 class mAP:
     def __init__(
@@ -152,29 +177,6 @@ class mAP:
         )
         return prediction
 
-    def wrapper_compute_average_precision(self, cidx_list):
-        """Computes average precision for a sub class list."""
-        for cidx in cidx_list:
-            gt_idx = self.ground_truth["label"] == cidx
-            pred_idx = self.prediction["label"] == cidx
-            self.mAP_result_dict[cidx] = compute_average_precision_detection(
-                self.ground_truth.loc[gt_idx].reset_index(drop=True),
-                self.prediction.loc[pred_idx].reset_index(drop=True),
-                tiou_thresholds=self.tiou_thresholds,
-            )
-
-    def wrapper_compute_topkx_recall(self, cidx_list):
-        """Computes Top-kx recall for a sub class list."""
-        for cidx in cidx_list:
-            gt_idx = self.ground_truth["label"] == cidx
-            pred_idx = self.prediction["label"] == cidx
-            self.recall_result_dict[cidx] = compute_topkx_recall_detection(
-                self.ground_truth.loc[gt_idx].reset_index(drop=True),
-                self.prediction.loc[pred_idx].reset_index(drop=True),
-                tiou_thresholds=self.tiou_thresholds,
-                top_k=self.top_k,
-            )
-
     def multi_thread_compute_average_precision(self):
         self.mAP_result_dict = mp.Manager().dict()
 
@@ -187,8 +189,14 @@ class mAP:
             num_end = min(num_start + num_activity_per_thread, num_total)
 
             p = mp.Process(
-                target=self.wrapper_compute_average_precision,
-                args=(list(self.activity_index.values())[num_start:num_end],),
+                target=_compute_ap_chunk,
+                args=(
+                    self.ground_truth,
+                    self.prediction,
+                    list(self.activity_index.values())[num_start:num_end],
+                    self.tiou_thresholds,
+                    self.mAP_result_dict,
+                ),
             )
             p.start()
             processes.append(p)
@@ -213,8 +221,15 @@ class mAP:
             num_end = min(num_start + num_activity_per_thread, num_total)
 
             p = mp.Process(
-                target=self.wrapper_compute_topkx_recall,
-                args=(list(self.activity_index.values())[num_start:num_end],),
+                target=_compute_topkx_recall_chunk,
+                args=(
+                    self.ground_truth,
+                    self.prediction,
+                    list(self.activity_index.values())[num_start:num_end],
+                    self.tiou_thresholds,
+                    self.top_k,
+                    self.recall_result_dict,
+                ),
             )
             p.start()
             processes.append(p)

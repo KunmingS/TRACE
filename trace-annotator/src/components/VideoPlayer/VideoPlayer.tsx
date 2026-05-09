@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { VideoData, VideoFrame } from '../../store/labels/types';
 import './VideoPlayer.scss';
 
@@ -21,6 +21,14 @@ export const VideoPlayer: React.FC<Props> = ({
 }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const [currentTime, setCurrentTime] = useState(0);
+
+    // Create the object URL once per file — recreating every render leaks memory
+    // and forces the <video> element to reload on each parent re-render.
+    const videoSrc = useMemo(
+        () => URL.createObjectURL(videoData.fileData),
+        [videoData.fileData]
+    );
+    useEffect(() => () => URL.revokeObjectURL(videoSrc), [videoSrc]);
 
     useEffect(() => {
         if (videoRef.current) {
@@ -68,7 +76,7 @@ export const VideoPlayer: React.FC<Props> = ({
         <div className="VideoPlayer">
             <video
                 ref={videoRef}
-                src={URL.createObjectURL(videoData.fileData)}
+                src={videoSrc}
                 onTimeUpdate={handleTimeUpdate}
                 className="video-element"
             />

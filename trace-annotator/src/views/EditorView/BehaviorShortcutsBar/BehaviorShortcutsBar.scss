@@ -2,98 +2,519 @@
 
 .BehaviorShortcutsBar {
   height: $behaviorBarHeight;
-  background: $surface-1;
+  background: linear-gradient(180deg, $surface-0, $surface-1);
   border-top: 1px solid $border-subtle;
   border-bottom: 1px solid $border-subtle;
   display: flex;
   align-items: center;
-  padding: 0 12px;
-  gap: 8px;
-  overflow-x: auto;
+  padding: 0 18px;
+  gap: 14px;
   flex-shrink: 0;
-
-  &::-webkit-scrollbar {
-    height: 3px;
-  }
-  &::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.12);
-    border-radius: 2px;
-  }
+  font-family: $font-ui;
 
   .BarLabel {
-    font-family: $font-ui;
     font-size: 14px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.14em;
     color: $text-muted;
     flex-shrink: 0;
-    margin-right: 4px;
+    padding-right: 12px;
+    border-right: 1px solid $border-subtle;
+    margin-right: 2px;
   }
 
-  .ShortcutBadge {
-    display: flex;
+  // ── Active-subject pill ─────────────────────────────────────────
+  .SubjectPickerWrap {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .SubjectPill {
+    appearance: none;
+    display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 3px;
-    background: $surface-2;
-    border: 1px solid $border-subtle;
-    cursor: pointer;
-    white-space: nowrap;
+    gap: 10px;
+    min-height: 36px;
+    padding: 6px 14px 6px 10px;
+    border-radius: $radius-pill;
+    border: 1px solid rgba($accent, 0.35);
+    background: $accent-muted;
+    color: $text-primary;
     font-family: $font-ui;
     font-size: 16px;
-    color: $text-secondary;
-    transition: all 150ms;
-    flex-shrink: 0;
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
 
-    &:hover {
-      border-color: $border-strong;
-      color: $text-primary;
-      background: $surface-3;
+    .SubjectPillEyebrow {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: $accent;
+      padding-right: 4px;
+      border-right: 1px solid rgba($accent, 0.35);
     }
 
-    .KeyBadge {
+    .SubjectPillDigit {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 5px;
+      background: $surface-0;
+      color: $accent;
       font-family: $font-mono;
       font-size: 14px;
-      font-weight: 500;
-      background: $surface-0;
-      padding: 1px 5px;
-      border-radius: 2px;
-      border: 1px solid $border-default;
-      color: $text-muted;
-      line-height: 1.4;
+      font-weight: 700;
     }
 
-    .ColorDot {
-      width: 8px;
-      height: 8px;
+    .SubjectPillName {
+      max-width: 14ch;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .SubjectPillCaret {
+      color: $text-muted;
+      transition: transform 160ms ease;
+    }
+
+    &:hover {
+      background: rgba($accent, 0.16);
+      border-color: rgba($accent, 0.55);
+    }
+    &[aria-expanded='true'] .SubjectPillCaret { transform: rotate(180deg); }
+  }
+
+  .SubjectPickerMenu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 30;
+    min-width: 200px;
+    padding: 4px;
+    border-radius: $radius-md;
+    background: $surface-0;
+    border: 1px solid $border-subtle;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .SubjectPickerOption {
+    appearance: none;
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    align-items: center;
+    gap: 10px;
+    min-height: 40px;
+    padding: 10px 12px;
+    border: none;
+    border-radius: $radius-sm;
+    background: transparent;
+    font: inherit;
+    font-size: 16px;
+    color: $text-primary;
+    text-align: left;
+    cursor: pointer;
+    transition: background 140ms ease;
+
+    .SubjectPickerDigit {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 5px;
+      background: $surface-1;
+      color: $text-secondary;
+      font-family: $font-mono;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    &:hover {
+      background: $surface-1;
+    }
+
+    &.active {
+      background: $accent-muted;
+      .SubjectPickerDigit { background: $surface-0; color: $accent; }
+    }
+  }
+
+  // Wrapper holds the scrollable rail plus edge-fade hints that signal
+  // more chips sit off-screen when the rail overflows.
+  .ChipRailWrap {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+
+    &::before,
+    &::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 18px;
+      pointer-events: none;
+      z-index: 1;
+    }
+    &::before {
+      left: 0;
+      background: linear-gradient(90deg, $surface-1, rgba(255, 255, 255, 0));
+    }
+    &::after {
+      right: 0;
+      background: linear-gradient(-90deg, $surface-1, rgba(255, 255, 255, 0));
+    }
+  }
+
+  .ChipRail {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex: 1;
+    min-width: 0;
+    padding: 4px 0;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.12) transparent;
+
+    &::-webkit-scrollbar { height: 3px; }
+    &::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.12);
+      border-radius: 2px;
+    }
+  }
+
+}
+
+// ── Behavior chip ─────────────────────────────────────────────────
+
+.BehaviorShortcutsBar .BehaviorChip {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 6px 16px 6px 12px;
+  border-radius: $radius-pill;
+  border: 1px solid $border-subtle;
+  background: $surface-0;
+  color: $text-primary;
+  font-family: $font-ui;
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    box-shadow 180ms ease,
+    transform 160ms ease;
+  position: relative;
+
+  .ChipDot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--chip-color, $accent);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+  }
+
+  .ChipKey {
+    font-family: $font-mono;
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: lowercase;
+    color: $text-secondary;
+    background: $surface-1;
+    border: 1px solid $border-subtle;
+    border-radius: 5px;
+    padding: 3px 8px 4px;
+    min-width: 24px;
+    text-align: center;
+    line-height: 1.15;
+    transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+
+    &.ChipKeyMissing {
+      color: $text-muted;
+      opacity: 0.7;
+    }
+  }
+
+  .ChipName {
+    font-weight: 500;
+  }
+
+  .ChipEditGlyph {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 0;
+    overflow: hidden;
+    color: $text-muted;
+    opacity: 0;
+    transition: width 180ms ease, opacity 160ms ease, margin-left 180ms ease,
+                background 140ms ease, color 140ms ease;
+    margin-left: -2px;
+    border-radius: 4px;
+    cursor: pointer;
+
+    &:hover {
+      background: rgba(0, 0, 0, 0.06);
+      color: $text-primary;
+    }
+  }
+
+  &:hover {
+    background: var(--chip-tint, $accent-muted);
+    border-color: transparent;
+    box-shadow:
+      0 1px 2px rgba(15, 23, 42, 0.06),
+      0 4px 12px rgba(15, 23, 42, 0.04);
+    transform: translateY(-1px);
+
+    .ChipKey {
+      background: $surface-0;
+      border-color: rgba(0, 0, 0, 0.08);
+      color: $text-primary;
+    }
+
+    .ChipEditGlyph {
+      width: 12px;
+      opacity: 1;
+      margin-left: 0;
+    }
+  }
+
+  &:active {
+    transform: translateY(0);
+    box-shadow: none;
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px $surface-0, 0 0 0 4px var(--chip-color, $accent);
+  }
+
+  // ── Selected state ───────────────────────────────────────────────
+  // Mirrors the timeline clip's `.selected` outline so the user can see at
+  // a glance which behavior the currently-selected clip belongs to. We use
+  // an inset ring tinted by the chip's own color so each chip stays
+  // visually distinct (rather than all sharing the timeline's blue).
+  &.selected {
+    background: var(--chip-tint, $accent-muted);
+    border-color: transparent;
+    box-shadow:
+      inset 0 0 0 1.5px var(--chip-color, $accent),
+      0 1px 3px rgba(15, 23, 42, 0.08);
+
+    .ChipKey {
+      background: $surface-0;
+      border-color: rgba(0, 0, 0, 0.10);
+      color: $text-primary;
+    }
+    // Keep the pencil visible without requiring hover so the edit affordance
+    // doesn't disappear once the chip is highlighted.
+    .ChipEditGlyph {
+      width: 12px;
+      opacity: 0.85;
+      margin-left: 0;
+    }
+  }
+
+  // ── Playhead-active state ───────────────────────────────────────
+  // Triggered while the playhead sits inside one of this behavior's clips
+  // — gives the user a live "what's playing right now" signal that's
+  // distinct from `.selected` (which is about a clicked clip).
+  &.playhead-active {
+    background: var(--chip-tint, $accent-muted);
+    border-color: transparent;
+    box-shadow: inset 0 0 0 1px var(--chip-color, $accent);
+
+    .ChipDot {
+      animation: chipDotPulse 1.6s ease-in-out infinite;
+    }
+  }
+
+  // ── Focused state ────────────────────────────────────────────────
+  // Stronger treatment than `.selected` because focus mode is sticky:
+  // the chip is the *only* one visible and the timeline is filtered
+  // around it. Filled background + tinted ring make it read like a tab.
+  &.focused {
+    background: var(--chip-color, $accent);
+    border-color: transparent;
+    color: #fff;
+    box-shadow:
+      0 1px 2px rgba(15, 23, 42, 0.10),
+      0 0 0 3px var(--chip-tint-strong, rgba($accent, 0.20));
+
+    .ChipDot {
+      background: rgba(255, 255, 255, 0.95);
+      box-shadow: none;
+    }
+    .ChipKey {
+      background: rgba(255, 255, 255, 0.18);
+      border-color: rgba(255, 255, 255, 0.30);
+      color: #fff;
+    }
+    .ChipName { color: #fff; }
+    .ChipEditGlyph {
+      width: 12px;
+      opacity: 0.9;
+      margin-left: 0;
+      color: rgba(255, 255, 255, 0.85);
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.16);
+        color: #fff;
+      }
+    }
+    .ChipFocusDot {
+      width: 6px;
+      height: 6px;
       border-radius: 50%;
       flex-shrink: 0;
+      margin-left: 1px;
+      background: rgba(255, 255, 255, 0.85);
+    }
+  }
+
+  // ── Recording state ─────────────────────────────────────────────
+  &.recording {
+    background: var(--chip-tint-strong, rgba($recording, 0.15));
+    border-color: transparent;
+    color: $text-primary;
+    box-shadow: inset 0 0 0 1px var(--chip-color, $recording);
+
+    .ChipDot {
+      animation: chipDotPulse 1.4s ease-in-out infinite;
     }
 
-    .BehaviorName {
-      font-weight: 500;
+    .ChipKey {
+      background: $surface-0;
+      border-color: rgba(0, 0, 0, 0.08);
     }
 
-    &.recording {
-      border-color: $recording;
-      background: rgba(239, 68, 68, 0.06);
-      color: $text-primary;
-
-      .RecDot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: $recording;
-        flex-shrink: 0;
-        animation: rec-pulse 1.5s ease-in-out infinite;
-      }
+    .ChipRecDot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: $recording;
+      flex-shrink: 0;
+      margin-left: 1px;
+      animation: recPulse 1.4s ease-in-out infinite;
     }
   }
 }
 
-@keyframes rec-pulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.3); }
-  50% { opacity: 0.5; box-shadow: 0 0 0 4px transparent; }
+// ── Focus-mode hint ────────────────────────────────────────────────
+.BehaviorShortcutsBar .FocusHint {
+  font-family: $font-ui;
+  font-size: 15px;
+  color: $text-muted;
+  font-style: italic;
+  padding-left: 12px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+// Suppress the `ChipRail`'s edge-fade gradients in focus mode — there's
+// only one chip + a hint, no overflow to signal.
+.BehaviorShortcutsBar .ChipRailWrap.focused {
+  &::before, &::after { display: none; }
+}
+
+// ── "New type" chip ────────────────────────────────────────────────
+
+.BehaviorShortcutsBar .NewBehaviorChip {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 6px 16px 6px 12px;
+  border-radius: $radius-pill;
+  border: 1px dashed rgba($accent, 0.40);
+  background: transparent;
+  color: $accent;
+  font-family: $font-ui;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    border-style 160ms ease,
+    transform 160ms ease,
+    box-shadow 180ms ease;
+
+  .NewGlyph {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: $accent-muted;
+    color: $accent;
+    transition: transform 220ms ease, background 180ms ease;
+  }
+
+  &:hover {
+    background: $accent-muted;
+    border-style: solid;
+    border-color: rgba($accent, 0.55);
+    box-shadow: 0 2px 6px rgba($accent, 0.12);
+
+    .NewGlyph {
+      background: $surface-0;
+      transform: rotate(90deg);
+    }
+  }
+
+  &:active { transform: translateY(1px); }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px $surface-0, 0 0 0 4px rgba($accent, 0.45);
+  }
+}
+
+// ── Animations ─────────────────────────────────────────────────────
+
+@keyframes recPulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5);
+  }
+  50% {
+    opacity: 0.55;
+    box-shadow: 0 0 0 4px transparent;
+  }
+}
+
+@keyframes chipDotPulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.25); }
 }

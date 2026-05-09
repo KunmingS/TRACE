@@ -6,13 +6,15 @@ import { API_URL } from '../../../config';
 import { useJobRunner } from '../../../hooks/useJobRunner';
 
 interface PrepResult {
-    clips_dir: string;
-    json_path: string;
+    model_dir: string;
+    dataset_json: string;
     classmap_path: string;
 }
 
 const TrainPanel: React.FC = () => {
     const [datasetPath, setDatasetPath] = useState('');
+    const [selectedStems, setSelectedStems] = useState<string[]>([]);
+    const [explicitPairs, setExplicitPairs] = useState<string[]>([]);
     const [modelSize, setModelSize] = useState<'small' | 'large'>('small');
     const [configs, setConfigs] = useState<{ path: string; name: string }[]>([]);
     const [prepResult, setPrepResult] = useState<PrepResult | null>(null);
@@ -50,9 +52,9 @@ const TrainPanel: React.FC = () => {
     }, [trainRunner.status]);
 
     const getConfigPath = () => {
-        const target = modelSize === 'small' ? 'tridet_small' : 'tridet_large';
+        const target = modelSize;
         const match = configs.find((c) => c.name === target);
-        return match?.path || `configs/tridet/${target}.py`;
+        return match?.path || `configs/${target}.py`;
     };
 
     const handlePrepare = async () => {
@@ -60,12 +62,19 @@ const TrainPanel: React.FC = () => {
             setError('Enter a dataset path first.');
             return;
         }
+        if (explicitPairs.length < 1) {
+            setError('Pick at least one video/CSV pair.');
+            return;
+        }
         setError('');
         setPrepResult(null);
         trainRunner.reset();
 
         try {
-            await prepRunner.submit('prep', { dataset_path: datasetPath });
+            await prepRunner.submit('prep', {
+                work_dir: datasetPath,
+                explicit_pairs: explicitPairs,
+            });
         } catch (err: any) {
             setError(err.message);
         }
@@ -78,15 +87,14 @@ const TrainPanel: React.FC = () => {
         }
         setError('');
 
-        const expId = Math.floor(Date.now() / 1000) % 100000;
-
         try {
             await trainRunner.submit('train', {
                 config_path: getConfigPath(),
-                exp_id: expId,
-                dataset_dir: prepResult.clips_dir,
-                annotation_path: prepResult.json_path,
+                model_dir: prepResult.model_dir,
+                dataset_dir: prepResult.model_dir,
+                annotation_path: prepResult.dataset_json,
                 class_map: prepResult.classmap_path,
+                explicit_pairs: explicitPairs,
             });
         } catch (err: any) {
             setError(err.message);
@@ -112,14 +120,23 @@ const TrainPanel: React.FC = () => {
                 <div className='FieldRow'>
                     <PathPicker
                         value={datasetPath}
-                        onChange={setDatasetPath}
+                        onChange={(folder) => {
+                            setDatasetPath(folder);
+                            setSelectedStems([]);
+                            setExplicitPairs([]);
+                        }}
+                        mode='multiPair'
+                        selectedStems={selectedStems}
+                        onSelectedStemsChange={setSelectedStems}
+                        onSelectedPairsChange={setExplicitPairs}
+                        requireSourceVideo={true}
                         placeholder='/path/to/dataset (videos + CSVs)'
                         disabled={isBusy}
                     />
                     <button
                         className='ActionBtn secondary'
                         onClick={handlePrepare}
-                        disabled={!datasetPath || isBusy}
+                        disabled={!datasetPath || explicitPairs.length < 1 || isBusy}
                         type='button'
                     >
                         Prepare
@@ -132,7 +149,7 @@ const TrainPanel: React.FC = () => {
                             <path d="M5.5 8l2 2 3.5-4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                         Dataset ready
-                        <span className='ReadyDetail'>{prepResult.clips_dir}</span>
+                        <span className='ReadyDetail'>{prepResult.model_dir}</span>
                     </div>
                 )}
             </div>

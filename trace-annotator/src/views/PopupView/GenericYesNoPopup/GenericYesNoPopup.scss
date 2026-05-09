@@ -15,11 +15,11 @@
 
   .Header {
     align-self: stretch;
-    height: 48px;
+    min-height: 58px;
     border-bottom: 1px solid rgba(0, 0, 0, 0.08);
     color: $textPrimary;
     font-weight: 700;
-    font-size: 20px;
+    font-size: 23px;
     letter-spacing: 0.01em;
     background-color: $darkThemeFirstColor;
 
@@ -33,11 +33,11 @@
 
   .Content {
     align-self: stretch;
-    font-size: 18px;
+    font-size: 21px;
     color: $textSecondary;
     background-color: $darkThemeSecondColor;
     flex: 1;
-    padding: 24px 32px;
+    padding: 30px 36px;
 
     display: flex;
     flex-direction: column;
@@ -48,8 +48,8 @@
   }
 
   .Footer {
-    padding: 0 32px;
-    height: 72px;
+    padding: 0 36px;
+    min-height: 86px;
     align-self: stretch;
     background-color: $darkThemeSecondColor;
     border-top: 1px solid rgba(0, 0, 0, 0.06);

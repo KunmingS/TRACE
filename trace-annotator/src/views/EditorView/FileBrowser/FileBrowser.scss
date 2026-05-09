@@ -27,7 +27,7 @@
 
     .ToggleIcon {
       color: $text-muted;
-      font-size: 18px;
+      font-size: 21px;
       writing-mode: vertical-rl;
     }
   }
@@ -50,7 +50,7 @@
     }
 
     .HeaderLabel {
-      font-size: 14px;
+      font-size: 17px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.14em;
@@ -58,7 +58,7 @@
     }
 
     .HeaderSubtext {
-      font-size: 14px;
+      font-size: 17px;
       color: rgba(0, 0, 0, 0.38);
       white-space: nowrap;
       overflow: hidden;
@@ -67,7 +67,7 @@
 
     .FileCount {
       font-family: $font-mono;
-      font-size: 14px;
+      font-size: 17px;
       color: rgba(30, 64, 175, 0.9);
       margin-left: auto;
       background: rgba(37, 99, 235, 0.08);
@@ -81,7 +81,7 @@
       border: none;
       color: $text-muted;
       cursor: pointer;
-      font-size: 18px;
+      font-size: 21px;
       width: 28px;
       height: 28px;
       padding: 0;
@@ -93,92 +93,64 @@
   }
 
   .DirSection {
-    padding: 8px;
+    padding: 10px 10px 12px;
     border-bottom: 1px solid $border-subtle;
     flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
     position: relative;
+    z-index: 5; // keep PathPicker dropdown above the file list
 
-    .DirInputWrapper {
-      display: flex;
-      align-items: center;
-      background: rgba(0, 0, 0, 0.02);
-      border: 1px solid $border-subtle;
-      border-radius: $radius-lg;
-      min-height: 36px;
-      padding: 0 8px;
-
-      &:focus-within {
-        border-color: $accent;
-        box-shadow: 0 0 0 1px $accent-glow;
+    // PathPicker is reused from the homepage. A few small overrides keep it
+    // visually anchored inside the narrower sidebar column.
+    .PathPicker {
+      .BreadcrumbBar {
+        padding: 2px 4px;
+        margin-bottom: 0;
+        font-size: 17px;
       }
 
-      .Prompt {
-        font-family: $font-mono;
-        font-size: 15px;
-        color: $text-muted;
-        margin-right: 4px;
-        flex-shrink: 0;
+      .InputShell {
+        height: 34px;
       }
 
-      input {
-        flex: 1;
-        background: transparent;
-        border: none;
-        outline: none;
-        color: $text-primary;
-        font-family: $font-mono;
-        font-size: 15px;
-        min-width: 0;
-      }
-
-      .LoadBtn {
-        background: none;
-        border: none;
-        color: $text-muted;
-        cursor: pointer;
-        font-size: 18px;
-        width: 26px;
-        height: 26px;
-        border-radius: $radius-md;
-        padding: 0;
-        flex-shrink: 0;
-
-        &:hover {
-          color: $accent;
-          background: rgba(37, 99, 235, 0.08);
-        }
-        &:disabled { opacity: 0.3; cursor: default; }
+      .DirBrowser {
+        // Sidebar is narrow — let the dropdown fully claim its width.
+        left: -2px;
+        right: -2px;
       }
     }
 
-    .SuggestionsDropdown {
-      position: absolute;
-      left: 8px;
-      right: 8px;
-      top: 42px;
-      background: rgba(255, 255, 255, 0.98);
-      border: 1px solid $border-default;
-      border-radius: $radius-lg;
-      max-height: 200px;
-      overflow-y: auto;
-      z-index: 100;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    .LoadFolderBtn {
+      appearance: none;
+      cursor: pointer;
+      align-self: stretch;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 32px;
+      padding: 0 12px;
+      border-radius: $radius-md;
+      border: 1px solid transparent;
+      font-family: $font-ui;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.95), rgba(59, 130, 246, 1));
+      color: #fff;
+      box-shadow: 0 2px 6px rgba(37, 99, 235, 0.18);
+      transition: box-shadow 160ms ease, transform 160ms ease, opacity 160ms ease;
 
-      .SuggestionItem {
-        min-height: 32px;
-        display: flex;
-        align-items: center;
-        padding: 0 10px;
-        font-size: 16px;
-        color: $text-secondary;
-        cursor: pointer;
-        font-family: $font-mono;
+      svg { opacity: 0.9; }
 
-        &:hover, &.active {
-          background: $surface-2;
-          color: $text-primary;
-        }
+      &:hover:not(:disabled) {
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.28);
+        transform: translateY(-1px);
       }
+      &:active:not(:disabled) { transform: translateY(0); }
+      &:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
     }
   }
 
@@ -187,7 +159,7 @@
     overflow-y: auto;
     scrollbar-width: thin;
     scrollbar-color: rgba(0, 0, 0, 0.12) transparent;
-    padding: 8px 0 10px;
+    padding: 8px 0 14px;
 
     &::-webkit-scrollbar { width: 4px; }
     &::-webkit-scrollbar-thumb {
@@ -198,7 +170,7 @@
     .LoadingIndicator,
     .EmptyState {
       padding: 18px 16px;
-      font-size: 15px;
+      font-size: 18px;
       color: $text-muted;
       text-align: center;
     }
@@ -213,7 +185,7 @@
     }
 
     .EmptyStateTitle {
-      font-size: 16px;
+      font-size: 19px;
       color: $text-secondary;
       letter-spacing: 0.02em;
     }
@@ -222,137 +194,972 @@
       max-width: 24ch;
       line-height: 1.5;
     }
+  }
 
-    .FileItem {
-      min-height: 42px;
+  // ─── File group: header row + expandable dropdown ────────────────
+  .FileGroup {
+    margin: 0 8px 4px;
+    border-radius: $radius-lg;
+    overflow: hidden;
+    background: transparent;
+    border: 1px solid transparent;
+    transition: background 160ms ease, border-color 160ms ease;
+
+    &.expanded {
+      background: rgba(0, 0, 0, 0.018);
+      border-color: $border-subtle;
+    }
+
+    &.active {
+      background: linear-gradient(90deg, rgba(37, 99, 235, 0.06), rgba(37, 99, 235, 0.015));
+      border-color: rgba(37, 99, 235, 0.18);
+    }
+  }
+
+  .FileRow {
+    appearance: none;
+    background: none;
+    border: none;
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px 6px 12px;
+    border-left: 2px solid transparent;
+    transition: background 120ms ease;
+    color: inherit;
+
+    &:hover {
+      background: rgba(0, 0, 0, 0.025);
+    }
+
+    .FileGroup.active & {
+      border-left-color: $accent;
+    }
+
+    .FileMain {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: baseline;
+    }
+
+    .FileBase {
+      font-size: 19px;
+      color: $text-secondary;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .FileGroup.active & .FileBase {
+      color: $text-primary;
+    }
+
+    .FileExt {
+      font-size: 18px;
+      color: $text-muted;
+      margin-left: 2px;
+      flex-shrink: 0;
+    }
+
+    .FileGroup.active & .FileExt {
+      color: $accent;
+    }
+
+    .FileMeta {
+      flex-shrink: 0;
+      margin-left: 8px;
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      margin: 0 8px;
-      padding: 6px 10px;
-      cursor: pointer;
-      border-left: 2px solid transparent;
-      border-radius: $radius-lg;
-      transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+      gap: 6px;
+    }
 
-      &:hover {
-        background: rgba(0, 0, 0, 0.04);
-        transform: translateX(-1px);
-      }
+    .Chevron {
+      color: $text-muted;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), color 160ms ease;
 
-      &.active {
-        background:
-          linear-gradient(90deg, rgba(37, 99, 235, 0.1), rgba(37, 99, 235, 0.04)),
-          rgba(0, 0, 0, 0.01);
-        border-left-color: $accent;
-
-        .FileBase { color: $text-primary; }
-        .FileExt { color: $accent; }
-      }
-
-      &.unplayable {
-        opacity: 0.6;
-        cursor: default;
-
-        &:hover {
-          background: transparent;
-          transform: none;
-        }
-      }
-
-      .FileMain {
-        flex: 1;
-        min-width: 0;
-        display: flex;
-        align-items: baseline;
-      }
-
-      .FileBase {
-        font-size: 16px;
+      &.open {
+        transform: rotate(180deg);
         color: $text-secondary;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .FileExt {
-        font-size: 15px;
-        color: $text-muted;
-        margin-left: 2px;
-        flex-shrink: 0;
-      }
-
-      .FileMeta {
-        flex-shrink: 0;
-        margin-left: 6px;
-        display: flex;
-        align-items: center;
-        gap: 4px;
-      }
-
-      .CodecBadge {
-        font-size: 13px;
-        font-weight: 600;
-        letter-spacing: 0.04em;
-        padding: 2px 6px;
-        border-radius: $radius-pill;
-        text-transform: uppercase;
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-
-        &.ready {
-          background: rgba(22, 163, 74, 0.1);
-          color: #16a34a;
-        }
-
-        &.converting {
-          background: rgba(217, 119, 6, 0.1);
-          color: #d97706;
-
-          .ConvertSpinner {
-            width: 8px;
-            height: 8px;
-            border: 1.5px solid rgba(217, 119, 6, 0.25);
-            border-top-color: #d97706;
-            border-radius: $radius-circle;
-            animation: spin 0.6s linear infinite;
-          }
-        }
-
-        &.convert-btn {
-          appearance: none; background: none; border: none; margin: 0; padding: 0; text-align: inherit; color: inherit; font: inherit;
-          font-size: 13px;
-          font-weight: 600;
-          letter-spacing: 0.04em;
-          padding: 2px 8px;
-          border-radius: $radius-pill;
-          background: rgba(217, 119, 6, 0.1);
-          color: #d97706;
-          cursor: pointer;
-          transition: background 0.15s, color 0.15s;
-
-          &:hover {
-            background: rgba(217, 119, 6, 0.2);
-            color: #b45309;
-          }
-        }
-      }
-
-      @keyframes spin {
-        to { transform: rotate(360deg); }
-      }
-
-      .CsvBadge {
-        font-size: 13px;
-        font-weight: 600;
-        letter-spacing: 0.04em;
-        padding: 2px 6px;
-        border-radius: $radius-pill;
-        background: rgba(22, 163, 74, 0.1);
-        color: #16a34a;
-        text-transform: uppercase;
       }
     }
   }
+
+  // ─── Status pill in the row header ───────────────────────────────
+  // Three states the user actually cares about:
+  //   ready    → file plays in the browser (raw or cached)
+  //   wrap     → needs a fast container repack (was: "remux")
+  //   convert  → needs a slower full re-encode (was: "transcode")
+  .StatusPill {
+    font-family: $font-mono;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 2px 8px;
+    border-radius: $radius-pill;
+    text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: 1px solid transparent;
+    line-height: 1.5;
+
+    &.ready {
+      background: rgba(22, 163, 74, 0.10);
+      color: #15803d;
+      border-color: rgba(22, 163, 74, 0.22);
+    }
+    // "Wrap" — fast container fix. Teal so it reads as "easy / safe".
+    &.wrap {
+      background: rgba(13, 148, 136, 0.12);
+      color: #0f766e;
+      border-color: rgba(13, 148, 136, 0.30);
+    }
+    // "Re-encode" — the heavier action. Amber/orange so the cost is legible.
+    &.convert {
+      background: rgba(217, 119, 6, 0.14);
+      color: #b45309;
+      border-color: rgba(217, 119, 6, 0.32);
+    }
+    &.working {
+      background: rgba(37, 99, 235, 0.10);
+      color: $accent;
+      border-color: rgba(37, 99, 235, 0.26);
+    }
+    &.unknown {
+      background: rgba(0, 0, 0, 0.04);
+      color: $text-muted;
+      border-color: $border-subtle;
+    }
+
+    .StatusPillSpinner {
+      width: 8px;
+      height: 8px;
+      border: 1.5px solid rgba(37, 99, 235, 0.25);
+      border-top-color: $accent;
+      border-radius: $radius-circle;
+      animation: filebrowser-spin 0.7s linear infinite;
+    }
+  }
+
+  // ─── Expansion panel ─────────────────────────────────────────────
+  // grid-template-rows trick: we animate the row track from 0fr → 1fr
+  // instead of height (which breaks easing on auto-sized content).
+  .FileExpansion {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 260ms cubic-bezier(0.22, 1, 0.36, 1);
+
+    &[data-expanded='true'] {
+      grid-template-rows: 1fr;
+
+      .FileExpansionInner {
+        opacity: 1;
+      }
+    }
+  }
+
+  .FileExpansionInner {
+    overflow: hidden;
+    min-height: 0;
+    padding: 2px 12px 12px 14px;
+    opacity: 0.6;
+    transition: opacity 240ms ease 40ms;
+    // The vertical "tree" rail — connects the row to its children.
+    position: relative;
+
+    &::before {
+      content: '';
+      position: absolute;
+      left: 18px;
+      top: 0;
+      bottom: 14px;
+      width: 1px;
+      background: linear-gradient(180deg, $border-subtle, transparent);
+      pointer-events: none;
+    }
+  }
+
+  // Compatibility row (codec/container summary).
+  // All expansion-panel typography is bumped +6px from the previous design
+  // so the dropdown reads comfortably at sidebar widths.
+  .ExpRow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0 6px 24px;
+    font-size: 22px;
+    line-height: 1.4;
+  }
+
+  .ExpRowLabel {
+    font-size: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: $text-muted;
+    width: 78px;
+    flex-shrink: 0;
+  }
+
+  .ExpRowValue {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .CodecChip,
+  .ContainerChip {
+    font-family: $font-mono;
+    font-size: 21px;
+    color: $text-primary;
+    background: $surface-1;
+    border: 1px solid $border-subtle;
+    padding: 2px 8px;
+    border-radius: $radius-sm;
+  }
+
+  .ChipSep {
+    font-size: 21px;
+    color: $text-muted;
+  }
+
+  // Phase 4 of docs/pts-based-frame-mapping.md: actual avg fps from
+  // ffprobe and an explicit VFR flag for files whose r_frame_rate and
+  // avg_frame_rate disagree (typical of USB webcams).
+  .FpsChip {
+    font-family: $font-mono;
+    font-size: 21px;
+    color: $text-secondary;
+    background: $surface-1;
+    border: 1px solid $border-subtle;
+    padding: 2px 8px;
+    border-radius: $radius-sm;
+  }
+
+  .VfrBadge {
+    font-family: $font-mono;
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: #b45309;             // amber-700
+    background: #fef3c7;        // amber-100
+    border: 1px solid #f59e0b;  // amber-500
+    padding: 2px 8px;
+    border-radius: $radius-sm;
+    cursor: help;
+  }
+
+  .ExpCompatNote {
+    padding: 2px 4px 6px 24px;
+  }
+
+  .CompatNote {
+    font-size: 22px;
+    line-height: 1.5;
+    color: $text-secondary;
+    max-width: 42ch;
+
+    &.ok::before {
+      content: '✓ ';
+      color: #16a34a;
+      font-weight: 600;
+    }
+    &.warn::before {
+      content: '! ';
+      font-family: $font-mono;
+      color: #d97706;
+      font-weight: 700;
+    }
+  }
+
+  // Section grouping (Media, Annotations)
+  .ExpSection {
+    margin-top: 12px;
+    padding: 0;
+  }
+
+  .ExpSectionLabel {
+    font-size: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: $text-muted;
+    padding: 0 0 6px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  // "+ New" affordance next to the Annotations section header — creates
+  // a new CSV variant for the current video so multi-rater workflows
+  // don't have to drop to the filesystem.
+  .ExpAddCsv {
+    appearance: none;
+    background: transparent;
+    border: 1px solid $border-subtle;
+    border-radius: $radius-pill;
+    padding: 2px 8px 2px 6px;
+    margin-right: 6px;
+    color: $text-secondary;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+
+    &:hover {
+      background: rgba(37, 99, 235, 0.08);
+      color: $accent;
+      border-color: rgba(37, 99, 235, 0.35);
+    }
+  }
+
+  // Tree leaf — clickable derivative or info row
+  .Leaf {
+    appearance: none;
+    background: none;
+    border: none;
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+
+    display: grid;
+    grid-template-columns: 24px 1fr auto;
+    align-items: center;
+    column-gap: 0;
+    padding: 5px 8px 5px 0;
+    margin-left: 0;
+    border-radius: $radius-md;
+    position: relative;
+    transition: background 120ms ease;
+
+    // Horizontal connector from the rail to this leaf.
+    &::before {
+      content: '';
+      position: absolute;
+      left: 18px;
+      top: 50%;
+      width: 8px;
+      height: 1px;
+      background: $border-subtle;
+      pointer-events: none;
+    }
+
+    &:hover:not(.disabled):not(.empty) {
+      background: rgba(37, 99, 235, 0.05);
+    }
+
+    &.active {
+      background: rgba(37, 99, 235, 0.08);
+
+      .LeafIcon { color: $accent; }
+      .LeafName { color: $text-primary; }
+    }
+
+    &.disabled,
+    &:disabled {
+      cursor: default;
+      opacity: 0.55;
+    }
+
+    &.empty {
+      cursor: default;
+    }
+
+    &.csv .LeafIcon { color: #16a34a; }
+
+    .LeafIcon {
+      grid-column: 1;
+      justify-self: center;
+      width: 16px;
+      height: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: $text-muted;
+      background: $surface-0;
+      border-radius: $radius-circle;
+      // Sit on top of the rail/connector line.
+      position: relative;
+      z-index: 1;
+    }
+
+    .LeafName {
+      grid-column: 2;
+      font-family: $font-mono;
+      font-size: 22px;
+      color: $text-secondary;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding: 0 8px 0 4px;
+
+      &.muted { color: $text-muted; }
+    }
+
+    .LeafTag {
+      grid-column: 3;
+      font-size: 19px;
+      font-family: $font-ui;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: $text-muted;
+      padding: 2px 8px;
+      border-radius: $radius-sm;
+      background: rgba(0, 0, 0, 0.04);
+      white-space: nowrap;
+
+      // Source/cache that the browser CAN play.
+      &.compatible {
+        color: #15803d;
+        background: rgba(22, 163, 74, 0.10);
+        box-shadow: inset 0 0 0 1px rgba(22, 163, 74, 0.18);
+      }
+
+      // Original that the browser CANNOT play — red-amber so the warning is felt.
+      &.incompatible {
+        color: #b45309;
+        background: rgba(217, 119, 6, 0.10);
+        box-shadow: inset 0 0 0 1px rgba(217, 119, 6, 0.22);
+      }
+    }
+  }
+
+  // ─── CSV rows (per-video annotations + loose annotations section) ───
+  // CsvRow is a sibling of Leaf in DOM but uses its own composition so the
+  // pencil/eye/trash actions live to the right of the LeafTag without
+  // crowding it. The visual rhythm matches Leaf — same icon column, same
+  // tree connector, same hover tint — so the two read as one family.
+  .CsvRow {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    border-radius: $radius-md;
+    margin: 0 0 1px 0;
+    position: relative;
+    transition: background 120ms ease;
+
+    &::before {
+      content: '';
+      position: absolute;
+      left: 18px;
+      top: 14px;
+      width: 8px;
+      height: 1px;
+      background: $border-subtle;
+      pointer-events: none;
+    }
+
+    &:hover {
+      background: rgba(37, 99, 235, 0.05);
+    }
+
+    &.active {
+      background: rgba(37, 99, 235, 0.08);
+
+      .CsvRowMain .LeafIcon { color: $accent; }
+      .CsvRowMain .LeafName { color: $text-primary; }
+    }
+
+    // Renaming a CSV opens up the row visually — the locked context
+    // (`{base}_` + `.csv`) reads as quiet typed text and the only
+    // chromed element is the variant input. The actions wrap below so
+    // the rename composition has the full row width to breathe in.
+    &.renaming {
+      background: rgba(37, 99, 235, 0.05);
+      box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.20);
+      align-items: flex-start;
+      padding: 4px 0 6px;
+
+      .CsvRowMain {
+        flex: 1 1 100%;
+        min-width: 0;
+        align-items: flex-start;
+        padding-top: 4px;
+      }
+
+      .LeafIcon {
+        // Keep the leaf icon aligned with the first text line of the
+        // (potentially wrapped) prefix.
+        align-self: flex-start;
+        padding-top: 2px;
+      }
+
+      .CsvRowActions {
+        flex: 0 0 auto;
+        margin-left: auto;
+        padding-right: 4px;
+        opacity: 1;
+      }
+    }
+
+    &.deleting {
+      background: rgba(220, 38, 38, 0.055);
+      box-shadow: inset 0 0 0 1px rgba(220, 38, 38, 0.18);
+
+      .CsvRowActions {
+        opacity: 1;
+      }
+    }
+
+    .CsvRowMain {
+      appearance: none;
+      background: none;
+      border: none;
+      text-align: left;
+      cursor: pointer;
+      color: inherit;
+      font: inherit;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px 0;
+      flex: 1 1 auto;
+      min-width: 0;
+
+      &:disabled {
+        cursor: default;
+      }
+    }
+
+    .LeafIcon {
+      flex-shrink: 0;
+      width: 24px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #16a34a;
+      position: relative;
+      z-index: 1;
+
+      svg {
+        background: $surface-0;
+        border-radius: $radius-circle;
+      }
+    }
+
+    .LeafName {
+      flex: 1 1 auto;
+      min-width: 0;
+      font-family: $font-mono;
+      font-size: 20px;
+      color: $text-secondary;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding: 0 4px;
+    }
+
+    // Inline rename — composed of a locked prefix label (`{base}_`),
+    // an editable variant input, and a locked `.csv` extension label.
+    // Chrome lives ONLY on the input; the locked text reads as quiet
+    // mono context. The user's eye lands on the one bordered surface
+    // and they immediately know that's where to type.
+    .RenameField {
+      display: inline-flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      flex: 1 1 auto;
+      min-width: 0;
+      gap: 0;
+      padding: 2px 6px 0 4px;
+      column-gap: 1px;
+      row-gap: 6px;
+
+      .LockedPrefix,
+      .LockedExt {
+        font-family: $font-mono;
+        font-size: 20px;
+        color: $text-muted;
+        user-select: text;            // copyable for power users
+        line-height: 1.4;
+      }
+
+      // The locked prefix can wrap mid-character if the sidebar is
+      // narrow — mono font keeps the wrap looking tidy and the user
+      // sees the FULL base name (no ellipsis, no truncation).
+      .LockedPrefix {
+        flex: 0 1 auto;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .LockedExt {
+        flex: 0 0 auto;
+        white-space: nowrap;
+        margin-left: 2px;
+      }
+
+      // The input. Only element with chrome — the bordered, tinted
+      // surface signals "type here." Slightly oversized for tactile
+      // clarity, with a focus ring that picks up the editor's accent.
+      .RenameSuffix {
+        flex: 1 1 110px;
+        min-width: 90px;
+        appearance: none;
+        background: $surface-0;
+        border: 1px solid rgba(37, 99, 235, 0.40);
+        border-radius: $radius-sm;
+        color: $text-primary;
+        font-family: $font-mono;
+        font-size: 19px;
+        line-height: 1.3;
+        padding: 4px 8px;
+        margin: 0 2px;
+        box-shadow: 0 1px 2px rgba(37, 99, 235, 0.06);
+        transition: border-color 140ms ease, box-shadow 140ms ease;
+
+        &:focus {
+          outline: none;
+          border-color: $accent;
+          box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+        }
+
+        &::placeholder {
+          color: rgba(0, 0, 0, 0.28);
+          font-style: italic;
+        }
+      }
+
+      &.invalid .RenameSuffix {
+        border-color: #dc2626;
+        box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.14);
+
+        &:focus {
+          box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.22);
+        }
+      }
+    }
+
+    .LeafTag {
+      flex-shrink: 0;
+      font-size: 16px;
+      font-family: $font-ui;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: $text-muted;
+      padding: 1px 7px;
+      border-radius: $radius-sm;
+      background: rgba(0, 0, 0, 0.04);
+      white-space: nowrap;
+      margin-right: 6px;
+    }
+
+    .CsvRowActions {
+      display: inline-flex;
+      align-items: center;
+      gap: 1px;
+      padding-right: 4px;
+      // Reveal on hover/focus/rename to keep the resting row clean.
+      opacity: 0;
+      transition: opacity 100ms ease;
+    }
+
+    &:hover .CsvRowActions,
+    &:focus-within .CsvRowActions,
+    &.renaming .CsvRowActions,
+    &.active .CsvRowActions {
+      opacity: 1;
+    }
+
+    .RowAction {
+      appearance: none;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 6px;
+      border-radius: $radius-sm;
+      color: $text-muted;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 100ms ease, color 100ms ease;
+
+      &:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
+
+      &:hover:not(:disabled) {
+        background: rgba(0, 0, 0, 0.05);
+        color: $text-primary;
+      }
+
+      &.preview:hover:not(:disabled) { color: $accent; }
+      &.rename:hover:not(:disabled)  { color: $accent; }
+      &.delete:hover:not(:disabled)  { color: #dc2626; background: rgba(220, 38, 38, 0.08); }
+      &.delete.confirmDelete {
+        color: #dc2626;
+        background: rgba(220, 38, 38, 0.10);
+      }
+      &.delete.confirmDelete:hover:not(:disabled) {
+        background: rgba(220, 38, 38, 0.16);
+      }
+      &.confirm {
+        color: #16a34a;
+        &:hover:not(:disabled) { background: rgba(22, 163, 74, 0.1); }
+      }
+      &.cancel:hover:not(:disabled) { color: #dc2626; }
+    }
+
+    .RenameError,
+    .DeleteWarning {
+      flex-basis: 100%;
+      padding: 2px 12px 6px 28px;
+      font-family: $font-ui;
+      font-size: 15px;
+      color: #dc2626;
+    }
+
+    .DeleteWarning {
+      color: #991b1b;
+    }
+  }
+
+  // Action row — primary CTA inside the expansion. Solid color split:
+  //   .remux     → teal (fast, lossless container repack)
+  //   .transcode → amber (slower, full re-encode)
+  // The colors are intentionally far apart so a glance distinguishes cost.
+  .ActionRow {
+    appearance: none;
+    border: 1px solid transparent;
+    width: calc(100% - 24px);
+    margin-left: 24px;
+    text-align: left;
+    cursor: pointer;
+
+    display: grid;
+    grid-template-columns: 22px auto 1fr;
+    align-items: center;
+    padding: 8px 12px;
+    margin-top: 8px;
+    border-radius: $radius-md;
+    position: relative;
+    transition: background 160ms ease, border-color 160ms ease, transform 120ms ease, box-shadow 160ms ease;
+
+    // Connector from the tree rail into the row.
+    &::before {
+      content: '';
+      position: absolute;
+      left: -8px;
+      top: 50%;
+      width: 8px;
+      height: 1px;
+      background: $border-subtle;
+    }
+
+    .ActionIcon {
+      grid-column: 1;
+      justify-self: center;
+      width: 22px;
+      height: 22px;
+      border-radius: $radius-circle;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      position: relative;
+      z-index: 1;
+      transition: background 160ms ease, color 160ms ease;
+    }
+
+    .ActionLabel {
+      grid-column: 2;
+      font-family: $font-ui;
+      font-size: 22px;
+      font-weight: 600;
+      padding: 0 10px 0 8px;
+      letter-spacing: 0.005em;
+    }
+
+    .ActionHint {
+      grid-column: 3;
+      justify-self: end;
+      font-size: 20px;
+      font-family: $font-mono;
+      letter-spacing: 0.01em;
+    }
+
+    &:hover { transform: translateY(-1px); }
+    &:active { transform: translateY(0); }
+
+    // Wrap into MP4 — teal, calm. Reads as "fast, safe."
+    &.remux {
+      background: linear-gradient(135deg, rgba(13, 148, 136, 0.16), rgba(20, 184, 166, 0.10));
+      border-color: rgba(13, 148, 136, 0.32);
+
+      .ActionIcon {
+        background: #0d9488;
+        color: #fff;
+        box-shadow: 0 1px 3px rgba(13, 148, 136, 0.35);
+      }
+      .ActionLabel { color: #115e59; }
+      .ActionHint  { color: #0f766e; }
+
+      &:hover {
+        background: linear-gradient(135deg, rgba(13, 148, 136, 0.22), rgba(20, 184, 166, 0.16));
+        border-color: rgba(13, 148, 136, 0.50);
+        box-shadow: 0 2px 8px rgba(13, 148, 136, 0.16);
+      }
+    }
+
+    // Re-encode — amber, weightier. Color codes the cost trade-off.
+    &.transcode {
+      background: linear-gradient(135deg, rgba(217, 119, 6, 0.18), rgba(245, 158, 11, 0.12));
+      border-color: rgba(217, 119, 6, 0.34);
+
+      .ActionIcon {
+        background: #d97706;
+        color: #fff;
+        box-shadow: 0 1px 3px rgba(217, 119, 6, 0.35);
+      }
+      .ActionLabel { color: #92400e; }
+      .ActionHint  { color: #b45309; }
+
+      &:hover {
+        background: linear-gradient(135deg, rgba(217, 119, 6, 0.26), rgba(245, 158, 11, 0.20));
+        border-color: rgba(217, 119, 6, 0.55);
+        box-shadow: 0 2px 8px rgba(217, 119, 6, 0.18);
+      }
+    }
+  }
+
+  // Progress block when ffmpeg is running. Tinted to match its job kind.
+  .ProgressRow {
+    margin: 8px 0 0 24px;
+    padding: 10px 12px 11px;
+    border-radius: $radius-md;
+    background: $surface-1;
+    border: 1px solid $border-subtle;
+    position: relative;
+
+    &::before {
+      content: '';
+      position: absolute;
+      left: -6px;
+      top: 50%;
+      width: 6px;
+      height: 1px;
+      background: $border-subtle;
+    }
+
+    &.remux {
+      background: rgba(13, 148, 136, 0.06);
+      border-color: rgba(13, 148, 136, 0.22);
+      .ProgressPct { color: #0f766e; }
+      .ProgressFill { background: linear-gradient(90deg, #0d9488, #2dd4bf); }
+    }
+    &.transcode {
+      background: rgba(217, 119, 6, 0.06);
+      border-color: rgba(217, 119, 6, 0.22);
+      .ProgressPct { color: #b45309; }
+      .ProgressFill { background: linear-gradient(90deg, #d97706, #f59e0b); }
+    }
+  }
+
+  .ProgressTopline {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .ProgressVerb {
+    font-size: 22px;
+    font-weight: 600;
+    color: $text-primary;
+    letter-spacing: 0.005em;
+  }
+
+  .ProgressPct {
+    font-family: $font-mono;
+    font-size: 22px;
+    font-variant-numeric: tabular-nums;
+    color: $accent;
+    font-weight: 600;
+  }
+
+  .ProgressTrack {
+    width: 100%;
+    height: 5px;
+    border-radius: $radius-pill;
+    background: rgba(0, 0, 0, 0.06);
+    overflow: hidden;
+  }
+
+  .ProgressFill {
+    height: 100%;
+    background: linear-gradient(90deg, $accent, #60a5fa);
+    border-radius: $radius-pill;
+    transition: width 200ms cubic-bezier(0.22, 1, 0.36, 1);
+
+    &.indeterminate {
+      width: 35% !important;
+      animation: filebrowser-progress-indet 1.4s ease-in-out infinite;
+    }
+  }
+
+  .ProgressBottomline {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 8px;
+    gap: 8px;
+  }
+
+  .ProgressTime {
+    font-family: $font-mono;
+    font-size: 20px;
+    font-variant-numeric: tabular-nums;
+    color: $text-muted;
+    letter-spacing: 0.02em;
+  }
+
+  .ProgressCancel {
+    appearance: none;
+    background: none;
+    border: 1px solid $border-default;
+    color: $text-secondary;
+    font-size: 20px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 4px 12px;
+    border-radius: $radius-pill;
+    cursor: pointer;
+    transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+
+    &:hover {
+      border-color: rgba(220, 38, 38, 0.4);
+      color: #b91c1c;
+      background: rgba(220, 38, 38, 0.05);
+    }
+  }
+}
+
+@keyframes filebrowser-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes filebrowser-progress-indet {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(330%); }
 }

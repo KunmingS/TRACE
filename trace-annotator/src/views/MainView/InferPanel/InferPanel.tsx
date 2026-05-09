@@ -20,12 +20,29 @@ interface Detection {
     score: number;
 }
 
+interface PredictionArtifact {
+    predictions?: Record<string, Detection[]>;
+    threshold?: number;
+    annotated_videos?: Record<string, string>;
+}
+
+const DEFAULT_THRESHOLD = 0.3;
+
+function parseThresholdInput(input: HTMLInputElement): number {
+    const value = input.valueAsNumber;
+    if (!Number.isFinite(value)) return DEFAULT_THRESHOLD;
+    return Math.min(1, Math.max(0, value));
+}
+
 const InferPanel: React.FC = () => {
     const [modelPath, setModelPath] = useState('');
     const [inputPath, setInputPath] = useState('');
+    const [annotatedVideo, setAnnotatedVideo] = useState(false);
+    const [threshold, setThreshold] = useState(DEFAULT_THRESHOLD);
     const [models, setModels] = useState<ModelInfo[]>([]);
     const [selectedModel, setSelectedModel] = useState<ModelInfo | null>(null);
     const [predictions, setPredictions] = useState<Record<string, Detection[]> | null>(null);
+    const [annotatedVideos, setAnnotatedVideos] = useState<Record<string, string> | null>(null);
     const [error, setError] = useState('');
 
     const runner = useJobRunner();
@@ -47,9 +64,10 @@ const InferPanel: React.FC = () => {
     // Fetch predictions when job completes
     useEffect(() => {
         if (runner.status === 'completed') {
-            runner.fetchArtifact<{ predictions?: Record<string, Detection[]> }>('predictions.json')
+            runner.fetchArtifact<PredictionArtifact>('predictions.json')
                 .then((data) => {
                     if (data?.predictions) setPredictions(data.predictions);
+                    setAnnotatedVideos(data?.annotated_videos || null);
                 });
         } else if (runner.status === 'failed') {
             setError(runner.error || 'Inference failed.');
@@ -61,20 +79,14 @@ const InferPanel: React.FC = () => {
         if (!inputPath) { setError('Select input video(s).'); return; }
         setError('');
         setPredictions(null);
-
-        const model = selectedModel;
-        const configPath = model?.config_path || 'configs/tridet/tridet_small.py';
-        const checkpoint = `${modelPath}/best.pth`;
-        const classMap = `${modelPath}/classmap.txt`;
-        const expId = Math.floor(Date.now() / 1000) % 100000;
+        setAnnotatedVideos(null);
 
         try {
             await runner.submit('infer', {
-                config_path: configPath,
-                checkpoint,
+                model_dir: modelPath,
                 input: inputPath,
-                class_map: classMap,
-                exp_id: expId,
+                annotated_video: annotatedVideo,
+                threshold,
             });
         } catch (err: any) {
             setError(err.message);
@@ -132,6 +144,37 @@ const InferPanel: React.FC = () => {
                 />
             </div>
 
+            <div className='FormSection'>
+                <label className='FieldLabel'>Prediction Output</label>
+                <div className='OutputControls'>
+                    <label className='ToggleOption'>
+                        <input
+                            type='checkbox'
+                            checked={annotatedVideo}
+                            onChange={(e) => setAnnotatedVideo(e.target.checked)}
+                            disabled={isBusy}
+                        />
+                        <span className='ToggleTrack'><span className='ToggleThumb' /></span>
+                        <span className='ToggleText'>Annotated video</span>
+                    </label>
+                    <div className='ThresholdControl'>
+                        <div className='ThresholdTop'>
+                            <span>Threshold</span>
+                        </div>
+                        <input
+                            type='number'
+                            min='0'
+                            max='1'
+                            step='0.01'
+                            value={threshold}
+                            onChange={(e) => setThreshold(parseThresholdInput(e.currentTarget))}
+                            disabled={isBusy}
+                            aria-label='Prediction threshold'
+                        />
+                    </div>
+                </div>
+            </div>
+
             <button
                 className='ActionBtn primary'
                 onClick={handleRun}
@@ -154,6 +197,22 @@ const InferPanel: React.FC = () => {
                             {Object.values(predictions).reduce((s, d) => s + d.length, 0)} detections
                         </span>
                     </div>
+                    {annotatedVideos && (
+                        <div className='AnnotatedOutputs'>
+                            {Object.entries(annotatedVideos).map(([video, filename]) => (
+                                <div key={video} className='AnnotatedOutput'>
+                                    <span>{video}</span>
+                                    <a
+                                        href={runner.jobId ? `${API_URL}/api/jobs/${runner.jobId}/artifacts/${filename}` : undefined}
+                                        target='_blank'
+                                        rel='noreferrer'
+                                    >
+                                        <code>{filename}</code>
+                                    </a>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                     {Object.entries(predictions).map(([video, dets]) => (
                         <div key={video} className='VideoResult'>
                             <div className='VideoName'>{video}</div>

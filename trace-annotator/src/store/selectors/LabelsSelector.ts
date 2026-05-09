@@ -1,11 +1,19 @@
 import {store} from '../..';
-import {ImageData, LabelName, LabelRect} from '../labels/types';
+import {ImageData, LabelName, LabelRect, Subject} from '../labels/types';
 import {find} from 'lodash';
 import {LabelType} from '../../data/enums/LabelType';
 
 export class LabelsSelector {
     public static getLabelNames(): LabelName[] {
         return store.getState().labels.labels;
+    }
+
+    public static getSubjects(): Subject[] {
+        return store.getState().labels.subjects;
+    }
+
+    public static getActiveSubjectId(): string | null {
+        return store.getState().labels.activeSubjectId;
     }
 
     public static getLabelNameById(id: string): LabelName | undefined {

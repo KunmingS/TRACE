@@ -15,6 +15,7 @@ export type HomeTab = 'annotate' | 'pipeline' | 'tutorial';
 export type GeneralState = {
     windowSize: ISize;
     activePopupType: PopupWindowType;
+    popupPayload: unknown;
     customCursorStyle: CustomCursorStyle;
     preventCustomCursor: boolean;
     imageDragMode: boolean;
@@ -26,6 +27,14 @@ export type GeneralState = {
     jumpToFrameIndex: number | null;
     videoDirectory: string;
     videoFiles: string[];
+    // Filenames known to have a CSV on disk that aren't yet reflected in the
+    // FileBrowser's last `/api/files` snapshot. Auto-save (Editor.tsx) flips
+    // an entry to true the first time a video's labels are persisted, so the
+    // sidebar's "No CSV yet" hint clears without waiting for the user to
+    // click Load Folder again. Cleared when the user deletes the last known
+    // CSV for a video, and on directory change since the keys are scoped to
+    // the current videoDirectory.
+    videoCsvOverrides: Record<string, boolean>;
     homeTab: HomeTab;
 }
 
@@ -47,6 +56,13 @@ interface UpdateActivePopupType {
     type: typeof Action.UPDATE_ACTIVE_POPUP_TYPE;
     payload: {
         activePopupType: PopupWindowType;
+    }
+}
+
+interface UpdatePopupPayload {
+    type: typeof Action.UPDATE_POPUP_PAYLOAD;
+    payload: {
+        popupPayload: unknown;
     }
 }
 
@@ -120,6 +136,20 @@ interface UpdateVideoFiles {
     }
 }
 
+interface MarkVideoHasCsv {
+    type: typeof Action.MARK_VIDEO_HAS_CSV;
+    payload: {
+        filename: string;
+    }
+}
+
+interface ClearVideoHasCsv {
+    type: typeof Action.CLEAR_VIDEO_HAS_CSV;
+    payload: {
+        filename: string;
+    }
+}
+
 interface UpdateHomeTab {
     type: typeof Action.UPDATE_HOME_TAB;
     payload: {
@@ -130,6 +160,7 @@ interface UpdateHomeTab {
 export type GeneralActionTypes = UpdateProjectData
     | UpdateWindowSize
     | UpdateActivePopupType
+    | UpdatePopupPayload
     | UpdateCustomCursorStyle
     | UpdateActiveContext
     | UpdatePreventCustomCursorStatus
@@ -140,4 +171,6 @@ export type GeneralActionTypes = UpdateProjectData
     | JumpToFrame
     | UpdateVideoDirectory
     | UpdateVideoFiles
+    | MarkVideoHasCsv
+    | ClearVideoHasCsv
     | UpdateHomeTab

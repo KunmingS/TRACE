@@ -1,15 +1,18 @@
 import json
 import os
 import numpy as np
-def Compose(pipeline):
-    """Simple callable pipeline: applies transforms sequentially."""
-    from ..builder import PIPELINES
-    transforms = [PIPELINES.build(t) if isinstance(t, dict) else t for t in pipeline]
-    def _run(results):
-        for t in transforms:
+class Compose:
+    # Defined as a top-level class (not a closure) so dataset instances remain
+    # picklable for DataLoader workers under spawn/forkserver start methods
+    # (Python 3.14 default on Linux, always on macOS/Windows).
+    def __init__(self, pipeline):
+        from ..builder import PIPELINES
+        self.transforms = [PIPELINES.build(t) if isinstance(t, dict) else t for t in pipeline]
+
+    def __call__(self, results):
+        for t in self.transforms:
             results = t(results)
         return results
-    return _run
 
 from ..builder import DATASETS, get_class_index
 

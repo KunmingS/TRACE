@@ -43,6 +43,15 @@ class Collect:
             "resize_length",
             "window_size",
             "offset_frames",
+            # PTS-based timestamp ↔ frame mapping (Phase 2 of the refactor in
+            # docs/pts-based-frame-mapping.md). Present whenever the dataset
+            # carries `source_pts_table`; consumed by `convert_to_seconds`
+            # in the post-processing path. Missing on legacy CFR-only
+            # datasets, which fall back to `fps`.
+            "source_pts_table",
+            "source_frame_offset",
+            "clip_frame_count",
+            "cached_video",
         ],
     ):
         self.inputs = inputs

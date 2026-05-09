@@ -21,8 +21,7 @@ def set_seed(seed, disable_deterministic=False):
         torch.use_deterministic_algorithms(True, warn_only=True)
 
 
-def update_workdir(cfg, exp_id, gpu_num):
-    cfg.work_dir = os.path.join(cfg.work_dir, f"gpu{gpu_num}_id{exp_id}/")
+def update_workdir(cfg):
     return cfg
 
 

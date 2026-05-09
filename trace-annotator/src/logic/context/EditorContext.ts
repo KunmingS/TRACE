@@ -38,7 +38,13 @@ export class EditorContext extends BaseContext {
             }
         },
         {
-            keyCombo: PlatformUtil.isMac(window.navigator.userAgent) ? ["Backspace"] : ["Delete"],
+            keyCombo: ["Backspace"],
+            action: (event: KeyboardEvent) => {
+                LabelActions.deleteActiveLabel();
+            }
+        },
+        {
+            keyCombo: ["Delete"],
             action: (event: KeyboardEvent) => {
                 LabelActions.deleteActiveLabel();
             }

@@ -11,7 +11,6 @@ import { updateLabelNames } from '../../../../store/labels/actionCreators';
 import { AppState } from '../../../../store';
 import { connect } from 'react-redux';
 import { LabelActions } from '../../../../logic/actions/LabelActions';
-import { findLast } from 'lodash';
 import { TimeUtil } from '../../../../utils/TimeUtil';
 
 interface IProps {
@@ -42,28 +41,50 @@ const RectLabelsList: React.FC<IProps> = ({
     const rowHeight = 32;
     const listRef = useRef<HTMLDivElement>(null);
 
-    const sortedLabelRects = useMemo(() =>
-        [...imageData.labelRects].sort((a, b) =>
-            TimeUtil.parseTimestamp(a.timestamp!) - TimeUtil.parseTimestamp(b.timestamp!)
-        ),
-        [imageData.labelRects]
+    // Pre-parse timestamps once per labelRects change so the per-tick scroll
+    // effect below doesn't re-parse every timestamp string at 10Hz.
+    const sortedEntries = useMemo(() => {
+        return imageData.labelRects
+            .map(rect => ({
+                rect,
+                startTime: TimeUtil.parseTimestamp(rect.timestamp!),
+                endTime: rect.endTimestamp
+                    ? TimeUtil.parseTimestamp(rect.endTimestamp)
+                    : Infinity,
+            }))
+            .sort((a, b) => a.startTime - b.startTime);
+    }, [imageData.labelRects]);
+
+    const sortedLabelRects = useMemo(
+        () => sortedEntries.map(e => e.rect),
+        [sortedEntries]
     );
+
+    // O(1) label-name lookup — replaces a per-row findLast scan (was O(n²) overall).
+    const labelNameById = useMemo(() => {
+        const map = new Map<string, LabelName>();
+        for (const l of labelNames) map.set(l.id, l);
+        return map;
+    }, [labelNames]);
 
     useEffect(() => {
         if (!listRef.current) return;
+        if (sortedEntries.length === 0) return;
         const currentTime = imageData.timestamp;
-        let idx = sortedLabelRects.findIndex(r => {
-            const start = TimeUtil.parseTimestamp(r.timestamp!);
-            const end = r.endTimestamp ? TimeUtil.parseTimestamp(r.endTimestamp) : Infinity;
-            return start <= currentTime && currentTime <= end;
-        });
+        // Prefer a clip that contains t; else fall back to the most recent past clip.
+        let idx = sortedEntries.findIndex(
+            e => e.startTime <= currentTime && currentTime <= e.endTime
+        );
         if (idx < 0) {
-            idx = sortedLabelRects.filter(r => TimeUtil.parseTimestamp(r.timestamp!) <= currentTime).length - 1;
+            // Scan backward for the last entry with startTime <= currentTime.
+            for (let i = sortedEntries.length - 1; i >= 0; i--) {
+                if (sortedEntries[i].startTime <= currentTime) { idx = i; break; }
+            }
         }
         if (idx >= 0) {
             listRef.current.scrollTop = idx * rowHeight;
         }
-    }, [sortedLabelRects, imageData.timestamp, rowHeight]);
+    }, [sortedEntries, imageData.timestamp, rowHeight]);
 
     const deleteRect = (id: string) => {
         LabelActions.deleteRectLabelById(imageData.id, id);
@@ -102,7 +123,7 @@ const RectLabelsList: React.FC<IProps> = ({
     return (
         <div className="ClipsTable" ref={listRef} style={{ width: size.width, maxHeight: size.height }}>
             {sortedLabelRects.map(rect => {
-                const labelName = rect.labelId ? findLast(labelNames, { id: rect.labelId }) : null;
+                const labelName = rect.labelId ? labelNameById.get(rect.labelId) : null;
                 const isActive = rect.id === activeLabelId;
                 const isOngoing = !rect.endTimestamp;
 

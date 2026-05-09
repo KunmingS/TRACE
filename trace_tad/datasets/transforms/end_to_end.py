@@ -20,10 +20,22 @@ class PrepareVideoInfo:
 
     def __call__(self, results):
         results["modality"] = self.modality
-        results["filename"] = os.path.join(
-            results["data_path"],
-            self.prefix + results["video_name"] + "." + self.format,
-        )
+        # Cached video clips are preferred for training throughput. Source
+        # metadata may still be present for time mapping, but cached clips
+        # decode from frame 0 rather than from the original source offset.
+        if results.get("cached_video"):
+            results["filename"] = results["cached_video"]
+            results["decode_frame_offset"] = 0
+        # Virtual clips: read frames directly from the source video, not from a
+        # pre-extracted clip file. `source_video` is an absolute path written by
+        # data_prep.py.
+        elif results.get("source_video"):
+            results["filename"] = results["source_video"]
+        else:
+            results["filename"] = os.path.join(
+                results["data_path"],
+                self.prefix + results["video_name"] + "." + self.format,
+            )
         return results
 
 

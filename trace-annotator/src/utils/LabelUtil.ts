@@ -1,4 +1,4 @@
-import {Annotation, LabelName, LabelRect} from '../store/labels/types';
+import {Annotation, LabelName, LabelRect, Subject} from '../store/labels/types';
 import { v4 as uuidv4 } from 'uuid';
 import {find} from 'lodash';
 import {LabelStatus} from '../data/enums/LabelStatus';
@@ -6,15 +6,30 @@ import { sample } from 'lodash';
 import {Settings} from '../settings/Settings';
 
 export class LabelUtil {
-    public static createLabelName(name: string): LabelName {
+    public static createLabelName(name: string, shortcut?: string): LabelName {
         return {
             id: uuidv4(),
             name,
-            color: sample(Settings.LABEL_COLORS_PALETTE)
+            color: sample(Settings.LABEL_COLORS_PALETTE),
+            shortcut
         }
     }
 
-    public static createLabelRect(labelId: string, startFrame: number, endFrame?: number, behavior?: string, imageData?: any): LabelRect {
+    public static createSubject(name: string): Subject {
+        return {
+            id: uuidv4(),
+            name
+        }
+    }
+
+    public static createLabelRect(
+        labelId: string,
+        startFrame: number,
+        endFrame?: number,
+        behavior?: string,
+        imageData?: any,
+        animalId?: string
+    ): LabelRect {
         const fr = imageData?.frameRate ?? 30;
         const ts = (startFrame / fr).toFixed(3) + 's';
         const endTs = typeof endFrame === 'number'
@@ -29,7 +44,8 @@ export class LabelUtil {
             suggestedLabel: null,
             timestamp: ts,
             endTimestamp: endTs,
-            behavior
+            behavior,
+            animalId
         };
     }
 

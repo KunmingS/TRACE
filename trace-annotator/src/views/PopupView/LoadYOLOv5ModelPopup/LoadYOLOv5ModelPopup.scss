@@ -60,7 +60,7 @@
     .message {
       align-self: stretch;
       color: white;
-      font-size: 19px;
+      font-size: 22px;
       padding: 40px 40px 0 40px;
     }
 
@@ -80,7 +80,7 @@
 
         cursor: pointer;
         user-select: none;
-        font-size: 19px;
+        font-size: 22px;
         padding: 5px 0;
 
         > img {
@@ -129,7 +129,7 @@
         margin-bottom: 0;
 
         &.extraBold {
-          font-size: 22px;
+          font-size: 25px;
           font-weight: 600;
         }
       }

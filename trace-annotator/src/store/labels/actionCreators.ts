@@ -1,4 +1,4 @@
-import {LabelsActionTypes, ImageData, LabelName} from './types';
+import {LabelsActionTypes, ImageData, LabelName, Subject} from './types';
 import {Action} from '../Actions';
 import {LabelType} from '../../data/enums/LabelType';
 
@@ -89,6 +89,35 @@ export function updateFirstLabelCreatedFlag(firstLabelCreatedFlag: boolean): Lab
         type: Action.UPDATE_FIRST_LABEL_CREATED_FLAG,
         payload: {
             firstLabelCreatedFlag
+        }
+    }
+}
+
+export function updateSubjects(subjects: Subject[]): LabelsActionTypes {
+    return {
+        type: Action.UPDATE_SUBJECTS,
+        payload: {
+            subjects
+        }
+    }
+}
+
+export function updateActiveSubjectId(activeSubjectId: string | null): LabelsActionTypes {
+    return {
+        type: Action.UPDATE_ACTIVE_SUBJECT_ID,
+        payload: {
+            activeSubjectId
+        }
+    }
+}
+
+// Focus mode: when set, the editor narrows the timeline + behavior bar
+// to the picked behavior. Pass `null` to exit focus.
+export function updateFocusedLabelNameId(focusedLabelNameId: string | null): LabelsActionTypes {
+    return {
+        type: Action.UPDATE_FOCUSED_LABEL_NAME_ID,
+        payload: {
+            focusedLabelNameId
         }
     }
 }

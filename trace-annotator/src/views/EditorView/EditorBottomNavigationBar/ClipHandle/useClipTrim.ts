@@ -3,6 +3,7 @@ import {store} from '../../../..';
 import {updateImageDataById} from '../../../../store/labels/actionCreators';
 import {ImageData, LabelRect} from '../../../../store/labels/types';
 import {TimeUtil} from '../../../../utils/TimeUtil';
+import {getPtsIfReady, snapTime} from '../../../../logic/video/PTSCache';
 
 export type TrimSide = 'left' | 'right' | null;
 
@@ -20,8 +21,6 @@ interface UseClipTrimResult {
     isDragging: boolean;
     handlePointerDown: (side: 'left' | 'right', e: React.PointerEvent) => void;
 }
-
-const MIN_CLIP_DURATION = 0.1;
 
 export function useClipTrim({
     clipId,
@@ -46,18 +45,43 @@ export function useClipTrim({
         const imageData: ImageData = imagesData[activeImageIndex];
         if (!imageData) return;
 
+        // PTSCache is keyed on (dir, filename); both stamped onto imageData
+        // by FileBrowser.playFile. If the PTS fetch hasn't resolved yet
+        // (rare — only during the first 2–5 s of a cold-cache video),
+        // ``getPtsIfReady`` returns null and ``snapTime`` falls back to
+        // nominal-fps math, which is what the trim handle did pre-PTS.
+        const dir = (imageData as any).videoPath as string | undefined;
+        const filename = imageData.fileData?.name;
+        const pts = (dir && filename) ? getPtsIfReady(filename, dir) : null;
+        const fps = imageData.frameRate || 30;
+
+        const start = snapTime(newStart, pts, fps);
+        let end = snapTime(newEnd, pts, fps);
+        // Force the snapped interval to span ≥ 1 frame. Without this the
+        // handle could collapse onto its sibling — same frame on both
+        // sides — which the timeline renders but the dataset effectively
+        // drops.
+        if (end.frame <= start.frame) {
+            const bumped = start.frame + 1;
+            if (pts && bumped < pts.length) {
+                end = { time: pts[bumped], frame: bumped };
+            } else {
+                end = { time: bumped / fps, frame: bumped };
+            }
+        }
+
         const updatedRects: LabelRect[] = imageData.labelRects.map(rect => {
             if (rect.id !== clipId) return rect;
-            const {formattedTime: startTime, frame: startFrame} =
-                TimeUtil.formatTimeWithFrame(newStart, imageData.frameRate || 30);
-            const {formattedTime: endTime, frame: endFrame} =
-                TimeUtil.formatTimeWithFrame(newEnd, imageData.frameRate || 30);
+            const {formattedTime: startTime} =
+                TimeUtil.formatTimeWithFrame(start.time, fps);
+            const {formattedTime: endTime} =
+                TimeUtil.formatTimeWithFrame(end.time, fps);
             return {
                 ...rect,
                 timestamp: startTime,
-                frame: startFrame,
+                frame: start.frame,
                 endTimestamp: endTime,
-                endFrame: endFrame,
+                endFrame: end.frame,
             };
         });
 
@@ -93,18 +117,24 @@ export function useClipTrim({
                 const deltaX = ev.clientX - drag.startX;
                 const deltaTime = deltaX / scaleWidth;
 
+                // One-frame floor: prevents start==end (zero-width clip) while
+                // still letting users author the tightest possible annotation.
+                const {imagesData, activeImageIndex} = store.getState().labels;
+                const fps = imagesData[activeImageIndex]?.frameRate || 30;
+                const minDuration = 1 / fps;
+
                 let newStart = drag.originalStart;
                 let newEnd = drag.originalEnd;
 
                 if (drag.side === 'left') {
                     newStart = Math.max(0, drag.originalStart + deltaTime);
-                    if (newEnd - newStart < MIN_CLIP_DURATION) {
-                        newStart = newEnd - MIN_CLIP_DURATION;
+                    if (newEnd - newStart < minDuration) {
+                        newStart = newEnd - minDuration;
                     }
                 } else {
                     newEnd = Math.min(duration, drag.originalEnd + deltaTime);
-                    if (newEnd - newStart < MIN_CLIP_DURATION) {
-                        newEnd = newStart + MIN_CLIP_DURATION;
+                    if (newEnd - newStart < minDuration) {
+                        newEnd = newStart + minDuration;
                     }
                 }
 

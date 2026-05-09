@@ -18,7 +18,7 @@ label {
   position: absolute;
   top: calc($width/15);
   color: $textSecondary;
-  font: 400 calc($width/15);
+  font: 400 calc($width/15 + 3px);
   cursor: text;
   transition: .25s ease;
 }
@@ -31,12 +31,12 @@ input {
   border-radius: 0; // For iOS
   color: $textPrimary;
   background: $main-color;
-  font-size: calc($width/20);
+  font-size: calc($width/20 + 3px);
   transition: .3s ease;
   &:valid {
     ~label {
       top: 0;
-      font: 700 calc($width/25);
+      font: 700 calc($width/25 + 3px);
       color: $textSecondary;
     }
   }
@@ -44,7 +44,7 @@ input {
     outline: none;
     ~label {
       top: 0;
-      font: 700 calc($width/25);
+      font: 700 calc($width/25 + 3px);
       color: $secondaryColor; // fallback if new css variables are not supported by browser
       color: var(--leading-color);
     }

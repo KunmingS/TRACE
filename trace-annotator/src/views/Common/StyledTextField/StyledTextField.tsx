@@ -5,16 +5,16 @@ import { Settings } from '../../../settings/Settings';
 
 export const StyledTextField = styled(TextField)({
     '& .MuiInputBase-root': {
-        color: 'white',
+        color: 'rgba(0, 0, 0, 0.88)',
     },
     '& label': {
-        color: 'white',
+        color: 'rgba(0, 0, 0, 0.55)',
     },
     '& .MuiInput-underline:before': {
-        borderBottomColor: 'white',
+        borderBottomColor: 'rgba(0, 0, 0, 0.16)',
     },
     '& .MuiInput-underline:hover:before': {
-        borderBottomColor: 'white',
+        borderBottomColor: 'rgba(0, 0, 0, 0.32)',
     },
     '& label.Mui-focused': {
         color: Settings.SECONDARY_COLOR,

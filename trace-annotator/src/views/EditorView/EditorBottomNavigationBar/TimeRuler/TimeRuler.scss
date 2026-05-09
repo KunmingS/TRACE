@@ -14,14 +14,14 @@
     &--major {
       .TimeRuler__tickLine {
         height: 12px;
-        background: rgba(255, 255, 255, 0.24);
+        background: rgba(0, 0, 0, 0.28);
       }
     }
 
     &--minor {
       .TimeRuler__tickLine {
         height: 6px;
-        background: rgba(255, 255, 255, 0.10);
+        background: rgba(0, 0, 0, 0.14);
       }
     }
   }
@@ -35,7 +35,7 @@
     top: 14px;
     left: 4px;
     font-family: $font-mono;
-    font-size: 15px;
+    font-size: 18px;
     line-height: 1;
     color: $text-secondary;
     white-space: nowrap;

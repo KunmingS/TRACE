@@ -10,6 +10,7 @@ import Editor from '../Editor/Editor';
 import EditorBottomNavigationBar from '../EditorBottomNavigationBar/EditorBottomNavigationBar';
 import BehaviorShortcutsBar from '../BehaviorShortcutsBar/BehaviorShortcutsBar';
 import FileBrowser from '../FileBrowser/FileBrowser';
+import {createPlayheadClock, PlayheadClock} from '../EditorBottomNavigationBar/playheadClock';
 
 interface IProps {
     windowSize: ISize;
@@ -53,6 +54,7 @@ const EditorContainer: React.FC<IProps> = (
     const editorRef = useRef<any>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const mainContentRef = useRef<HTMLDivElement>(null);
+    const playheadClockRef = useRef<PlayheadClock>(createPlayheadClock());
     const resizeStateRef = useRef<{
         startX: number;
         startWidth: number;
@@ -123,7 +125,7 @@ const EditorContainer: React.FC<IProps> = (
 
     useEffect(() => {
         const element = mainContentRef.current;
-        if (!element) return;
+        if (!element) return undefined;
 
         const observer = new ResizeObserver((entries) => {
             const entry = entries[0];
@@ -140,7 +142,7 @@ const EditorContainer: React.FC<IProps> = (
     }, []);
 
     useEffect(() => {
-        if (!isResizingFileBrowser) return;
+        if (!isResizingFileBrowser) return undefined;
 
         const handlePointerMove = (event: PointerEvent) => {
             const resizeState = resizeStateRef.current;
@@ -184,21 +186,15 @@ const EditorContainer: React.FC<IProps> = (
         setVideoState(state);
     };
 
-    const handleTogglePlay = () => {
-        if (editorRef.current && editorRef.current.togglePlay) {
-            editorRef.current.togglePlay();
-        }
-    };
-
-    const handleStepFrame = (direction: 'forward' | 'backward') => {
-        if (editorRef.current && editorRef.current.stepFrame) {
-            editorRef.current.stepFrame(direction);
-        }
-    };
-
     const handleStepSeconds = (direction: 'forward' | 'backward') => {
         if (editorRef.current && editorRef.current.stepSeconds) {
             editorRef.current.stepSeconds(direction);
+        }
+    };
+
+    const handleJumpBoundary = (direction: 'forward' | 'backward') => {
+        if (editorRef.current && editorRef.current.jumpBoundary) {
+            editorRef.current.jumpBoundary(direction);
         }
     };
 
@@ -249,12 +245,10 @@ const EditorContainer: React.FC<IProps> = (
                                 imageData={imagesData[activeImageIndex]}
                                 key='editor'
                                 onVideoStateChange={handleVideoStateChange}
+                                playheadClock={playheadClockRef.current}
                             />
                         </div>
-                        <BehaviorShortcutsBar
-                            currentTime={videoState.currentTime}
-                            frameRate={videoState.frameRate}
-                        />
+                        <BehaviorShortcutsBar playheadClock={playheadClockRef.current} />
                         <EditorBottomNavigationBar
                             size={calculateEditorSize()}
                             key='editor-bottom-navigation-bar'
@@ -262,10 +256,10 @@ const EditorContainer: React.FC<IProps> = (
                             duration={videoState.duration}
                             isPlaying={videoState.isPlaying}
                             frameRate={videoState.frameRate}
-                            onTogglePlay={handleTogglePlay}
-                            onStepFrame={handleStepFrame}
                             onStepSeconds={handleStepSeconds}
+                            onJumpBoundary={handleJumpBoundary}
                             onJumpToTime={(time) => handleJumpToTime(time.toString())}
+                            playheadClock={playheadClockRef.current}
                         />
                     </>
                 ) : (

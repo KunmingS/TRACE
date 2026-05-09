@@ -21,6 +21,7 @@ const StatefulPicker = (props: Partial<React.ComponentProps<typeof PathPicker>>)
             extensions={props.extensions}
             disabled={props.disabled}
             storageKey={props.storageKey}
+            previewExtensions={props.previewExtensions}
         />
     );
 };
@@ -170,11 +171,22 @@ describe('PathPicker', () => {
             fireEvent.change(input, { target: { value: '/home/user/Do' } });
         });
 
+        // Once the filter is active, matching prefixes are wrapped in
+        // <span class="MatchHighlight">Do</span>, which splits 'Documents' across
+        // child nodes — `getByText` won't see it as one string. Query the
+        // `.EntryName` containers by their full `textContent` instead.
+        const entryByName = (name: string) =>
+            screen.queryByText((_, el) =>
+                el?.tagName === 'SPAN'
+                && el.classList.contains('EntryName')
+                && el.textContent === name
+            );
+
         // Should filter to entries starting with "Do"
         await waitFor(() => {
-            expect(screen.getByText('Documents')).toBeInTheDocument();
-            expect(screen.getByText('Downloads')).toBeInTheDocument();
-            expect(screen.queryByText('Desktop')).not.toBeInTheDocument();
+            expect(entryByName('Documents')).toBeInTheDocument();
+            expect(entryByName('Downloads')).toBeInTheDocument();
+            expect(entryByName('Desktop')).not.toBeInTheDocument();
         });
     });
 
@@ -241,5 +253,47 @@ describe('PathPicker', () => {
         );
         expect(lsCall).toBeTruthy();
         expect(lsCall[0]).toContain('extensions=');
+    });
+
+    test('groups preview files into related recording sets', async () => {
+        const fetchMock = global.fetch as jest.Mock;
+        fetchMock
+            .mockImplementationOnce(() => jsonResponse({ home: '/home/user' }))
+            .mockImplementationOnce(() => jsonResponse({
+                entries: [
+                    { name: 'snap', type: 'dir' },
+                    { name: 'movie.mkv', type: 'file' },
+                    { name: 'movie.mkv.remux.mp4', type: 'file' },
+                    { name: 'movie.csv', type: 'file' },
+                    { name: 'movie_raterA.csv', type: 'file' },
+                    { name: 'movie10.csv', type: 'file' },
+                ],
+                resolved: '/data',
+            }));
+
+        render(
+            <StatefulPicker
+                value='/data/'
+                placeholder='/path'
+                previewExtensions='.mp4,.avi,.mov,.mkv,.webm,.csv'
+            />
+        );
+
+        const input = screen.getByPlaceholderText('/path');
+        await act(async () => {
+            fireEvent.focus(input);
+            await Promise.resolve();
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('Related Sets')).toBeInTheDocument();
+            expect(screen.getByText('movie.mkv')).toBeInTheDocument();
+            expect(screen.getByText('movie.mkv.remux.mp4')).toBeInTheDocument();
+            expect(screen.getByText('movie.csv')).toBeInTheDocument();
+            expect(screen.getByText('movie_raterA.csv')).toBeInTheDocument();
+        });
+
+        expect(screen.getByText('2 csv')).toBeInTheDocument();
+        expect(screen.getByText('movie10.csv')).toBeInTheDocument();
     });
 });

@@ -61,6 +61,7 @@ export class Settings {
         'image_name',
         'start_frame',
         'end_frame',
+        'animal',
         'behavior',
     ].join(Settings.CSV_SEPARATOR);
 }

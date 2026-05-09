@@ -6,6 +6,7 @@ export interface TimelineClip {
     color: string;
     labelName: string;
     isOngoing: boolean;
+    animalId?: string;
 }
 
 export interface TimelineTrack {

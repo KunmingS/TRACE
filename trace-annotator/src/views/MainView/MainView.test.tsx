@@ -27,7 +27,7 @@ jest.mock('./ImagesDropZone/ImagesDropZone', () => ({
 
 jest.mock('./PipelineBuilder/PipelineBuilder', () => ({
     __esModule: true,
-    default: () => <div>Pipeline Panel</div>,
+    default: () => <div>Run Model Panel</div>,
 }));
 
 jest.mock('./TutorialPanel/TutorialPanel', () => ({
@@ -54,78 +54,60 @@ jest.mock('./PipelineBuilder/usePipelineState', () => ({
     }),
 }));
 
+// Workspace tab buttons are rendered with `role="tab"` (inside a `role="tablist"`)
+// for accessibility, so we look them up by `aria-label` rather than the
+// implicit `button` role — the explicit role attribute wins for a11y queries.
+const tabByName = (name: 'Annotate' | 'Run Model' | 'Tutorial') =>
+    screen.getByRole('tab', { name: `${name} tab` });
+
 describe('MainView', () => {
     test('shows Annotate panel by default', () => {
         render(<MainView />);
         expect(screen.getByText('Annotate Panel')).toBeInTheDocument();
     });
 
-    test('switches to Pipeline panel when Pipeline mode is clicked', () => {
+    test('switches to Run Model panel when Run Model mode is clicked', () => {
         render(<MainView />);
-        const pipelineBtn = screen
-            .getAllByRole('button')
-            .find((btn) => btn.textContent?.includes('Pipeline')) as HTMLButtonElement;
-
-        fireEvent.click(pipelineBtn);
-        expect(screen.getByText('Pipeline Panel')).toBeInTheDocument();
+        fireEvent.click(tabByName('Run Model'));
+        expect(screen.getByText('Run Model Panel')).toBeInTheDocument();
     });
 
     test('switches back to Annotate when Annotate mode is clicked', () => {
         render(<MainView />);
 
-        // Go to pipeline
-        const pipelineBtn = screen
-            .getAllByRole('button')
-            .find((btn) => btn.textContent?.includes('Pipeline')) as HTMLButtonElement;
-        fireEvent.click(pipelineBtn);
-        expect(screen.getByText('Pipeline Panel')).toBeInTheDocument();
+        fireEvent.click(tabByName('Run Model'));
+        expect(screen.getByText('Run Model Panel')).toBeInTheDocument();
 
-        // Go back to annotate
-        const annotateBtn = screen
-            .getAllByRole('button')
-            .find((btn) => btn.textContent?.includes('Annotate')) as HTMLButtonElement;
-        fireEvent.click(annotateBtn);
+        fireEvent.click(tabByName('Annotate'));
         expect(screen.getByText('Annotate Panel')).toBeInTheDocument();
     });
 
-    test('shows step toggles when in pipeline mode', () => {
+    test('keeps run step controls inside the Run Model panel', () => {
         render(<MainView />);
-        const pipelineBtn = screen
-            .getAllByRole('button')
-            .find((btn) => btn.textContent?.includes('Pipeline')) as HTMLButtonElement;
-        fireEvent.click(pipelineBtn);
+        fireEvent.click(tabByName('Run Model'));
 
-        expect(screen.getByText('Train')).toBeInTheDocument();
-        expect(screen.getByText('Test')).toBeInTheDocument();
-        expect(screen.getByText('Inference')).toBeInTheDocument();
+        expect(screen.queryByLabelText('Enable training step')).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('Enable test step')).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('Enable prediction step')).not.toBeInTheDocument();
     });
 
     test('switches to Tutorial panel when Tutorial tab is clicked', () => {
         render(<MainView />);
-        const tutorialBtn = screen
-            .getAllByRole('button')
-            .find((btn) => btn.textContent?.includes('Tutorial')) as HTMLButtonElement;
-        fireEvent.click(tutorialBtn);
+        fireEvent.click(tabByName('Tutorial'));
         expect(screen.getByText('Tutorial Panel')).toBeInTheDocument();
     });
 
     test('does not show step toggles in tutorial mode', () => {
         render(<MainView />);
-        const tutorialBtn = screen
-            .getAllByRole('button')
-            .find((btn) => btn.textContent?.includes('Tutorial')) as HTMLButtonElement;
-        fireEvent.click(tutorialBtn);
+        fireEvent.click(tabByName('Tutorial'));
 
         expect(screen.queryByText('Train')).not.toBeInTheDocument();
         expect(screen.queryByText('Test')).not.toBeInTheDocument();
-        expect(screen.queryByText('Inference')).not.toBeInTheDocument();
+        expect(screen.queryByText('Predict')).not.toBeInTheDocument();
     });
 
     test('renders three workspace tabs', () => {
         render(<MainView />);
-        const tabs = screen.getAllByRole('button').filter((btn) =>
-            ['Annotate', 'Pipeline', 'Tutorial'].some((t) => btn.textContent?.includes(t))
-        );
-        expect(tabs).toHaveLength(3);
+        expect(screen.getAllByRole('tab')).toHaveLength(3);
     });
 });

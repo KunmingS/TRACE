@@ -2,10 +2,13 @@
   position: absolute;
   top: 0;
   bottom: 0;
+  left: 0;
   z-index: 20;
   pointer-events: none;
-  // Transform so the line is centered on the pixel position
-  transform: translateX(-50%);
+  will-change: transform;
+  // Position is set imperatively via `transform: translate3d(...) translateX(-50%)`
+  // from Playhead.tsx (rAF loop reading the shared PlayheadClock). The -50%
+  // centers the line on the pixel position.
 
   &__handle {
     position: absolute;
@@ -37,7 +40,6 @@
 
   &__triangle {
     display: block;
-    filter: drop-shadow(0 1px 3px rgba(59, 158, 255, 0.5));
   }
 
   &__line {

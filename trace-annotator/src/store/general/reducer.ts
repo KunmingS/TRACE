@@ -6,6 +6,7 @@ import {ViewPointSettings} from '../../settings/ViewPointSettings';
 const initialState: GeneralState = {
     windowSize: null,
     activePopupType: null,
+    popupPayload: null,
     customCursorStyle: CustomCursorStyle.DEFAULT,
     activeContext: null,
     preventCustomCursor: false,
@@ -20,6 +21,7 @@ const initialState: GeneralState = {
     jumpToFrameIndex: null,
     videoDirectory: '',
     videoFiles: [],
+    videoCsvOverrides: {},
     homeTab: 'annotate'
 };
 
@@ -35,9 +37,19 @@ export function generalReducer(
             }
         }
         case Action.UPDATE_ACTIVE_POPUP_TYPE: {
+            // Closing a popup also clears any payload it was carrying so a
+            // future popup doesn't see stale state.
+            const next = action.payload.activePopupType;
             return {
                 ...state,
-                activePopupType: action.payload.activePopupType
+                activePopupType: next,
+                popupPayload: next ? state.popupPayload : null
+            }
+        }
+        case Action.UPDATE_POPUP_PAYLOAD: {
+            return {
+                ...state,
+                popupPayload: action.payload.popupPayload
             }
         }
         case Action.UPDATE_CUSTOM_CURSOR_STYLE: {
@@ -95,15 +107,44 @@ export function generalReducer(
             };
         }
         case Action.UPDATE_VIDEO_DIRECTORY: {
+            const next = action.payload.videoDirectory;
+            // Filename-keyed overrides only make sense for the current
+            // directory, so a directory change invalidates them. Keep them
+            // when the dir hasn't actually changed (e.g. a same-dir reload).
+            const overrides = next === state.videoDirectory
+                ? state.videoCsvOverrides
+                : {};
             return {
                 ...state,
-                videoDirectory: action.payload.videoDirectory
+                videoDirectory: next,
+                videoCsvOverrides: overrides
             };
         }
         case Action.UPDATE_VIDEO_FILES: {
             return {
                 ...state,
                 videoFiles: action.payload.videoFiles
+            };
+        }
+        case Action.MARK_VIDEO_HAS_CSV: {
+            const { filename } = action.payload;
+            if (state.videoCsvOverrides[filename]) return state;
+            return {
+                ...state,
+                videoCsvOverrides: {
+                    ...state.videoCsvOverrides,
+                    [filename]: true
+                }
+            };
+        }
+        case Action.CLEAR_VIDEO_HAS_CSV: {
+            const { filename } = action.payload;
+            if (!state.videoCsvOverrides[filename]) return state;
+            const videoCsvOverrides = { ...state.videoCsvOverrides };
+            delete videoCsvOverrides[filename];
+            return {
+                ...state,
+                videoCsvOverrides
             };
         }
         case Action.UPDATE_HOME_TAB: {

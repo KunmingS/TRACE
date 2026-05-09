@@ -75,10 +75,18 @@ def _set_nested(cfg_dict, key_path, value):
     keys = key_path.split(".")
     d = cfg_dict
     for k in keys[:-1]:
-        if k not in d:
-            d[k] = {}
-        d = d[k]
-    d[keys[-1]] = value
+        if isinstance(d, list):
+            idx = int(k)
+            d = d[idx]
+        else:
+            if k not in d:
+                d[k] = {}
+            d = d[k]
+    last = keys[-1]
+    if isinstance(d, list):
+        d[int(last)] = value
+    else:
+        d[last] = value
 
 
 class ConfigDict(dict):

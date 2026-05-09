@@ -1,14 +1,14 @@
-import {useCallback, useRef, useState} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 
 type DragMode = 'none' | 'pan' | 'resize-left' | 'resize-right';
 
 interface UseMiniMapInteractionOptions {
-    duration: number;
     scrollLeft: number;
     containerWidth: number;
     scaleWidth: number;
-    startLeft: number;
-    miniMapWidth: number;
+    totalContentWidth: number;
+    windowLeft: number;
+    scale: number;
     onScrollChange: (scrollLeft: number) => void;
     onZoomChange?: (zoom: number) => void;
 }
@@ -22,12 +22,12 @@ interface UseMiniMapInteractionResult {
 }
 
 export function useMiniMapInteraction({
-    duration,
     scrollLeft,
     containerWidth,
     scaleWidth,
-    startLeft,
-    miniMapWidth,
+    totalContentWidth,
+    windowLeft,
+    scale,
     onScrollChange,
     onZoomChange,
 }: UseMiniMapInteractionOptions): UseMiniMapInteractionResult {
@@ -37,23 +37,64 @@ export function useMiniMapInteraction({
         scrollLeft: 0,
         scaleWidth: 0,
     });
-
-    const totalContentWidth = startLeft + duration * scaleWidth;
-    const scale = miniMapWidth / Math.max(totalContentWidth, 1);
+    const rafRef = useRef<number | null>(null);
+    const pendingUpdateRef = useRef<{kind: 'scroll' | 'zoom'; value: number} | null>(null);
 
     // Viewport indicator geometry in minimap space
-    const viewportLeft = scrollLeft * scale;
+    const viewportLeft = (scrollLeft - windowLeft) * scale;
     const viewportWidth = Math.max(containerWidth * scale, 6);
 
     const EDGE_WIDTH = 6; // px, hit target for resize handles
 
     const pixelToScroll = useCallback(
         (miniMapX: number): number => {
-            const contentX = miniMapX / scale;
+            const contentX = miniMapX / scale + windowLeft;
             return Math.max(0, Math.min(contentX - containerWidth / 2, totalContentWidth - containerWidth));
         },
-        [scale, containerWidth, totalContentWidth]
+        [scale, windowLeft, containerWidth, totalContentWidth]
     );
+
+    const applyPendingUpdate = useCallback(() => {
+        rafRef.current = null;
+        const pending = pendingUpdateRef.current;
+        pendingUpdateRef.current = null;
+
+        if (!pending) return;
+
+        if (pending.kind === 'scroll') {
+            onScrollChange(pending.value);
+        } else if (onZoomChange) {
+            onZoomChange(pending.value);
+        }
+    }, [onScrollChange, onZoomChange]);
+
+    const flushPendingUpdate = useCallback(() => {
+        if (rafRef.current !== null) {
+            cancelAnimationFrame(rafRef.current);
+            rafRef.current = null;
+        }
+        applyPendingUpdate();
+    }, [applyPendingUpdate]);
+
+    const scheduleUpdate = useCallback((kind: 'scroll' | 'zoom', value: number) => {
+        pendingUpdateRef.current = {kind, value};
+
+        if (rafRef.current !== null) {
+            return;
+        }
+
+        rafRef.current = requestAnimationFrame(() => {
+            applyPendingUpdate();
+        });
+    }, [applyPendingUpdate]);
+
+    useEffect(() => {
+        return () => {
+            if (rafRef.current !== null) {
+                cancelAnimationFrame(rafRef.current);
+            }
+        };
+    }, []);
 
     const handleMouseDown = useCallback(
         (e: React.MouseEvent<HTMLDivElement>) => {
@@ -101,7 +142,7 @@ export function useMiniMapInteraction({
                         totalContentWidth - containerWidth
                     )
                 );
-                onScrollChange(newScroll);
+                scheduleUpdate('scroll', newScroll);
             } else if (dragMode === 'resize-left' || dragMode === 'resize-right') {
                 if (!onZoomChange) return;
 
@@ -120,21 +161,23 @@ export function useMiniMapInteraction({
                 // where base is 80 or 90. Using 85 as average.
                 const baseScale = 85;
                 const newZoom = Math.max(1, Math.min(4, 1 + (newScaleWidth - baseScale) / 24));
-                onZoomChange(newZoom);
+                scheduleUpdate('zoom', newZoom);
             }
         },
-        [dragMode, scale, totalContentWidth, containerWidth, onScrollChange, onZoomChange, viewportWidth]
+        [dragMode, scale, totalContentWidth, containerWidth, onZoomChange, viewportWidth, scheduleUpdate]
     );
 
     const handleMouseUp = useCallback(() => {
+        flushPendingUpdate();
         setDragMode('none');
-    }, []);
+    }, [flushPendingUpdate]);
 
     const handleMouseLeave = useCallback(() => {
         if (dragMode !== 'none') {
+            flushPendingUpdate();
             setDragMode('none');
         }
-    }, [dragMode]);
+    }, [dragMode, flushPendingUpdate]);
 
     return {
         handleMouseDown,

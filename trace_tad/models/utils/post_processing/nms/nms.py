@@ -18,105 +18,99 @@ def nms_1d(segs, scores, iou_threshold):
     x2 = x2[order]
     areas = areas[order]
 
+    n = len(order)
+    alive = torch.ones(n, dtype=torch.bool)
     keep = []
-    alive = torch.ones(len(order), dtype=torch.bool)
 
-    for i in range(len(order)):
+    for i in range(n):
         if not alive[i]:
             continue
         keep.append(order[i])
 
-        # Vectorized IoU against all remaining alive segments
-        remaining = alive.clone()
-        remaining[: i + 1] = False
-        if not remaining.any():
+        if i + 1 >= n:
+            break
+        # Only check positions after i that are still alive
+        tail_alive = alive[i + 1:]
+        if not tail_alive.any():
             break
 
-        inter = (torch.min(x2[i], x2[remaining]) - torch.max(x1[i], x1[remaining])).clamp(min=0)
-        ovr = inter / (areas[i] + areas[remaining] - inter)
-        # Suppress overlapping segments
-        suppress_mask = ovr >= iou_threshold
-        # Map back to full indices
-        remaining_indices = remaining.nonzero(as_tuple=True)[0]
-        alive[remaining_indices[suppress_mask]] = False
+        # Vectorized IoU vs. the full tail, then mask by tail_alive.
+        # Cheaper than nonzero+gather for typical N.
+        inter = (torch.min(x2[i], x2[i + 1:]) - torch.max(x1[i], x1[i + 1:])).clamp(min=0)
+        ovr = inter / (areas[i] + areas[i + 1:] - inter)
+        suppress = (ovr >= iou_threshold) & tail_alive
+        # In-place update through the slice view (PyTorch fancy-index assign).
+        suppress_idx = suppress.nonzero(as_tuple=True)[0] + (i + 1)
+        alive[suppress_idx] = False
 
     return torch.stack(keep) if keep else torch.empty(0, dtype=torch.long)
 
 
 def softnms_1d(segs, scores, iou_threshold, sigma, min_score, method, t1, t2):
-    """Soft-NMS with vectorized score decay. Returns (sorted_segs_with_scores [N,3], kept_indices)."""
+    """Soft-NMS with vectorized score decay. Returns (sorted_segs_with_scores [N,3], kept_indices).
+
+    All five per-segment arrays (x1, x2, score, area, orig_idx) are packed into a single (n, 5)
+    tensor so the hot-path row swap and compaction each become a single tensor op instead of
+    looping over five parallel arrays in Python.
+    """
     if segs.numel() == 0:
         return torch.empty((0, 3)), torch.empty(0, dtype=torch.long)
 
-    x1 = segs[:, 0].clone()
-    x2 = segs[:, 1].clone()
-    sc = scores.clone()
+    n = segs.shape[0]
+    x1 = segs[:, 0]
+    x2 = segs[:, 1]
     areas = x2 - x1 + 1e-6
-    inds = torch.arange(len(sc), dtype=torch.long)
-    n = len(sc)
-
-    dets = torch.empty((n, 3))
-    kept_inds = torch.empty(n, dtype=torch.long)
-    num_kept = 0
+    packed = torch.stack(
+        [x1, x2, scores, areas, torch.arange(n, dtype=segs.dtype)],
+        dim=1,
+    )
 
     i = 0
-    while i < n:
-        # find max score from position i onward
-        max_pos = i + sc[i:n].argmax()
-        # swap i and max_pos
+    cur_n = n
+    while i < cur_n:
+        # Move the max-scored remaining row to position i (one packed row swap).
+        max_pos = i + int(packed[i:cur_n, 2].argmax())
         if max_pos != i:
-            for arr in (x1, x2, sc, areas, inds):
-                arr[i], arr[max_pos] = arr[max_pos].clone(), arr[i].clone()
+            packed[[i, max_pos]] = packed[[max_pos, i]]
 
-        ix1, ix2, iscore, iarea = x1[i], x2[i], sc[i], areas[i]
-        dets[num_kept] = torch.stack([ix1, ix2, iscore])
-        kept_inds[num_kept] = inds[i]
-        num_kept += 1
+        ix1 = packed[i, 0]
+        ix2 = packed[i, 1]
+        iarea = packed[i, 3]
 
-        if i + 1 >= n:
-            break
+        if i + 1 < cur_n:
+            # Vectorized IoU of kept segment vs. all remaining
+            rem = packed[i + 1:cur_n]
+            inter = (torch.min(ix2, rem[:, 1]) - torch.max(ix1, rem[:, 0])).clamp(min=0)
+            ovr = inter / (iarea + rem[:, 3] - inter)
 
-        i_next = i + 1
-        # Vectorized IoU computation for all remaining segments
-        rem_x1 = x1[i + 1 : n]
-        rem_x2 = x2[i + 1 : n]
-        rem_areas = areas[i + 1 : n]
+            if method == 0:  # vanilla (hard cutoff)
+                weights = torch.where(ovr >= iou_threshold, torch.zeros_like(ovr), torch.ones_like(ovr))
+            elif method == 1:  # linear
+                weights = torch.where(ovr >= iou_threshold, 1.0 - ovr, torch.ones_like(ovr))
+            elif method == 2:  # gaussian
+                weights = torch.exp(-(ovr * ovr) / sigma)
+            elif method == 3:  # improved gaussian (BMN)
+                threshold = t1 + t2 * iarea
+                weights = torch.where(ovr >= threshold, torch.exp(-(ovr * ovr) / sigma), torch.ones_like(ovr))
+            else:
+                weights = torch.ones_like(ovr)
 
-        inter = (torch.min(ix2, rem_x2) - torch.max(ix1, rem_x1)).clamp(min=0)
-        ovr = inter / (iarea + rem_areas - inter)
+            packed[i + 1:cur_n, 2] *= weights
 
-        # Vectorized weight computation
-        if method == 0:  # vanilla
-            weights = torch.where(ovr >= iou_threshold, torch.zeros_like(ovr), torch.ones_like(ovr))
-        elif method == 1:  # linear
-            weights = torch.where(ovr >= iou_threshold, 1.0 - ovr, torch.ones_like(ovr))
-        elif method == 2:  # gaussian
-            weights = torch.exp(-(ovr * ovr) / sigma)
-        elif method == 3:  # improved gaussian (BMN)
-            threshold = t1 + t2 * iarea
-            weights = torch.where(ovr >= threshold, torch.exp(-(ovr * ovr) / sigma), torch.ones_like(ovr))
-        else:
-            weights = torch.ones_like(ovr)
+            # Compact: drop rows whose decayed score fell below min_score (one packed-slice op).
+            valid = packed[i + 1:cur_n, 2] >= min_score
+            num_valid = int(valid.sum())
+            if num_valid < cur_n - i - 1:
+                valid_idx = valid.nonzero(as_tuple=True)[0] + (i + 1)
+                packed[i + 1:i + 1 + num_valid] = packed[valid_idx]
+                cur_n = i + 1 + num_valid
 
-        # Apply weights vectorized
-        sc[i + 1 : n] *= weights
+        i += 1
 
-        # Remove segments below min_score (compact the arrays)
-        valid = sc[i + 1 : n] >= min_score
-        num_valid = valid.sum().item()
-        if num_valid < n - i - 1:
-            # Compact: move valid elements to front
-            valid_idx = valid.nonzero(as_tuple=True)[0] + i + 1
-            new_n = i + 1 + num_valid
-            for arr in (x1, x2, sc, areas, inds):
-                arr[i + 1 : new_n] = arr[valid_idx].clone()
-            n = new_n
-
-        i += 1  # must be at while-loop level
-
-    dets_t = dets[:num_kept]
-    inds_t = kept_inds[:num_kept]
-    return dets_t, inds_t
+    # Kept rows sit in packed[:i, :] in descending-score order by construction.
+    kept_dets = packed[:i, :3].contiguous()
+    kept_inds = packed[:i, 4].long()
+    return kept_dets, kept_inds
 
 
 class NMSop(torch.autograd.Function):

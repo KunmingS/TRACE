@@ -6,13 +6,13 @@
 
     .PanelHeader {
         h2 {
-            font-size: 20px;
+            font-size: 23px;
             font-weight: 600;
             color: var(--color-text-primary, rgba(0, 0, 0, 0.88));
             margin: 0 0 6px;
         }
         p {
-            font-size: 17px;
+            font-size: 20px;
             color: var(--color-text-muted, rgba(0, 0, 0, 0.4));
             margin: 0;
             line-height: 1.5;
@@ -26,7 +26,7 @@
     }
 
     .FieldLabel {
-        font-size: 16px;
+        font-size: 19px;
         font-weight: 500;
         color: var(--color-text-secondary, rgba(0, 0, 0, 0.55));
         text-transform: uppercase;
@@ -57,13 +57,13 @@
             }
 
             .ModelName {
-                font-size: 17px;
+                font-size: 20px;
                 color: var(--color-text-primary, rgba(0, 0, 0, 0.88));
                 font-weight: 500;
             }
 
             .ModelMeta {
-                font-size: 15px;
+                font-size: 18px;
                 color: var(--color-text-muted, rgba(0, 0, 0, 0.28));
                 margin-top: 3px;
             }
@@ -71,20 +71,121 @@
     }
 
     .ModelDetail {
-        font-size: 16px;
+        font-size: 19px;
         color: var(--color-text-secondary, rgba(0, 0, 0, 0.55));
         font-family: var(--font-mono, monospace);
+    }
+
+    .OutputControls {
+        display: grid;
+        grid-template-columns: minmax(180px, 0.8fr) minmax(260px, 1.2fr);
+        gap: 12px;
+        align-items: stretch;
+    }
+
+    .ToggleOption,
+    .ThresholdControl {
+        border: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
+        border-radius: var(--radius-md, 8px);
+        background: var(--color-surface-1, #f5f6f8);
+        min-height: 54px;
+    }
+
+    .ToggleOption {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 14px;
+        cursor: pointer;
+
+        input {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .ToggleTrack {
+            width: 38px;
+            height: 22px;
+            border-radius: 999px;
+            background: rgba(0, 0, 0, 0.16);
+            position: relative;
+            flex: 0 0 auto;
+            transition: background 0.15s ease-out;
+        }
+
+        .ToggleThumb {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #f8fafc;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+            transition: transform 0.15s ease-out;
+        }
+
+        input:checked + .ToggleTrack {
+            background: var(--leading-color, #2563eb);
+        }
+
+        input:checked + .ToggleTrack .ToggleThumb {
+            transform: translateX(16px);
+        }
+
+        .ToggleText {
+            font-size: 20px;
+            color: var(--color-text-primary, rgba(0, 0, 0, 0.88));
+            font-weight: 500;
+        }
+    }
+
+    .ThresholdControl {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 14px;
+
+        .ThresholdTop {
+            display: flex;
+            align-items: center;
+            font-size: 18px;
+            color: var(--color-text-secondary, rgba(0, 0, 0, 0.55));
+        }
+
+        input[type='number'] {
+            width: 92px;
+            min-height: 34px;
+            padding: 5px 9px;
+            border: 1px solid var(--color-border, rgba(0, 0, 0, 0.12));
+            border-radius: var(--radius-sm, 6px);
+            background: var(--color-surface-0, #fff);
+            color: var(--color-text-primary, rgba(0, 0, 0, 0.88));
+            font-family: var(--font-mono, monospace);
+            font-size: 18px;
+            font-weight: 600;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+
+            &:focus {
+                outline: 2px solid rgba(37, 99, 235, 0.18);
+                border-color: var(--leading-color, #2563eb);
+            }
+        }
     }
 
     .ActionBtn {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 8px;
-        padding: 10px 20px;
+        gap: 10px;
+        min-height: 48px;
+        padding: 12px 26px;
         border: none;
         border-radius: var(--radius-md, 8px);
-        font-size: 17px;
+        font-size: 20px;
         font-weight: 500;
         cursor: pointer;
         transition: all 0.15s;
@@ -108,7 +209,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            font-size: 16px;
+            font-size: 19px;
             font-weight: 500;
             color: var(--color-text-secondary, rgba(0, 0, 0, 0.55));
             text-transform: uppercase;
@@ -122,6 +223,41 @@
             }
         }
 
+        .AnnotatedOutputs {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 10px 12px;
+            margin-bottom: 12px;
+            background: rgba(52, 211, 153, 0.08);
+            border: 1px solid rgba(52, 211, 153, 0.16);
+            border-radius: var(--radius-md, 8px);
+        }
+
+        .AnnotatedOutput {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            font-size: 18px;
+            color: var(--color-text-secondary, rgba(0, 0, 0, 0.55));
+
+            code {
+                font-family: var(--font-mono, monospace);
+                color: #059669;
+                overflow-wrap: anywhere;
+                text-align: right;
+            }
+
+            a {
+                text-decoration: none;
+
+                &:hover code {
+                    text-decoration: underline;
+                }
+            }
+        }
+
         .VideoResult {
             &:not(:last-child) {
                 margin-bottom: 14px;
@@ -130,7 +266,7 @@
             }
 
             .VideoName {
-                font-size: 17px;
+                font-size: 20px;
                 color: var(--color-text-primary, rgba(0, 0, 0, 0.88));
                 font-weight: 500;
                 margin-bottom: 8px;
@@ -147,7 +283,7 @@
             display: flex;
             align-items: center;
             gap: 12px;
-            font-size: 16px;
+            font-size: 19px;
             font-family: var(--font-mono, monospace);
             padding: 3px 0;
 
@@ -169,7 +305,7 @@
         }
 
         .DetOverflow {
-            font-size: 15px;
+            font-size: 18px;
             color: var(--color-text-muted, rgba(0, 0, 0, 0.28));
             padding-top: 4px;
         }
@@ -184,6 +320,12 @@
         border: 1px solid rgba(255, 107, 107, 0.15);
         border-radius: var(--radius-md, 8px);
         color: #ff6b6b;
-        font-size: 16px;
+        font-size: 19px;
+    }
+
+    @media (max-width: 760px) {
+        .OutputControls {
+            grid-template-columns: 1fr;
+        }
     }
 }

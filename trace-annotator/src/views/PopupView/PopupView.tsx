@@ -15,6 +15,7 @@ import ExportLabelPopup from './ExportLabelsPopup/ExportLabelPopup';
 import LoadModelPopup from './LoadModelPopup/LoadModelPopup';
 import LoadYOLOv5ModelPopup from './LoadYOLOv5ModelPopup/LoadYOLOv5ModelPopup';
 import ConnectInferenceServerPopup from './ConnectInferenceServerPopup/ConnectInferenceServerPopup';
+import AnnotationPreviewPopup from './AnnotationPreviewPopup/AnnotationPreviewPopup';
 
 interface IProps {
     activePopupType: PopupWindowType;
@@ -50,6 +51,8 @@ const PopupView: React.FC<IProps> = ({ activePopupType }) => {
                 return <ConnectInferenceServerPopup />;
             case PopupWindowType.SUGGEST_LABEL_NAMES:
                 return <SuggestLabelNamesPopup />;
+            case PopupWindowType.ANNOTATION_PREVIEW:
+                return <AnnotationPreviewPopup />;
             case PopupWindowType.LOADER:
                 return <ClipLoader
                     size={50}

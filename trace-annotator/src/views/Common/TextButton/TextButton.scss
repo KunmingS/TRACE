@@ -7,7 +7,8 @@
   line-height: 1.2;
   white-space: normal;
   overflow-wrap: break-word;
-  padding: 12px 20px;
+  min-height: 48px;
+  padding: 15px 24px;
   text-decoration: none;
   border: 2px solid rgba(255, 255, 255, 0.2);
   color: rgba(255, 255, 255, 0.9);
@@ -16,7 +17,7 @@
   transition: all 0.2s ease-in-out;
   background: transparent;
   font-weight: 600;
-  font-size: 18px;
+  font-size: 21px;
 
   > a {
     text-decoration: none;

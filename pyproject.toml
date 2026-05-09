@@ -46,6 +46,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://github.com/KunmingS/TRACE"
+Documentation = "https://kunmings.github.io/TRACE/"
 Repository = "https://github.com/KunmingS/TRACE"
 Issues = "https://github.com/KunmingS/TRACE/issues"
 

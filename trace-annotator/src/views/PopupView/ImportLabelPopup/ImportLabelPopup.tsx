@@ -7,8 +7,8 @@ import { ImportFormatData } from '../../../data/ImportFormatData';
 import { AppState } from '../../../store';
 import { connect } from 'react-redux';
 import { useDropzone } from 'react-dropzone';
-import { ImageData, LabelName } from '../../../store/labels/types';
-import { updateActiveLabelType, updateImageData, updateLabelNames } from '../../../store/labels/actionCreators';
+import { ImageData, LabelName, Subject } from '../../../store/labels/types';
+import { updateActiveLabelType, updateImageData, updateLabelNames, updateSubjects } from '../../../store/labels/actionCreators';
 import { ImporterSpecData } from '../../../data/ImporterSpecData';
 import { AnnotationFormatType } from '../../../data/enums/AnnotationFormatType';
 import { ILabelFormatData } from '../../../interfaces/ILabelFormatData';
@@ -27,6 +27,7 @@ interface IProps {
     activeLabelType: LabelType,
     updateImageDataAction: (imageData: ImageData[]) => any,
     updateLabelNamesAction: (labels: LabelName[]) => any,
+    updateSubjectsAction: (subjects: Subject[]) => any,
     updateActiveLabelTypeAction: (activeLabelType: LabelType) => any;
 }
 
@@ -35,6 +36,7 @@ const ImportLabelPopup: React.FC<IProps> = (
         activeLabelType,
         updateImageDataAction,
         updateLabelNamesAction,
+        updateSubjectsAction,
         updateActiveLabelTypeAction
     }) => {
     const resolveFormatType = (labelType: LabelType): AnnotationFormatType => {
@@ -46,6 +48,7 @@ const ImportLabelPopup: React.FC<IProps> = (
     const [formatType, setFormatType] = useState(resolveFormatType(activeLabelType));
     const [loadedLabelNames, setLoadedLabelNames] = useState([]);
     const [loadedImageData, setLoadedImageData] = useState([]);
+    const [loadedSubjects, setLoadedSubjects] = useState<Subject[] | null>(null);
     const [annotationsLoadedError, setAnnotationsLoadedError] = useState(null);
 
     const resolveNotification = (error: Error): Notification => {
@@ -63,18 +66,21 @@ const ImportLabelPopup: React.FC<IProps> = (
         setFormatType(resolveFormatType(type));
         setLoadedLabelNames([]);
         setLoadedImageData([]);
+        setLoadedSubjects(null);
         setAnnotationsLoadedError(null);
     };
 
-    const onAnnotationLoadSuccess = (imagesData: ImageData[], labelNames: LabelName[]) => {
+    const onAnnotationLoadSuccess = (imagesData: ImageData[], labelNames: LabelName[], subjects?: Subject[]) => {
         setLoadedLabelNames(labelNames);
         setLoadedImageData(imagesData);
+        setLoadedSubjects(subjects ?? null);
         setAnnotationsLoadedError(null);
     };
 
     const onAnnotationsLoadFailure = (error?: Error) => {
         setLoadedLabelNames([]);
         setLoadedImageData([]);
+        setLoadedSubjects(null);
         setAnnotationsLoadedError(error);
         const notification = resolveNotification(error)
         submitNewNotification(NotificationUtil.createErrorNotification(NotificationsDataMap[notification]));
@@ -95,6 +101,9 @@ const ImportLabelPopup: React.FC<IProps> = (
         if (loadedLabelNames.length !== 0 && loadedImageData.length !== 0) {
             updateImageDataAction(loadedImageData);
             updateLabelNamesAction(loadedLabelNames);
+            if (loadedSubjects && loadedSubjects.length > 0) {
+                updateSubjectsAction(loadedSubjects);
+            }
             updateActiveLabelTypeAction(type);
             PopupActions.close();
         }
@@ -208,6 +217,7 @@ const ImportLabelPopup: React.FC<IProps> = (
 const mapDispatchToProps = {
     updateImageDataAction: updateImageData,
     updateLabelNamesAction: updateLabelNames,
+    updateSubjectsAction: updateSubjects,
     updateActiveLabelTypeAction: updateActiveLabelType
 };
 

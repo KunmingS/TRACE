@@ -47,7 +47,7 @@ describe('InferPanel', () => {
                     {
                         path: '/models/dev-model',
                         label: 'dev-model',
-                        config_path: 'configs/tridet/tridet_small.py',
+                        config_path: 'configs/small.py',
                         classes: ['drink', 'eat'],
                         num_classes: 2,
                         size_mb: 48.2,
@@ -58,6 +58,7 @@ describe('InferPanel', () => {
             .mockImplementationOnce(() => jsonResponse({ status: 'completed' }))
             .mockImplementationOnce(() =>
                 jsonResponse({
+                    annotated_videos: { clip_001: 'clip_001_annotated.mp4' },
                     predictions: {
                         clip_001: [
                             { segment: [0.5, 1.5], label: 'drink', score: 0.91 },
@@ -85,18 +86,54 @@ describe('InferPanel', () => {
         await waitFor(() => {
             expect(screen.getByText('Predictions')).toBeInTheDocument();
         });
-        expect(screen.getByText('clip_001')).toBeInTheDocument();
+        expect(screen.getAllByText('clip_001')).toHaveLength(2);
         expect(screen.getByText('0.5s - 1.5s')).toBeInTheDocument();
         expect(screen.getByText('drink')).toBeInTheDocument();
+        expect(screen.getByText('clip_001_annotated.mp4')).toBeInTheDocument();
         expect(screen.getByTestId('log-viewer')).toHaveTextContent('infer-1');
 
         const inferRequest = JSON.parse((fetchMock.mock.calls[1][1] as any).body);
         expect(inferRequest).toMatchObject({
-            config_path: 'configs/tridet/tridet_small.py',
-            checkpoint: '/models/dev-model/best.pth',
-            class_map: '/models/dev-model/classmap.txt',
+            model_dir: '/models/dev-model',
             input: '/videos/clip_001.mp4',
+            annotated_video: false,
+            threshold: 0.3,
         });
-        expect(typeof inferRequest.exp_id).toBe('number');
+    });
+
+    test('shows CUDA-unavailable error when server has no GPU', async () => {
+        const fetchMock = global.fetch as jest.Mock;
+        fetchMock
+            .mockImplementationOnce(() =>
+                jsonResponse([
+                    {
+                        path: '/models/dev-model',
+                        label: 'dev-model',
+                        config_path: 'configs/small.py',
+                        classes: ['drink', 'eat'],
+                        num_classes: 2,
+                        size_mb: 48.2,
+                    },
+                ])
+            )
+            .mockImplementationOnce(() => Promise.resolve({
+                ok: false,
+                status: 400,
+                json: async () => ({
+                    detail: { code: 'CUDA_UNAVAILABLE', message: 'No GPU on server.' },
+                }),
+            }));
+
+        render(<InferPanel />);
+
+        fireEvent.click(await screen.findByRole('button', { name: /dev-model/i }));
+        fireEvent.change(screen.getByPlaceholderText('/path/to/video.mp4 or /path/to/folder'), {
+            target: { value: '/videos/clip_001.mp4' },
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: /Run Inference/i }));
+        });
+
+        expect(await screen.findByText('No GPU on server.')).toBeInTheDocument();
     });
 });

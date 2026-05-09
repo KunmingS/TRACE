@@ -11,7 +11,7 @@ const STEP_LABELS: Record<PipelineStepId, string> = {
     prep: 'Prepare Dataset',
     train: 'Train Model',
     test: 'Evaluate',
-    infer: 'Run Inference',
+    infer: 'Run Predictions',
 };
 
 const statusIcon = (status: StepStatus): string => {

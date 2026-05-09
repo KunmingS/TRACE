@@ -39,14 +39,16 @@ figures/
 
 # Scratch screenshots and Playwright MCP snapshots
 *.png
-!docs/*.png
+!site/assets/*.png
 !trace-annotator/docs/screenshots/*.png
 !trace-annotator/src/data/*.png
 .playwright-mcp/
 .playwright-cli/
-.agents/
+.agents
 .claude/
 .codex
+AGENTS.md
+agents.md
 skills-lock.json
 convert_v2_checkpoint.py
 CLAUDE.md
@@ -58,3 +60,12 @@ model/
 # Misc
 *.log
 .env
+
+# Local working notes — kept out of the repo so each branch can carry
+# its own scratch without polluting diffs.
+.impeccable/
+docs/
+DESIGN.md
+PRODUCT.md
+nohup.out
+plans/

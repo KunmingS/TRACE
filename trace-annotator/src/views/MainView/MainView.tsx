@@ -29,7 +29,6 @@ const MainView: React.FC<IProps> = ({ homeTab: mode, updateHomeTab: setMode }) =
         <div className='MainView'>
             <div className='BgGrid' />
             <div className='BgGlow' />
-            <div className='BgNoise' />
 
             <div className='MainShell'>
                 {/* Top: Brand banner */}
@@ -96,12 +95,12 @@ const MainView: React.FC<IProps> = ({ homeTab: mode, updateHomeTab: setMode }) =
                                 type='button'
                                 role='tab'
                                 aria-selected={mode === 'pipeline'}
-                                aria-label='Pipeline tab'
+                                aria-label='Run Model tab'
                             >
                                 <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
                                     <path d="M3 13L6 7l3 4 3-7 3 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
                                 </svg>
-                                <span>Pipeline</span>
+                                <span>Run Model</span>
                             </button>
                             <button
                                 className={`TabBtn ${mode === 'tutorial' ? 'active' : ''}`}
@@ -119,41 +118,6 @@ const MainView: React.FC<IProps> = ({ homeTab: mode, updateHomeTab: setMode }) =
                             </button>
                         </div>
 
-                        {/* Step toggles (visible when pipeline mode is active) */}
-                        {mode === 'pipeline' && (
-                            <div className='StepToggles' role='group' aria-label='Pipeline step toggles'>
-                                <label className='StepToggle'>
-                                    <input
-                                        type='checkbox'
-                                        checked={pipeline.config.steps.train}
-                                        onChange={() => pipeline.toggleStep('train')}
-                                        aria-label='Enable training step'
-                                    />
-                                    <span className='ToggleTrack'><span className='ToggleThumb' /></span>
-                                    <span className='ToggleLabel'>Train</span>
-                                </label>
-                                <label className='StepToggle'>
-                                    <input
-                                        type='checkbox'
-                                        checked={pipeline.config.steps.test}
-                                        onChange={() => pipeline.toggleStep('test')}
-                                        aria-label='Enable testing step'
-                                    />
-                                    <span className='ToggleTrack'><span className='ToggleThumb' /></span>
-                                    <span className='ToggleLabel'>Test</span>
-                                </label>
-                                <label className='StepToggle'>
-                                    <input
-                                        type='checkbox'
-                                        checked={pipeline.config.steps.infer}
-                                        onChange={() => pipeline.toggleStep('infer')}
-                                        aria-label='Enable inference step'
-                                    />
-                                    <span className='ToggleTrack'><span className='ToggleThumb' /></span>
-                                    <span className='ToggleLabel'>Inference</span>
-                                </label>
-                            </div>
-                        )}
                     </nav>
                 </aside>
 

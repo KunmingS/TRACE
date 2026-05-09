@@ -6,6 +6,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel, Field
 
 from trace_tad.jobs import (
     JobManager,
@@ -13,15 +14,48 @@ from trace_tad.jobs import (
     JobStatus,
     JobType,
     TrainRequest,
+    TrainTuneRequest,
     TestRequest,
     InferRequest,
     PrepRequest,
+)
+from trace_tad.model_artifacts import resolve_model_dir
+from trace_tad.training_resources import estimate_training_resources
+from trace_tad.pipeline_plan import (
+    PipelineCommand,
+    PipelineSpec,
+    PipelineSpecError,
+    build_pipeline_command,
 )
 
 router = APIRouter()
 
 # Module-level singleton job manager
 manager = JobManager(max_concurrency=1)
+
+
+class TrainingEstimateRequest(BaseModel):
+    work_dir: Optional[str] = None
+    explicit_pairs: list[str] = Field(default_factory=list)
+    clip_frames: int = 768
+    cache_resolution: int = 144
+
+
+def _require_cuda_or_400():
+    """Raise HTTP 400 with a structured detail body if CUDA is unavailable.
+
+    Imports torch lazily to keep server startup fast on hosts that never run
+    GPU jobs (e.g. annotation-only deployments).
+    """
+    import torch
+    if not torch.cuda.is_available():
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "CUDA_UNAVAILABLE",
+                "message": "This server has no CUDA-capable GPU. Training/eval/inference require one.",
+            },
+        )
 
 
 def _find_project_root():
@@ -42,13 +76,22 @@ def _find_project_root():
 @router.post("/api/jobs/train", status_code=202, response_model=JobInfo)
 async def submit_train_job(request: TrainRequest):
     """Submit a training job to the queue."""
+    _require_cuda_or_400()
     job = manager.start_train_job(request)
+    return job
+
+
+@router.post("/api/jobs/train-tune", status_code=202, response_model=JobInfo)
+async def submit_train_tune_job(request: TrainTuneRequest):
+    """Submit a train dataloader resource tuning job."""
+    job = manager.start_train_tune_job(request)
     return job
 
 
 @router.post("/api/jobs/test", status_code=202, response_model=JobInfo)
 async def submit_test_job(request: TestRequest):
     """Submit a test/evaluation job to the queue."""
+    _require_cuda_or_400()
     job = manager.start_test_job(request)
     return job
 
@@ -56,20 +99,44 @@ async def submit_test_job(request: TestRequest):
 @router.post("/api/jobs/infer", status_code=202, response_model=JobInfo)
 async def submit_infer_job(request: InferRequest):
     """Submit an inference job to the queue (no annotations needed)."""
+    _require_cuda_or_400()
     job = manager.start_infer_job(request)
     return job
 
 
 @router.post("/api/jobs/prep", status_code=202, response_model=JobInfo)
 async def submit_prep_job(request: PrepRequest):
-    """Submit a dataset preparation job (clip videos + generate annotations)."""
+    """Submit a dataset preparation job that creates a model artifact folder."""
     job = manager.start_prep_job(request)
     return job
 
 
+@router.post("/api/training/estimate")
+async def estimate_training_job_resources(request: TrainingEstimateRequest):
+    """Estimate resources for selected training pairs before prep/train."""
+    try:
+        return estimate_training_resources(
+            work_dir=request.work_dir,
+            explicit_pairs=request.explicit_pairs,
+            clip_frames=request.clip_frames,
+            cache_resolution=request.cache_resolution,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/api/pipeline/command", response_model=PipelineCommand)
+async def build_pipeline_cli_command(request: PipelineSpec):
+    """Build a copy-pasteable `trace pipeline ...` command for a UI pipeline."""
+    try:
+        return build_pipeline_command(request)
+    except PipelineSpecError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.get("/api/jobs", response_model=list[JobInfo])
 async def list_jobs(
-    type: Optional[str] = Query(None, description="Filter by job type (train/test/infer/prep)"),
+    type: Optional[str] = Query(None, description="Filter by job type (train/train-tune/test/infer/prep)"),
     status: Optional[str] = Query(None, description="Filter by status"),
 ):
     """List all jobs, optionally filtered by type and/or status."""
@@ -124,6 +191,18 @@ async def cancel_job(job_id: str):
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/api/jobs/{job_id}", status_code=204)
+async def delete_job(job_id: str):
+    """Delete a finished job from the registry and remove its log file."""
+    try:
+        manager.delete_job(job_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return None
 
 
 @router.get("/api/jobs/{job_id}/artifacts/{filename}")
@@ -209,58 +288,46 @@ async def list_checkpoints():
 async def list_models():
     """List available model folders (containing best.pth + classmap.txt).
 
-    Scans ./model/ and exps/*/model/ for valid model directories.
+    Scans common project subtrees for valid model_* directories.
     """
     root = _find_project_root()
     if root is None:
         raise HTTPException(status_code=500, detail="Cannot find project root")
 
     models = []
+    seen_model_dirs = set()
 
     def _scan_model_dir(model_dir: Path, label: str):
-        best_pth = model_dir / "best.pth"
-        classmap = model_dir / "classmap.txt"
-        if not best_pth.is_file() or not classmap.is_file():
+        try:
+            info = resolve_model_dir(model_dir)
+        except (FileNotFoundError, ValueError):
             return
+        if info["model_dir"] in seen_model_dirs:
+            return
+        seen_model_dirs.add(info["model_dir"])
 
         # Read classes
+        classmap = Path(info["class_map"])
         classes = [line.strip() for line in classmap.read_text().splitlines() if line.strip()]
 
-        # Read config path if available
-        config_file = model_dir / "config.txt"
-        config_path = config_file.read_text().strip() if config_file.is_file() else None
-
         # Checkpoint size
-        size_mb = best_pth.stat().st_size / (1024 * 1024)
+        size_mb = Path(info["checkpoint"]).stat().st_size / (1024 * 1024)
 
         models.append({
-            "path": str(model_dir),
+            "path": info["model_dir"],
             "label": label,
-            "config_path": config_path,
+            "config_path": info["config_path"],
             "classes": classes,
             "num_classes": len(classes),
             "size_mb": round(size_mb, 1),
         })
 
-    # Check ./model/
-    top_model = root / "model"
-    if top_model.is_dir():
-        _scan_model_dir(top_model, "model")
-
-    # Check exps/*/gpu*/model/ and exps/*/model/
-    exps_dir = root / "exps"
-    if exps_dir.is_dir():
-        for model_dir in sorted(exps_dir.rglob("model")):
+    for base in (root, root / "data", root / "exps"):
+        if not base.is_dir():
+            continue
+        for model_dir in sorted(base.rglob("model_*")):
             if model_dir.is_dir():
-                rel = model_dir.relative_to(root)
-                _scan_model_dir(model_dir, str(rel))
-
-    # Check data/*/model/
-    data_dir = root / "data"
-    if data_dir.is_dir():
-        for model_dir in sorted(data_dir.rglob("model")):
-            if model_dir.is_dir():
-                rel = model_dir.relative_to(root)
+                rel = model_dir.relative_to(root) if model_dir.is_relative_to(root) else model_dir
                 _scan_model_dir(model_dir, str(rel))
 
     return models
@@ -272,37 +339,28 @@ async def resolve_model(body: dict):
 
     Returns all paths needed to submit a test or infer job for a given model directory.
     """
-    model_path = body.get("model_path", "").strip()
+    model_path = (body.get("model_dir") or body.get("model_path") or "").strip()
     if not model_path:
-        raise HTTPException(status_code=400, detail="model_path is required")
+        raise HTTPException(status_code=400, detail="model_dir is required")
 
     model_dir = Path(model_path)
     if not model_dir.is_dir():
         raise HTTPException(status_code=404, detail=f"Not a directory: {model_path}")
 
-    best_pth = model_dir / "best.pth"
-    classmap = model_dir / "classmap.txt"
+    try:
+        info = resolve_model_dir(model_dir)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
-    if not best_pth.is_file():
-        raise HTTPException(status_code=404, detail=f"best.pth not found in {model_path}")
-    if not classmap.is_file():
-        raise HTTPException(status_code=404, detail=f"classmap.txt not found in {model_path}")
-
+    classmap = Path(info["class_map"])
     classes = [line.strip() for line in classmap.read_text().splitlines() if line.strip()]
 
-    config_file = model_dir / "config.txt"
-    if config_file.is_file():
-        config_path = config_file.read_text().strip()
-    else:
-        raise HTTPException(
-            status_code=422,
-            detail=f"config.txt not found in {model_path}. Cannot determine model config.",
-        )
-
     return {
-        "model_path": str(model_dir),
-        "checkpoint_path": str(best_pth),
-        "class_map_path": str(classmap),
-        "config_path": config_path,
+        "model_dir": info["model_dir"],
+        "checkpoint_path": info["checkpoint"],
+        "class_map_path": info["class_map"],
+        "config_path": info["config_path"],
         "classes": classes,
     }

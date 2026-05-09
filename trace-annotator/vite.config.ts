@@ -21,6 +21,11 @@ export default ({ mode }: UserConfig): UserConfigExport => {
         '/api': {
           target: process.env.VITE_PROXY_API_TARGET || 'http://localhost:8000',
           changeOrigin: true,
+          // The default http-proxy timeout is 2 min; first-time remux/transcode
+          // of a multi-GB video can take several minutes. Bump generously so
+          // dev mode mirrors prod (where the browser talks to FastAPI directly).
+          timeout: 30 * 60 * 1000,
+          proxyTimeout: 30 * 60 * 1000,
         },
       },
     },

@@ -26,6 +26,8 @@ type IntakeMode = 'server' | 'local';
 type BusyState = 'idle' | 'scanning' | 'uploading';
 
 const SUPPORTED_VIDEO_EXTENSIONS = ['.mp4', '.avi', '.mov', '.mkv', '.webm'];
+const SUPPORTED_LABEL_EXTENSIONS = ['.csv'];
+const SUPPORTED_INTAKE_EXTENSIONS = [...SUPPORTED_VIDEO_EXTENSIONS, ...SUPPORTED_LABEL_EXTENSIONS];
 
 const ImagesDropZone: React.FC<IProps> = (props: PropsWithChildren<IProps>) => {
     const [intakeMode, setIntakeMode] = useState<IntakeMode>('server');
@@ -86,8 +88,10 @@ const ImagesDropZone: React.FC<IProps> = (props: PropsWithChildren<IProps>) => {
     };
 
     const uploadLocalFiles = async () => {
-        if (localFiles.length === 0) {
-            setError('Select local video files before uploading.');
+        const videoCount = localFiles.filter((file) => isSupportedVideoFile(file.name)).length;
+
+        if (localFiles.length === 0 || videoCount === 0) {
+            setError('Select at least one local video, with any CSV companions, before uploading.');
             return;
         }
 
@@ -139,6 +143,14 @@ const ImagesDropZone: React.FC<IProps> = (props: PropsWithChildren<IProps>) => {
         return SUPPORTED_VIDEO_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
     };
 
+    const isSupportedLabelFile = (fileName: string) => {
+        const lowerName = fileName.toLowerCase();
+        return SUPPORTED_LABEL_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
+    };
+
+    const isSupportedIntakeFile = (fileName: string) =>
+        isSupportedVideoFile(fileName) || isSupportedLabelFile(fileName);
+
     const formatBytes = (bytes: number) => {
         if (bytes < 1024) return `${bytes} B`;
 
@@ -156,15 +168,23 @@ const ImagesDropZone: React.FC<IProps> = (props: PropsWithChildren<IProps>) => {
 
     const ingestLocalFiles = (filesInput: FileList | File[]) => {
         const pickedFiles = Array.from(filesInput);
-        const acceptedFiles = pickedFiles.filter((file) => isSupportedVideoFile(file.name));
+        const acceptedFiles = pickedFiles.filter((file) => isSupportedIntakeFile(file.name));
         const rejectedCount = pickedFiles.length - acceptedFiles.length;
+        const acceptedVideoCount = acceptedFiles.filter((file) => isSupportedVideoFile(file.name)).length;
+        const acceptedCsvCount = acceptedFiles.filter((file) => isSupportedLabelFile(file.name)).length;
 
         setLocalFiles(acceptedFiles);
         setError('');
 
         if (acceptedFiles.length === 0) {
             setStatusMessage('');
-            setError('Select one or more supported video files to upload.');
+            setError('Select supported video files and CSV companions to upload.');
+            return;
+        }
+
+        if (acceptedVideoCount === 0) {
+            setStatusMessage('');
+            setError('Add at least one video file so TRACE can open the uploaded set.');
             return;
         }
 
@@ -173,7 +193,9 @@ const ImagesDropZone: React.FC<IProps> = (props: PropsWithChildren<IProps>) => {
         }
 
         const totalSize = acceptedFiles.reduce((sum, file) => sum + file.size, 0);
-        const message = `${acceptedFiles.length} video${acceptedFiles.length === 1 ? '' : 's'} selected`;
+        const message = `${acceptedVideoCount} video${acceptedVideoCount === 1 ? '' : 's'}`
+            + (acceptedCsvCount > 0 ? ` + ${acceptedCsvCount} CSV companion${acceptedCsvCount === 1 ? '' : 's'}` : '')
+            + ' selected';
         setStatusMessage(
             rejectedCount > 0
                 ? `${message}. ${rejectedCount} unsupported file${rejectedCount === 1 ? '' : 's'} ignored.`
@@ -201,7 +223,9 @@ const ImagesDropZone: React.FC<IProps> = (props: PropsWithChildren<IProps>) => {
         const totalSize = localFiles.reduce((sum, file) => sum + file.size, 0);
         return {
             count: localFiles.length,
-            totalSize: formatBytes(totalSize)
+            totalSize: formatBytes(totalSize),
+            videoCount: localFiles.filter((file) => isSupportedVideoFile(file.name)).length,
+            csvCount: localFiles.filter((file) => isSupportedLabelFile(file.name)).length
         };
     }, [localFiles]);
 
@@ -268,6 +292,7 @@ const ImagesDropZone: React.FC<IProps> = (props: PropsWithChildren<IProps>) => {
                                 onSubmit={loadServerFiles}
                                 placeholder='/path/to/videos'
                                 storageKey='annotate-server'
+                                previewExtensions='.mp4,.avi,.mov,.mkv,.webm,.csv'
                             />
                             <button className='LoadBtn' onClick={loadServerFiles} type='button' disabled={!directory}>
                                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -300,7 +325,7 @@ const ImagesDropZone: React.FC<IProps> = (props: PropsWithChildren<IProps>) => {
                             ref={localFileInputRef}
                             type='file'
                             multiple
-                            accept={SUPPORTED_VIDEO_EXTENSIONS.join(',')}
+                            accept={SUPPORTED_INTAKE_EXTENSIONS.join(',')}
                             onChange={handleLocalFileChange}
                             hidden
                         />
@@ -311,14 +336,14 @@ const ImagesDropZone: React.FC<IProps> = (props: PropsWithChildren<IProps>) => {
                                     <path d="M8 2.5v7m0 0L5.5 7m2.5 2.5L10.5 7M2.5 12.5h11" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
                                 </svg>
                             </div>
-                            <div className='DropTitle'>Drop local videos here or choose files.</div>
-                            <div className='DropText'>Supported formats: {SUPPORTED_VIDEO_EXTENSIONS.join(', ')}</div>
+                            <div className='DropTitle'>Drop local video and CSV files here.</div>
+                            <div className='DropText'>Supported formats: {SUPPORTED_INTAKE_EXTENSIONS.join(', ')}</div>
                             <button
                                 className='GhostButton'
                                 onClick={() => localFileInputRef.current?.click()}
                                 type='button'
                             >
-                                Select Local Videos
+                                Select Local Files
                             </button>
                         </div>
                     </div>
@@ -363,12 +388,20 @@ const ImagesDropZone: React.FC<IProps> = (props: PropsWithChildren<IProps>) => {
                             </div>
                             <div className='UploadMeta'>
                                 <span>{localFileSummary.totalSize}</span>
-                                <span>CSV labels will be saved beside the uploaded video.</span>
+                                <span>
+                                    {localFileSummary.videoCount} video{localFileSummary.videoCount === 1 ? '' : 's'}
+                                    {localFileSummary.csvCount > 0
+                                        ? ` + ${localFileSummary.csvCount} CSV companion${localFileSummary.csvCount === 1 ? '' : 's'}`
+                                        : ''}
+                                </span>
                             </div>
                             <div className='LocalFilesList'>
                                 {localFiles.slice(0, 5).map((file) => (
                                     <div className='LocalFileItem' key={`${file.name}-${file.size}`}>
                                         <span className='LocalFileName'>{file.name}</span>
+                                        <span className={`LocalFileKind ${isSupportedLabelFile(file.name) ? 'csv' : 'video'}`}>
+                                            {isSupportedLabelFile(file.name) ? 'csv' : 'video'}
+                                        </span>
                                         <span className='LocalFileSize'>{formatBytes(file.size)}</span>
                                     </div>
                                 ))}

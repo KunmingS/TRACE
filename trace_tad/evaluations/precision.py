@@ -1,4 +1,5 @@
 import json
+import os
 import numpy as np
 import math
 from collections import defaultdict
@@ -6,6 +7,29 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
 
 from .builder import EVALUATORS, remove_duplicate_annotations
+
+
+def _load_clip_pts(video_info):
+    """Build the clip-relative PTS array (seconds) for one dataset entry.
+
+    Returns ``None`` if the entry has no ``source_pts_table`` (legacy CFR
+    dataset prepped before the PTS upgrade — those keep using the
+    ``eval_fps`` fallback).
+    """
+    pts_path = video_info.get("source_pts_table")
+    if not pts_path or not os.path.isfile(pts_path):
+        return None
+    try:
+        full = np.load(pts_path).astype(np.float64, copy=False)
+    except Exception:
+        return None
+    offset = int(video_info.get("source_frame_offset", 0))
+    n = int(video_info.get("frame", len(full) - offset))
+    end = min(offset + n, len(full))
+    if end <= offset:
+        return None
+    sliced = full[offset:end]
+    return sliced - sliced[0]
 
 @EVALUATORS.register_module()
 class Precision:
@@ -60,6 +84,10 @@ class Precision:
         self.gt_anno = {}
         self.gt_segments = {}
         self.video_frames = {}
+        # PTS-aware mapping: per-clip clip-relative PTS array (or None for
+        # legacy CFR datasets). Built once at GT load so per-prediction
+        # workers can read it without holding any locks.
+        self.clip_pts = {}
 
         for clip_name in gt_data.keys():
             if gt_data[clip_name]["subset"] != self.subset:
@@ -74,6 +102,7 @@ class Precision:
                 num_frames = int(round(float(video_info["duration"]) * self.eval_fps))
 
             self.video_frames[clip_name] = num_frames
+            self.clip_pts[clip_name] = _load_clip_pts(video_info)
             # Multi-label: each frame stores a SET of labels (empty set = background)
             clip_behavior_list = [set() for _ in range(num_frames)]
             segments = []
@@ -145,14 +174,22 @@ class Precision:
             return video_clip, [set() for _ in range(num_frames)], {}
 
         # OPTIMIZATION: Vectorized frame assignment
-        # Convert segments to frame indices
+        # Convert segments to frame indices. Two paths:
+        #   - PTS-aware: searchsorted into the clip-relative PTS array.
+        #     Correct for CFR and VFR alike.
+        #   - Legacy CFR fallback: `t * eval_fps` rounding.
+        clip_pts = self.clip_pts.get(video_clip)
         segments_array = []
         labels_list = []
         scores_list = []
 
         for segment, label, score in behavior_clip:
-            start_frame = int(segment[0] * self.eval_fps)
-            end_frame = int(segment[1] * self.eval_fps)
+            if clip_pts is not None:
+                start_frame = int(np.searchsorted(clip_pts, float(segment[0]), side="left"))
+                end_frame = int(np.searchsorted(clip_pts, float(segment[1]), side="right"))
+            else:
+                start_frame = int(segment[0] * self.eval_fps)
+                end_frame = int(segment[1] * self.eval_fps)
             # Clip to valid range
             start_frame = max(0, min(start_frame, num_frames - 1))
             end_frame = max(0, min(end_frame, num_frames))

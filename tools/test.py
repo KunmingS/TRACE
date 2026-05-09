@@ -19,13 +19,41 @@ def parse_args():
     parser.add_argument("config", metavar="FILE", type=str, help="path to config file")
     parser.add_argument("--checkpoint", type=str, default="none", help="the checkpoint path")
     parser.add_argument("--seed", type=int, default=42, help="random seed")
-    parser.add_argument("--id", type=int, default=0, help="repeat experiment id")
     parser.add_argument("--not_eval", action="store_true", help="whether to not to eval, only do inference")
     parser.add_argument("--profile", action="store_true", help="enable inference profiling (CPU + GPU timing breakdown)")
     parser.add_argument("--auto-tune", action="store_true", help="auto-tune dataloader params based on system resources")
     parser.add_argument("--cfg-options", nargs="+", action=DictAction, help="override settings")
     args = parser.parse_args()
     return args
+
+
+def _clip_cache_resolution(cfg, fallback=144):
+    try:
+        for step in cfg.dataset.test.pipeline:
+            if step.get("type") != "VideoInit":
+                continue
+            resize = step.get("resize", None)
+            if isinstance(resize, int):
+                return resize
+            if isinstance(resize, (list, tuple)) and resize:
+                return int(resize[0])
+    except Exception:
+        pass
+    return fallback
+
+
+def _cache_workers_from_cfg(cfg, fallback=4):
+    try:
+        return int(cfg.solver.test.num_workers)
+    except Exception:
+        return fallback
+
+
+def _clip_frames_from_cfg(cfg, fallback=768):
+    try:
+        return int(cfg.dataset.test.window_size)
+    except Exception:
+        return fallback
 
 
 def main():
@@ -54,13 +82,30 @@ def main():
 
     # set random seed, create work_dir
     set_seed(args.seed)
-    cfg = update_workdir(cfg, args.id, 1)
+    cfg = update_workdir(cfg)
     create_folder(cfg.work_dir)
 
     # setup logger
     logger = setup_logger("Test", save_dir=cfg.work_dir)
     logger.info(f"Using torch version: {torch.__version__}, CUDA version: {torch.version.cuda}")
     logger.info(f"Config: {args.config}")
+
+    # Evaluation uses cached clips too. This keeps direct `trace eval` on older
+    # virtual datasets from repeatedly decoding long raw source videos.
+    if getattr(cfg.dataset.test, "ann_file", None):
+        from trace_tad.data_prep import materialize_dataset_cached_videos
+
+        cached_annotation = materialize_dataset_cached_videos(
+            cfg.dataset.test.ann_file,
+            cfg.work_dir,
+            clip_frames=_clip_frames_from_cfg(cfg),
+            cache_resolution=_clip_cache_resolution(cfg),
+            cache_workers=_cache_workers_from_cfg(cfg),
+            logger=logger,
+        )
+        cfg.dataset.test.ann_file = cached_annotation
+        if hasattr(cfg, "evaluation"):
+            cfg.evaluation.ground_truth_filename = cached_annotation
 
     # build dataset
     test_dataset = build_dataset(cfg.dataset.test, default_args=dict(logger=logger))

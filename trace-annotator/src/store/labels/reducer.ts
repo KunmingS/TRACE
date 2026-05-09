@@ -1,6 +1,8 @@
 import {LabelsActionTypes, LabelsState, ImageData} from './types';
 import {Action} from '../Actions';
 
+export const DEFAULT_SUBJECT_ID = 'animal_0';
+
 const initialState: LabelsState = {
     activeImageIndex: null,
     activeLabelNameId: null,
@@ -9,7 +11,10 @@ const initialState: LabelsState = {
     highlightedLabelId: null,
     imagesData: [],
     firstLabelCreatedFlag: false,
-    labels: []
+    labels: [],
+    subjects: [{ id: DEFAULT_SUBJECT_ID, name: 'Animal 1' }],
+    activeSubjectId: DEFAULT_SUBJECT_ID,
+    focusedLabelNameId: null
 };
 
 export function labelsReducer(
@@ -77,6 +82,30 @@ export function labelsReducer(
             return {
                 ...state,
                 firstLabelCreatedFlag: action.payload.firstLabelCreatedFlag
+            }
+        }
+        case Action.UPDATE_SUBJECTS: {
+            const subjects = action.payload.subjects;
+            const stillExists = subjects.some(s => s.id === state.activeSubjectId);
+            const nextActive = stillExists
+                ? state.activeSubjectId
+                : (subjects[0]?.id ?? null);
+            return {
+                ...state,
+                subjects,
+                activeSubjectId: nextActive
+            }
+        }
+        case Action.UPDATE_ACTIVE_SUBJECT_ID: {
+            return {
+                ...state,
+                activeSubjectId: action.payload.activeSubjectId
+            }
+        }
+        case Action.UPDATE_FOCUSED_LABEL_NAME_ID: {
+            return {
+                ...state,
+                focusedLabelNameId: action.payload.focusedLabelNameId
             }
         }
         default:

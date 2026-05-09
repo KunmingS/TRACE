@@ -82,7 +82,6 @@ def get_backbone_optim_groups(cfg, model, logger):
     # rest_params_list
     rest_params_list = []
 
-    name_list = []
     # split the backbone parameters into different groups
     for name, param in model.backbone.named_parameters():
         # loop the exclude_name_list
@@ -99,7 +98,6 @@ def get_backbone_optim_groups(cfg, model, logger):
             for i, custom_name in enumerate(custom_name_list):
                 if custom_name in name:
                     custom_params_list[i].append(param)
-                    name_list.append(name)
                     is_custom = True
                     break
 
@@ -112,10 +110,7 @@ def get_backbone_optim_groups(cfg, model, logger):
         if not is_custom:
             # this is the rest backbone parameters
             rest_params_list.append(param)
-            name_list.append(name)
 
-    for name in name_list:
-        logger.info(f"Backbone parameter: {name}")
     # add params to optim_groups
     backbone_optim_groups = []
 

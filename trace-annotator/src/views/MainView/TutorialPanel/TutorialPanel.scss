@@ -3,10 +3,11 @@
 $accent-cyan: #0284c7;
 $accent-teal: #54d0c7;
 $accent-amber: $accentWarning;
-$text-1: $text-primary;
-$text-2: $text-secondary;
-$text-3: $text-muted;
-$border: $border-default;
+$ink: $text-primary;
+$ink2: $text-secondary;
+$ink3: $text-muted;
+$rule: rgba(0, 0, 0, 0.10);
+$rule-soft: rgba(0, 0, 0, 0.05);
 $code-bg: rgba(0, 0, 0, 0.04);
 
 @keyframes contentIn {
@@ -14,549 +15,858 @@ $code-bg: rgba(0, 0, 0, 0.04);
   to   { opacity: 1; transform: translateY(0); }
 }
 
-// ═══════════════════════════════════════
-//  ROOT
-// ═══════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+//   ROOT
+// ═══════════════════════════════════════════════════════
 
 .TutorialPanel {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 22px;
   min-width: 0;
+  color: $ink;
+  font-feature-settings: 'tnum' 1;
 }
+
+// ─── Header strip ───
 
 .TutorialHeader {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid $rule-soft;
+  position: relative;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: -1px;
+    width: 56px;
+    height: 1px;
+    background: $accent;
+  }
+}
+
+.THeadLeft {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
+.THeadMark {
+  font-family: $font-mono;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: $accent;
+  text-transform: uppercase;
 }
 
 .TutorialTitle {
   margin: 0;
-  font-size: clamp(1.2rem, 2vw, 1.5rem);
+  font-family: $font-ui;
+  font-size: clamp(1.4rem, 2vw, 1.75rem);
   font-weight: 700;
-  letter-spacing: -0.025em;
-  color: $text-1;
+  letter-spacing: -0.02em;
+  color: $ink;
+  line-height: 1.1;
 }
 
 .TutorialSubtitle {
   margin: 0;
-  font-size: 16px;
-  line-height: 1.5;
-  color: $text-3;
+  font-family: $font-mono;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: $ink3;
 }
 
-// ─── Section tabs ───
+// ═══════════════════════════════════════════════════════
+//   TWO-PANE LAYOUT
+// ═══════════════════════════════════════════════════════
 
-.SectionTabs {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.SectionTab {
-  appearance: none; background: none; border: none; margin: 0; padding: 0;
-  text-align: inherit; color: inherit; font: inherit;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 7px 13px;
-  border-radius: $radius-md;
-  font-size: 16px;
-  font-weight: 500;
-  color: $text-3;
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-
-  svg { width: 15px; height: 15px; flex-shrink: 0; }
-
-  &:hover {
-    color: $text-2;
-    background: rgba(0, 0, 0, 0.03);
-  }
-
-  &.active {
-    color: $text-1;
-    background: rgba(0, 0, 0, 0.05);
-    border-color: rgba(0, 0, 0, 0.08);
-    svg { color: $accent-cyan; }
-  }
-}
-
-// ═══════════════════════════════════════
-//  SECTION CONTENT
-// ═══════════════════════════════════════
-
-.SectionContent {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  animation: contentIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-// ─── Section intro (replaces old SectionHero) ───
-
-.SectionIntro {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-bottom: 4px;
-}
-
-.SectionEyebrow,
-.BlockEyebrow {
-  font-size: 14px;
-  line-height: 1;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: $accent-cyan;
-}
-
-.SectionHeading {
-  margin: 0;
-  font-size: clamp(1.1rem, 1.8vw, 1.4rem);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: $text-1;
-}
-
-.SectionDesc {
-  margin: 0;
-  max-width: 72ch;
-  font-size: 17px;
-  line-height: 1.6;
-  color: $text-2;
-}
-
-// ═══════════════════════════════════════
-//  SVG FIGURES
-// ═══════════════════════════════════════
-
-.FigureBlock {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 20px 0 0;
-  margin-top: 4px;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-.Figure {
-  width: 100%;
-  max-width: 640px;
-  height: auto;
-  padding: 12px 0;
-
-  // Ensure text rendering is crisp
-  text {
-    font-family: $font-ui;
-  }
-}
-
-// ═══════════════════════════════════════
-//  BLOCKS — flat sections with top border
-// ═══════════════════════════════════════
-
-.TutorialBlock {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 20px 0 0;
-  margin-top: 4px;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-.BlockHeader {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.BlockTitle {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: $text-1;
-}
-
-.BlockText {
-  margin: 0;
-  max-width: 72ch;
-  font-size: 16px;
-  line-height: 1.6;
-  color: $text-2;
-}
-
-// ═══════════════════════════════════════
-//  KEYBOARD SHORTCUTS
-// ═══════════════════════════════════════
-
-.ShortcutGroups {
+.TutorialBody {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 20px;
+  grid-template-columns: 230px minmax(0, 1fr);
+  gap: 0;
+  align-items: start;
 }
 
-.ShortcutGroup {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+// ─── Left rail ───
+
+.TutorialRail {
+  position: sticky;
+  top: 12px;
+  padding: 4px 22px 8px 0;
+  border-right: 1px dashed $rule;
+  align-self: start;
 }
 
-.ShortcutCategory {
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: $text-3;
-  padding-bottom: 4px;
-}
-
-.ShortcutRows {
+.RailSections {
+  margin: 0;
+  padding: 0;
+  list-style: none;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.ShortcutRow {
+.RailSection {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 5px 0;
+  flex-direction: column;
 }
 
-.ShortcutKey {
+.RailSectionBtn {
+  appearance: none; background: none; border: none; margin: 0;
+  text-align: inherit; color: inherit; font: inherit;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 12px;
+  align-items: baseline;
+  padding: 10px 8px 10px 12px;
+  border-left: 2px solid transparent;
+  border-radius: 0 $radius-sm $radius-sm 0;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.025);
+  }
+}
+
+.RailSection.active .RailSectionBtn {
+  background: rgba($accent, 0.05);
+  border-left-color: $accent;
+}
+
+.RailNum {
+  font-family: $font-mono;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  color: $accent;
+  text-transform: uppercase;
+
+  .RailSection:not(.active) & { color: $ink3; }
+}
+
+.RailTitle {
+  font-family: $font-ui;
+  font-size: 15px;
+  font-weight: 700;
+  color: $ink;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  min-width: 0;
+
+  .RailSection:not(.active) & { color: $ink2; }
+}
+
+.RailAnchors {
+  margin: 0 0 4px 0;
+  padding: 4px 0 8px 32px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-left: 1px dashed rgba($accent, 0.25);
+  margin-left: 22px;
+}
+
+.RailAnchor {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 4px;
+  font-family: $font-mono;
+  font-size: 12px;
+  color: $ink3;
+  text-decoration: none;
+  letter-spacing: 0.02em;
+  border-radius: $radius-sm;
+  transition: color 0.15s, background 0.15s;
+
+  .RailAnchorBullet {
+    width: 5px;
+    height: 5px;
+    border-radius: $radius-circle;
+    border: 1.2px solid rgba($accent, 0.4);
+    background: transparent;
+    flex-shrink: 0;
+  }
+
+  &:hover {
+    color: $accent;
+    background: rgba($accent, 0.04);
+    .RailAnchorBullet { background: $accent; border-color: $accent; }
+  }
+}
+
+// ─── Right pane: flowing content ───
+
+.TutorialContent {
+  display: flex;
+  flex-direction: column;
+  padding: 0 0 0 28px;
+  min-width: 0;
+  animation: contentIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+// ─── Section banner ───
+
+.TutorialBanner {
+  padding: 4px 0 22px;
+}
+
+.BannerHead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 8px;
+}
+
+.BannerNum {
+  font-family: $font-mono;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: $accent;
+}
+
+.BannerEyebrow {
+  font-family: $font-mono;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: $ink3;
+  position: relative;
+
+  &::before {
+    content: '·';
+    margin-right: 12px;
+    color: $ink3;
+  }
+}
+
+.BannerTitle {
+  margin: 4px 0 0;
+  font-family: $font-ui;
+  font-size: clamp(1.6rem, 2.6vw, 2.25rem);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  color: $ink;
+}
+
+.BannerDesc {
+  margin: 14px 0 0;
+  max-width: 78ch;
+  font-size: 16px;
+  line-height: 1.65;
+  color: $ink2;
+}
+
+// ═══════════════════════════════════════════════════════
+//   BLOCKS — flat sections separated by hairlines
+// ═══════════════════════════════════════════════════════
+
+.TBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 24px 0;
+  border-top: 1px solid $rule-soft;
+
+  &:last-child { padding-bottom: 4px; }
+}
+
+.BlockHead {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.BlockHeadRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.BlockHeadNum {
+  font-family: $font-mono;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: $accent;
+}
+
+.BlockHeadEyebrow {
+  font-family: $font-mono;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: $ink3;
+}
+
+.BlockHeadRule {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, $rule, transparent);
+}
+
+.BlockHeadTitle {
+  margin: 0;
+  font-family: $font-ui;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: $ink;
+}
+
+.BlockHeadText {
+  margin: 0;
+  max-width: 76ch;
+  font-size: 15px;
+  line-height: 1.65;
+  color: $ink2;
+}
+
+// ─── Figure ───
+
+.Figure {
+  width: 100%;
+  max-width: 720px;
+  height: auto;
+  padding: 8px 0;
+
+  text {
+    font-family: $font-ui;
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//   PHILOSOPHY
+// ═══════════════════════════════════════════════════════
+
+.PhilosophyGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  border-top: 1px dashed $rule;
+}
+
+.PhilosophyPoint {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px 8px 0;
+
+  & + & {
+    border-left: 1px dashed $rule;
+    padding-left: 18px;
+  }
+}
+
+.PhilosophyMark {
+  font-family: $font-mono;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: $accent;
+}
+
+.PhilosophyTitle {
+  margin: 0;
+  font-family: $font-ui;
+  font-size: 16px;
+  font-weight: 700;
+  color: $ink;
+}
+
+.PhilosophyText {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: $ink2;
+}
+
+// ═══════════════════════════════════════════════════════
+//   KEYBOARD SHORTCUTS — flat 3-column grid
+// ═══════════════════════════════════════════════════════
+
+.ShortcutGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  border-top: 1px dashed $rule;
+}
+
+.ShortcutCol {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 18px 14px 0;
+
+  & + & {
+    border-left: 1px dashed $rule;
+    padding-left: 18px;
+  }
+}
+
+.ShortcutCat {
+  font-family: $font-mono;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: $accent;
+  padding-bottom: 8px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid rgba($accent, 0.18);
+}
+
+.ShortcutRow {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px dashed $rule-soft;
+
+  &:last-child { border-bottom: none; }
+}
+
+.Kbd {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 64px;
-  padding: 3px 8px;
+  padding: 4px 10px;
   border-radius: $radius-sm;
-  background: rgba(0, 0, 0, 0.05);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
+  background: $surface-0;
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  border-bottom-width: 2px;
   font-family: $font-mono;
-  font-size: 15px;
-  font-weight: 500;
-  color: $text-1;
+  font-size: 13px;
+  font-weight: 700;
+  color: $ink;
   white-space: nowrap;
   text-align: center;
+  letter-spacing: 0.02em;
 }
 
-.ShortcutDesc {
-  font-size: 16px;
-  color: $text-2;
+.KbdDesc {
+  font-size: 14px;
+  color: $ink2;
+  line-height: 1.4;
 }
 
-// ═══════════════════════════════════════
-//  CLI COMMANDS
-// ═══════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+//   CLI REFERENCE
+// ═══════════════════════════════════════════════════════
 
-.CliCommands {
+.CliList {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  border-top: 1px dashed $rule;
 }
 
-.CliCommand {
+.CliEntry {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 24px;
+  padding: 16px 0;
+  border-bottom: 1px dashed $rule-soft;
+
+  &:last-child { border-bottom: none; }
+}
+
+.CliEntryHead {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.CliEntryName {
+  font-family: $font-mono;
+  font-size: 16px;
+  font-weight: 700;
+  color: $accent;
+  letter-spacing: 0.02em;
+
+  &::before {
+    content: '$ ';
+    color: $ink3;
+    font-weight: 500;
+  }
+}
+
+.CliEntryDesc {
+  font-size: 13.5px;
+  color: $ink2;
+  line-height: 1.5;
+}
+
+.CliEntryBody {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 16px 0;
-
-  & + .CliCommand {
-    border-top: 1px solid rgba(0, 0, 0, 0.04);
-  }
-
-  &:first-child { padding-top: 0; }
-  &:last-child  { padding-bottom: 0; }
+  min-width: 0;
 }
 
-.CliCommandHead {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.CliCommandName {
-  font-family: $font-mono;
-  font-size: 17px;
-  font-weight: 600;
-  color: $accent-cyan;
-}
-
-.CliCommandDesc {
-  font-size: 16px;
-  color: $text-2;
-}
-
-.CliFlags {
+.CliFlagList {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 6px 16px;
-  padding-left: 4px;
+  gap: 4px 14px;
+  margin: 0;
   align-items: baseline;
-}
 
-.CliFlag {
-  display: contents;
-}
+  dt {
+    margin: 0;
 
-.CliFlagName {
-  font-family: $font-mono;
-  font-size: 15px;
-  color: $text-1;
-  white-space: nowrap;
-}
+    code {
+      font-family: $font-mono;
+      font-size: 13px;
+      color: $ink;
+      background: rgba(0, 0, 0, 0.04);
+      padding: 1px 6px;
+      border-radius: $radius-sm;
+      white-space: nowrap;
+    }
+  }
 
-.CliFlagDesc {
-  font-size: 15px;
-  color: $text-2;
+  dd {
+    margin: 0;
+    font-size: 13.5px;
+    color: $ink2;
+    line-height: 1.45;
+  }
 }
 
 .CliExample {
   margin: 0;
   padding: 10px 14px;
-  border-radius: $radius-md;
+  border-radius: $radius-sm;
   background: $code-bg;
   border: 1px solid rgba(0, 0, 0, 0.06);
+  border-left: 3px solid $accent;
   overflow-x: auto;
 
   code {
     display: block;
     font-family: $font-mono;
-    font-size: 15px;
-    line-height: 1.6;
+    font-size: 13px;
+    line-height: 1.65;
     white-space: pre-wrap;
     word-break: break-word;
-    color: rgba(0, 0, 0, 0.75);
+    color: $ink;
   }
 }
 
-// ═══════════════════════════════════════
-//  GUIDE STEPS
-// ═══════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+//   GUIDE STEPS — flat numbered, no cards
+// ═══════════════════════════════════════════════════════
 
 .GuideSteps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
+  border-top: 1px dashed $rule;
 }
 
 .GuideStep {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
-  gap: 14px;
-  padding: 14px 0;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 22px;
+  padding: 18px 0;
+  border-bottom: 1px dashed $rule-soft;
 
-  & + .GuideStep {
-    border-top: 1px solid rgba(0, 0, 0, 0.04);
-  }
-
-  &:first-child { padding-top: 0; }
-  &:last-child  { padding-bottom: 0; }
+  &:last-child { border-bottom: none; }
 }
 
-.GuideIndex {
+.GuideRail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+
+.GuideStepNum {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 24px;
-  border-radius: $radius-sm;
-  background: rgba($accent, 0.1);
+  width: 38px;
+  height: 38px;
+  border-radius: $radius-circle;
+  border: 1.5px solid rgba($accent, 0.22);
+  background: $surface-0;
   font-family: $font-mono;
-  font-size: 15px;
-  font-weight: 600;
-  color: $accent-cyan;
+  font-size: 14px;
+  font-weight: 700;
+  color: $accent;
+  letter-spacing: 0.02em;
 }
 
-.GuideBody {
+.GuideStepLine {
+  flex: 1;
+  width: 1px;
+  background: linear-gradient(180deg, rgba($accent, 0.3), transparent);
+  min-height: 16px;
+}
+
+.GuideStep:last-child .GuideStepLine { display: none; }
+
+.GuideStepBody {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
+  padding-top: 4px;
 }
 
-.GuideTitle {
+.GuideStepTitle {
   margin: 0;
+  font-family: $font-ui;
   font-size: 17px;
-  font-weight: 600;
-  color: $text-1;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: $ink;
 }
 
-.GuideText {
+.GuideStepText {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1.65;
-  color: $text-2;
+  color: $ink2;
+  max-width: 76ch;
 }
 
-.GuideList {
+.GuideStepList {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 5px;
+  gap: 4px;
 
   li {
     position: relative;
-    padding-left: 14px;
-    font-size: 16px;
-    line-height: 1.55;
-    color: $text-2;
+    padding-left: 18px;
+    font-size: 14.5px;
+    line-height: 1.6;
+    color: $ink2;
 
     &::before {
-      content: '';
+      content: '·';
       position: absolute;
-      left: 0;
-      top: 7px;
-      width: 4px;
-      height: 4px;
-      border-radius: $radius-circle;
-      background: rgba(0, 0, 0, 0.2);
+      left: 6px;
+      top: 0;
+      color: $accent;
+      font-weight: 700;
     }
   }
 }
 
-.GuideCode {
-  margin: 0;
+.GuideStepCode {
+  margin: 4px 0 0;
   padding: 12px 14px;
-  border-radius: $radius-md;
+  border-radius: $radius-sm;
   background: $code-bg;
   border: 1px solid rgba(0, 0, 0, 0.06);
+  border-left: 3px solid $accent;
   overflow-x: auto;
 
   code {
     display: block;
     font-family: $font-mono;
-    font-size: 15px;
-    line-height: 1.6;
+    font-size: 13px;
+    line-height: 1.65;
     white-space: pre-wrap;
     word-break: break-word;
-    color: rgba(0, 0, 0, 0.75);
+    color: $ink;
   }
 }
 
-// ═══════════════════════════════════════
-//  PATH SPECS
-// ═══════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+//   PATH SPECS — flat 3-up columns, no card backgrounds
+// ═══════════════════════════════════════════════════════
 
 .PathGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 0;
+  border-top: 1px dashed $rule;
 }
 
-.PathCard {
+.PathCol {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 14px;
-  border-radius: $radius-md;
-  background: rgba(0, 0, 0, 0.025);
-  border: 1px solid rgba(0, 0, 0, 0.05);
+  padding: 16px 18px 8px 0;
+
+  & + & {
+    border-left: 1px dashed $rule;
+    padding-left: 18px;
+  }
 }
 
-.PathTitle {
-  font-size: 16px;
-  font-weight: 600;
-  color: $text-1;
+.PathColMark {
+  font-family: $font-mono;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: $accent;
 }
 
-.PathText {
+.PathColTitle {
   margin: 0;
+  font-family: $font-ui;
   font-size: 16px;
+  font-weight: 700;
+  color: $ink;
+}
+
+.PathColText {
+  margin: 0;
+  font-size: 14px;
   line-height: 1.55;
-  color: $text-2;
+  color: $ink2;
 }
 
-.PathList {
+.PathColList {
   list-style: none;
-  margin: 0;
+  margin: 4px 0 0;
   padding: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
+  flex-direction: column;
+  gap: 4px;
 
   li {
-    min-width: 0;
-
     code {
       display: inline-flex;
       align-items: center;
       max-width: 100%;
-      padding: 3px 7px;
+      padding: 3px 8px;
       border-radius: $radius-sm;
       border: 1px solid rgba(0, 0, 0, 0.06);
       background: $code-bg;
       font-family: $font-mono;
-      font-size: 15px;
+      font-size: 12.5px;
       line-height: 1.4;
-      color: rgba(0, 0, 0, 0.72);
+      color: $ink;
       word-break: break-word;
     }
   }
 }
 
-.PathNote {
-  margin: 0;
-  font-size: 15px;
+.PathColNote {
+  margin: 6px 0 0;
+  padding-top: 6px;
+  border-top: 1px dashed $rule-soft;
+  font-size: 12.5px;
   line-height: 1.55;
-  color: $text-3;
+  color: $ink3;
+  font-style: italic;
 }
 
-// ═══════════════════════════════════════
-//  RESPONSIVE
-// ═══════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+//   RESPONSIVE
+// ═══════════════════════════════════════════════════════
 
-@media (max-width: 1120px) {
-  .ShortcutGroups {
+@media (max-width: 1180px) {
+  .TutorialBody {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+
+  .TutorialContent {
+    padding-left: 22px;
+  }
+
+  .ShortcutGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 
-  .PathGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 960px) {
-  .ShortcutGroups,
-  .PathGrid {
-    grid-template-columns: 1fr;
-  }
-
-  .CliFlags {
-    grid-template-columns: 1fr;
-    gap: 2px;
-
-    .CliFlagName {
-      padding-top: 4px;
+    .ShortcutCol:nth-child(2n+1) + .ShortcutCol {
+      border-left: 1px dashed $rule;
+      padding-left: 18px;
     }
+    .ShortcutCol:nth-child(odd) {
+      border-left: none;
+      padding-left: 0;
+    }
+  }
+
+  .PhilosophyGrid,
+  .PathGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  .CliEntry { grid-template-columns: 180px minmax(0, 1fr); gap: 18px; }
+}
+
+@media (max-width: 880px) {
+  .TutorialBody {
+    grid-template-columns: 1fr;
+  }
+
+  .TutorialRail {
+    position: static;
+    border-right: none;
+    border-bottom: 1px dashed $rule;
+    padding: 0 0 14px;
+  }
+
+  .RailSections {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .RailAnchors { display: none; }
+
+  .TutorialContent { padding-left: 0; }
+
+  .ShortcutGrid,
+  .PhilosophyGrid,
+  .PathGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .ShortcutCol,
+  .PhilosophyPoint,
+  .PathCol {
+    & + & {
+      border-left: none;
+      border-top: 1px dashed $rule-soft;
+      padding-left: 0;
+      padding-top: 12px;
+    }
+  }
+
+  .CliEntry {
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
 }
 
 @media (max-width: 720px) {
-  .TutorialPanel {
-    gap: 16px;
-  }
-
   .Figure {
-    // Allow horizontal scroll for figures on very narrow screens
     overflow-x: auto;
     min-width: 480px;
   }
 
   .GuideStep {
-    grid-template-columns: 1fr;
-    gap: 8px;
+    grid-template-columns: 38px 1fr;
+    gap: 14px;
   }
 
-  .GuideIndex {
-    width: fit-content;
-    min-width: 32px;
+  .GuideStepNum {
+    width: 32px;
+    height: 32px;
+    font-size: 12px;
   }
 }

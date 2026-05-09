@@ -2,37 +2,66 @@
   position: relative;
   width: 100%;
   height: 28px;
-  background: #14151a;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.03);
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
   cursor: pointer;
   user-select: none;
   overflow: hidden;
   flex-shrink: 0;
 
-  .MiniMapClip {
+  &::before,
+  &::after {
+    content: '';
     position: absolute;
-    top: 2px;
-    height: 24px;
-    border-radius: 3px;
-    opacity: 0.6;
+    top: 0;
+    bottom: 0;
+    width: 22px;
     pointer-events: none;
-    min-width: 2px;
+    opacity: 0;
+    transition: opacity 120ms ease;
+    z-index: 2;
+  }
+
+  &::before {
+    left: 0;
+    background: linear-gradient(90deg, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0));
+  }
+
+  &::after {
+    right: 0;
+    background: linear-gradient(270deg, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0));
+  }
+
+  &.fade-left::before {
+    opacity: 1;
+  }
+
+  &.fade-right::after {
+    opacity: 1;
+  }
+
+  .MiniMapCanvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
   }
 
   .MiniMapViewport {
     position: absolute;
     top: 0;
     height: 100%;
-    background: rgba(59, 158, 255, 0.15);
-    border-left: 3px solid rgba(59, 158, 255, 0.5);
-    border-right: 3px solid rgba(59, 158, 255, 0.5);
+    background: rgba(37, 99, 235, 0.12);
+    border-left: 3px solid rgba(37, 99, 235, 0.5);
+    border-right: 3px solid rgba(37, 99, 235, 0.5);
     box-sizing: border-box;
     pointer-events: none;
     z-index: 1;
     min-width: 6px;
 
     &.dragging {
-      background: rgba(59, 158, 255, 0.22);
+      background: rgba(37, 99, 235, 0.2);
     }
   }
 

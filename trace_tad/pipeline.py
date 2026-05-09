@@ -199,13 +199,11 @@ def _create_infer_annotation(videos, job_dir):
 # Config resolution helpers
 # ---------------------------------------------------------------------------
 
-def _resolve_work_dir(config_path, seed=42, exp_id=0):
+def _resolve_work_dir(config_path, seed=42):
     """Resolve work_dir from a config file without importing the full model stack."""
     from trace_tad.config import Config
     cfg = Config.fromfile(config_path)
-    # Replicate update_workdir logic
-    work_dir = os.path.join(cfg.work_dir, f"gpu1_id{exp_id}/")
-    return work_dir, cfg
+    return cfg.work_dir, cfg
 
 
 def _resolve_checkpoint(work_dir, checkpoint=None):
@@ -340,7 +338,6 @@ def run_pipeline(
             config,
             "--checkpoint", state.checkpoint,
             "--seed", str(seed),
-            "--auto-tune",
         ] + _build_cfg_options_args(infer_cfg_options)
 
         infer_log = os.path.join(job_dir, "infer.log")

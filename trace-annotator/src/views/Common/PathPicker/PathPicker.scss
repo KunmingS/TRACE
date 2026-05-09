@@ -10,12 +10,12 @@
         display: flex;
         align-items: center;
         flex-wrap: wrap;
-        gap: 1px;
-        padding: 4px 8px;
+        gap: 3px;
+        padding: 6px 10px;
         margin-bottom: 2px;
-        font-size: 15px;
+        font-size: 18px;
         font-family: var(--font-mono, monospace);
-        min-height: 22px;
+        min-height: 30px;
     }
 
     .BreadcrumbSep {
@@ -26,7 +26,8 @@
 
     .BreadcrumbSegment {
         appearance: none; background: none; border: none; margin: 0; padding: 0; text-align: inherit; color: inherit; font: inherit;
-        padding: 1px 4px;
+        min-height: 26px;
+        padding: 3px 8px;
         border-radius: 3px;
         color: var(--color-text-muted, rgba(0, 0, 0, 0.30));
         cursor: pointer;
@@ -61,8 +62,8 @@
     }
 
     .SiblingItem {
-        padding: 4px 10px;
-        font-size: 15px;
+        padding: 7px 12px;
+        font-size: 18px;
         font-family: var(--font-mono, monospace);
         color: var(--color-text-secondary, rgba(0, 0, 0, 0.55));
         cursor: pointer;
@@ -79,8 +80,8 @@
     }
 
     .SiblingEmpty {
-        padding: 6px 10px;
-        font-size: 15px;
+        padding: 9px 12px;
+        font-size: 18px;
         color: var(--color-text-muted, rgba(0, 0, 0, 0.28));
     }
 
@@ -89,12 +90,12 @@
     .InputShell {
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
         background: var(--color-surface-1, #f5f6f8);
         border: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
         border-radius: var(--radius-md, 8px);
-        padding: 0 10px;
-        height: 36px;
+        padding: 0 14px;
+        min-height: 44px;
         transition: border-color 0.15s, border-radius 0.15s;
 
         &:focus-within {
@@ -109,7 +110,7 @@
         .PromptChar {
             color: $accent;
             font-family: var(--font-mono, monospace);
-            font-size: 16px;
+            font-size: 19px;
             user-select: none;
             opacity: 0.5;
         }
@@ -121,7 +122,7 @@
             outline: none;
             color: var(--color-text-primary, rgba(0, 0, 0, 0.88));
             font-family: var(--font-mono, monospace);
-            font-size: 16px;
+            font-size: 19px;
 
             &::placeholder {
                 color: var(--color-text-muted, rgba(0, 0, 0, 0.28));
@@ -164,7 +165,7 @@
         align-items: center;
         padding: 5px 10px;
         border-bottom: 1px solid rgba(0, 0, 0, 0.04);
-        font-size: 14px;
+        font-size: 17px;
         color: var(--color-text-muted, rgba(0, 0, 0, 0.28));
     }
 
@@ -190,7 +191,7 @@
                 background: rgba(0, 0, 0, 0.05);
                 border-radius: 2px;
                 padding: 0 3px;
-                font-size: 13px;
+                font-size: 16px;
                 font-family: var(--font-mono, monospace);
             }
         }
@@ -202,14 +203,932 @@
         padding: 2px 0;
     }
 
+    .RelatedSetsBlock {
+        margin-top: 4px;
+        padding: 7px 8px 9px;
+        border-top: 1px solid rgba(0, 0, 0, 0.06);
+        background:
+            linear-gradient(180deg, rgba(37, 99, 235, 0.025), rgba(22, 163, 74, 0.018)),
+            rgba(0, 0, 0, 0.012);
+    }
+
+    .RelatedSetsHeader {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 7px;
+    }
+
+    .RelatedSetsTab {
+        display: inline-flex;
+        align-items: center;
+        min-height: 32px;
+        padding: 2px 12px;
+        border-radius: $radius-pill;
+        background: $surface-0;
+        border: 1px solid rgba(37, 99, 235, 0.18);
+        color: $accent;
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .RelatedSetsCount {
+        font-family: $font-mono;
+        font-size: 15px;
+        color: $text-muted;
+    }
+
+    .PairBulkActions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .PairBulkBtn {
+        appearance: none;
+        background: $surface-0;
+        border: 1px solid rgba(37, 99, 235, 0.18);
+        color: $accent;
+        font-family: $font-mono;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        min-height: 30px;
+        padding: 4px 12px;
+        border-radius: $radius-pill;
+        cursor: pointer;
+        transition: background 0.12s, border-color 0.12s, color 0.12s;
+
+        &:hover {
+            background: rgba(37, 99, 235, 0.08);
+            border-color: rgba(37, 99, 235, 0.28);
+        }
+    }
+
+    // ─── multiPair: prominent selection manifest ───
+
+    // The manifest is the visual centerpiece once the user has chosen pairs.
+    // It carries the "this is what you're committing to train on" weight so
+    // the path input above can demote to secondary "browse here" affordance.
+
+    .PairManifest {
+        margin-top: 10px;
+        border-radius: $radius-lg;
+        border: 1px solid rgba(37, 99, 235, 0.22);
+        background:
+            linear-gradient(180deg, rgba(37, 99, 235, 0.05) 0%, rgba(37, 99, 235, 0.01) 100%),
+            $surface-0;
+        box-shadow:
+            0 1px 0 rgba(37, 99, 235, 0.04),
+            0 8px 24px -16px rgba(37, 99, 235, 0.18);
+        overflow: hidden;
+        animation: manifestIn 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .PairManifest__head {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 10px 12px 9px;
+        border-bottom: 1px dashed rgba(37, 99, 235, 0.16);
+    }
+
+    .PairManifest__headInfo {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
+        flex: 1;
+    }
+
+    .PairManifest__title {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 6px;
+    }
+
+    .PairManifest__count {
+        font-family: $font-mono;
+        font-size: 25px;
+        font-weight: 700;
+        color: $accent;
+        line-height: 1;
+        letter-spacing: -0.01em;
+        // Faint baseline rule to anchor the number visually.
+        position: relative;
+        padding-bottom: 1px;
+    }
+
+    .PairManifest__label {
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: $text-secondary;
+    }
+
+    .PairManifest__folder {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        min-width: 0;
+        max-width: 100%;
+        font-family: $font-mono;
+        font-size: 15px;
+        color: $text-muted;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+
+        svg { color: $text-muted; flex-shrink: 0; }
+    }
+
+    .PairManifest__folderHead {
+        color: $text-muted;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+    }
+
+    .PairManifest__folderLeaf {
+        color: $text-secondary;
+        font-weight: 600;
+        flex-shrink: 0;
+    }
+
+    .PairManifest__actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+    }
+
+    .PairManifest__btn {
+        appearance: none;
+        background: $surface-0;
+        border: 1px solid rgba(37, 99, 235, 0.22);
+        color: $accent;
+        font-family: $font-ui;
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        padding: 5px 10px;
+        border-radius: $radius-md;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.1s;
+
+        svg { opacity: 0.85; }
+
+        &:hover {
+            background: rgba(37, 99, 235, 0.06);
+            border-color: rgba(37, 99, 235, 0.4);
+        }
+
+        &:active { transform: translateY(0.5px); }
+
+        &.primary {
+            background: rgba(37, 99, 235, 0.06);
+        }
+
+        &.ghost {
+            border-color: rgba(0, 0, 0, 0.10);
+            color: $text-muted;
+            background: transparent;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+
+            &:hover {
+                background: rgba(0, 0, 0, 0.04);
+                color: $text-secondary;
+                border-color: rgba(0, 0, 0, 0.14);
+            }
+        }
+    }
+
+    .PairManifest__list {
+        list-style: none;
+        margin: 0;
+        padding: 4px 0;
+        max-height: 200px;
+        overflow-y: auto;
+
+        scrollbar-width: thin;
+        scrollbar-color: rgba(0, 0, 0, 0.08) transparent;
+    }
+
+    .PairManifest__row {
+        display: grid;
+        grid-template-columns: 28px minmax(0, 1fr) auto auto;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 12px;
+        position: relative;
+        transition: background 0.1s;
+
+        // Faint baseline between rows so the manifest reads like a list.
+        &::after {
+            content: '';
+            position: absolute;
+            left: 12px; right: 12px; bottom: 0;
+            height: 1px;
+            background: rgba(0, 0, 0, 0.04);
+            pointer-events: none;
+        }
+        &:last-child::after { display: none; }
+
+        &:hover {
+            background: rgba(37, 99, 235, 0.04);
+
+            .PairManifest__remove { opacity: 1; }
+        }
+    }
+
+    .PairManifest__index {
+        font-family: $font-mono;
+        font-size: 14px;
+        font-weight: 700;
+        text-align: right;
+        color: rgba(37, 99, 235, 0.6);
+        letter-spacing: 0.02em;
+        // Tabular figures so 09 → 10 doesn't shift width
+        font-variant-numeric: tabular-nums;
+    }
+
+    .PairManifest__name {
+        font-family: $font-mono;
+        font-size: 17px;
+        font-weight: 600;
+        color: $text-primary;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+    }
+
+    .PairManifest__tags {
+        display: inline-flex;
+        gap: 4px;
+        flex-shrink: 0;
+    }
+
+    .PairManifest__tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        font-family: $font-mono;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 2px 5px;
+        border-radius: $radius-sm;
+        border: 1px solid transparent;
+
+        svg { opacity: 0.85; }
+
+        &.video {
+            color: rgba(30, 64, 175, 0.94);
+            background: rgba(37, 99, 235, 0.06);
+            border-color: rgba(37, 99, 235, 0.14);
+        }
+
+        &.csv {
+            color: #166534;
+            background: rgba(22, 163, 74, 0.06);
+            border-color: rgba(22, 163, 74, 0.14);
+        }
+    }
+
+    .PairManifest__remove {
+        appearance: none;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: $radius-sm;
+        width: 22px;
+        height: 22px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: $text-muted;
+        cursor: pointer;
+        opacity: 0; // revealed on row hover; always visible when focused
+        transition: opacity 0.12s, background 0.12s, color 0.12s, border-color 0.12s;
+        flex-shrink: 0;
+
+        &:hover, &:focus-visible {
+            opacity: 1;
+            background: rgba(239, 68, 68, 0.08);
+            color: $recording;
+            border-color: rgba(239, 68, 68, 0.24);
+            outline: none;
+        }
+    }
+
+    @keyframes manifestIn {
+        from { opacity: 0; transform: translateY(-4px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+
+    // ─── multiFolder: shelves + per-row CSV switcher ───
+    //
+    // The shelves block stacks a small "ledger" per source folder. Each
+    // shelf carries the folder context once at the top so individual rows
+    // stay tight and readable.
+
+    .PairManifest--multi {
+        // Override the base manifest's overflow:hidden so the inline CSV
+        // switcher popover can overlay anything below the row instead of
+        // being clipped at the manifest's bottom edge.
+        overflow: visible;
+
+        .PairManifest__list {
+            max-height: none;
+            padding: 0;
+            overflow: visible;
+        }
+
+        .PairManifest__shelves {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            background: rgba(37, 99, 235, 0.10);
+            overflow: visible;
+        }
+
+        .ShelfBlock { overflow: visible; }
+
+        .PairManifest__row {
+            // Popover renders as an absolute child; grid keeps the 4 base
+            // columns. `position: relative` is inherited from the base row
+            // so the popover anchors here.
+            padding: 5px 12px;
+            overflow: visible;
+
+            &.has-popover {
+                background: rgba(37, 99, 235, 0.06);
+            }
+        }
+    }
+
+    .ShelfBlock {
+        background: $surface-0;
+
+        &:first-child .ShelfHead { border-top: none; }
+    }
+
+    .ShelfHead {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 12px 6px;
+        border-top: 1px solid rgba(37, 99, 235, 0.10);
+        background:
+            linear-gradient(to right,
+                rgba(37, 99, 235, 0.05) 0%,
+                rgba(37, 99, 235, 0.015) 60%,
+                transparent 100%);
+        font-family: $font-mono;
+        font-size: 14px;
+        min-height: 28px;
+    }
+
+    .ShelfPath {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        flex: 1;
+        min-width: 0;
+        color: $text-muted;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+
+        svg { color: rgba(37, 99, 235, 0.55); flex-shrink: 0; }
+    }
+
+    .ShelfHead__head {
+        color: $text-muted;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+    }
+
+    .ShelfHead__leaf {
+        color: $text-secondary;
+        font-weight: 700;
+        flex-shrink: 0;
+    }
+
+    .ShelfTally {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: $text-muted;
+        flex-shrink: 0;
+
+        strong {
+            color: $accent;
+            font-weight: 700;
+        }
+    }
+
+    .ShelfTools {
+        display: inline-flex;
+        gap: 3px;
+        flex-shrink: 0;
+    }
+
+    .ShelfTool {
+        appearance: none;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: $radius-sm;
+        color: $text-muted;
+        font-family: $font-ui;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 3px 8px 2px;
+        cursor: pointer;
+        transition: background 0.1s, color 0.1s, border-color 0.1s;
+
+        &:hover {
+            background: rgba(37, 99, 235, 0.08);
+            color: $accent;
+            border-color: rgba(37, 99, 235, 0.18);
+        }
+
+        &.danger:hover {
+            background: rgba(239, 68, 68, 0.08);
+            color: $recording;
+            border-color: rgba(239, 68, 68, 0.22);
+        }
+    }
+
+    // Pair row CSV chip in multi-folder mode is a button that opens a
+    // popover. The chip carries the chosen CSV name as its primary label.
+    .PairManifest__csvSwitch {
+        appearance: none;
+        font-family: $font-mono;
+        cursor: pointer;
+        max-width: 220px;
+        padding: 2px 4px 2px 5px;
+        gap: 4px;
+        transition: background 0.1s, border-color 0.1s, color 0.1s;
+
+        &:hover {
+            background: rgba(22, 163, 74, 0.12);
+            border-color: rgba(22, 163, 74, 0.32);
+        }
+
+        &.open {
+            background: rgba(22, 163, 74, 0.16);
+            border-color: rgba(22, 163, 74, 0.45);
+        }
+    }
+
+    .PairManifest__csvLabel {
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .PairManifest__csvName {
+        font-family: $font-mono;
+        font-size: 13px;
+        font-weight: 500;
+        letter-spacing: 0;
+        text-transform: none;
+        color: rgba(22, 101, 52, 0.85);
+        padding-left: 5px;
+        border-left: 1px solid rgba(22, 163, 74, 0.22);
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .PairManifest__csvCaret {
+        opacity: 0.55;
+        margin-left: 1px;
+        flex-shrink: 0;
+    }
+
+    .CsvPopover {
+        position: absolute;
+        z-index: 200;
+        right: 36px;
+        top: calc(100% - 4px);
+        min-width: 280px;
+        max-width: 360px;
+        background: $surface-0;
+        border: 1px solid rgba(37, 99, 235, 0.32);
+        border-radius: $radius-md;
+        box-shadow:
+            0 1px 0 rgba(37, 99, 235, 0.05),
+            0 12px 28px -8px rgba(15, 23, 42, 0.18);
+        padding: 9px 10px 8px;
+        animation: csvPopIn 0.14s cubic-bezier(0.22, 1, 0.36, 1);
+
+        &::before {
+            content: '';
+            position: absolute;
+            top: -5px;
+            right: 26px;
+            width: 9px; height: 9px;
+            background: $surface-0;
+            border-top: 1px solid rgba(37, 99, 235, 0.32);
+            border-left: 1px solid rgba(37, 99, 235, 0.32);
+            transform: rotate(45deg);
+        }
+    }
+
+    .CsvPopover__head {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        padding: 0 4px 6px;
+        border-bottom: 1px dashed rgba(37, 99, 235, 0.18);
+    }
+
+    .CsvPopover__heading {
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: $text-muted;
+    }
+
+    .CsvPopover__stem {
+        font-family: $font-mono;
+        font-size: 14px;
+        color: $text-primary;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .CsvPopover__opts {
+        list-style: none;
+        margin: 4px 0 4px;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+    }
+
+    .CsvPopover__opt {
+        appearance: none;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: $radius-sm;
+        width: 100%;
+        text-align: left;
+        display: grid;
+        grid-template-columns: 14px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        cursor: pointer;
+        font-family: $font-mono;
+        font-size: 14px;
+        color: $text-secondary;
+        transition: background 0.1s, color 0.1s, border-color 0.1s;
+
+        &:hover {
+            background: rgba(37, 99, 235, 0.08);
+            color: $text-primary;
+            border-color: rgba(37, 99, 235, 0.16);
+        }
+
+        &.active {
+            background: rgba(22, 163, 74, 0.10);
+            color: #15803d;
+            border-color: rgba(22, 163, 74, 0.24);
+        }
+    }
+
+    .CsvPopover__radio {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 1.5px solid rgba(0, 0, 0, 0.28);
+        background: $surface-0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        transition: border-color 0.1s;
+
+        &.on {
+            border-color: #16a34a;
+        }
+    }
+
+    .CsvPopover__radioDot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #16a34a;
+    }
+
+    .CsvPopover__optName {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .CsvPopover__optBadge {
+        font-family: $font-ui;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: #15803d;
+        flex-shrink: 0;
+    }
+
+    .CsvPopover__loading,
+    .CsvPopover__empty {
+        font-family: $font-mono;
+        font-size: 13px;
+        color: $text-muted;
+        padding: 8px 6px;
+        text-align: center;
+    }
+
+    .CsvPopover__foot {
+        font-family: $font-mono;
+        font-size: 11px;
+        color: $text-muted;
+        padding: 5px 4px 0;
+        border-top: 1px dashed rgba(0, 0, 0, 0.06);
+        margin-top: 3px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    @keyframes csvPopIn {
+        from { opacity: 0; transform: translateY(-3px) scale(0.98); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .FileSet {
+        padding: 8px;
+        margin-bottom: 7px;
+        border-radius: $radius-md;
+        background: rgba(255, 255, 255, 0.78);
+        border: 1px solid rgba(0, 0, 0, 0.07);
+        transition: background 0.12s, border-color 0.12s;
+
+        &:last-child {
+            margin-bottom: 0;
+        }
+
+        &.pair-selectable {
+            cursor: pointer;
+            &:hover {
+                background: rgba(37, 99, 235, 0.04);
+                border-color: rgba(37, 99, 235, 0.28);
+            }
+            &:focus-visible {
+                outline: 2px solid rgba(37, 99, 235, 0.4);
+                outline-offset: 1px;
+            }
+        }
+
+        &.pair-unselectable {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
+
+        &.pair-selected {
+            background: rgba(37, 99, 235, 0.08);
+            border-color: rgba(37, 99, 235, 0.36);
+        }
+    }
+
+    .PairCheckbox {
+        flex-shrink: 0;
+        width: 16px;
+        height: 16px;
+        border-radius: $radius-sm;
+        border: 1.5px solid rgba(37, 99, 235, 0.45);
+        background: $surface-0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        margin-right: 4px;
+        transition: background 0.12s, border-color 0.12s;
+
+        &.on {
+            background: $accent;
+            border-color: $accent;
+        }
+
+        &.disabled {
+            border-color: rgba(0, 0, 0, 0.12);
+            background: rgba(0, 0, 0, 0.04);
+        }
+    }
+
+    .FileSetTopline {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+    }
+
+    .FileSetIndex {
+        font-family: $font-mono;
+        font-size: 14px;
+        color: rgba(30, 64, 175, 0.78);
+        background: rgba(37, 99, 235, 0.08);
+        border: 1px solid rgba(37, 99, 235, 0.14);
+        border-radius: $radius-sm;
+        padding: 1px 5px;
+        flex-shrink: 0;
+    }
+
+    .FileSetName {
+        flex: 1;
+        min-width: 0;
+        font-family: $font-mono;
+        font-size: 18px;
+        font-weight: 600;
+        color: $text-primary;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .FileSetStatus {
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: $text-muted;
+        white-space: nowrap;
+    }
+
+    .FileSetTabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin: 7px 0 6px;
+    }
+
+    .FileSetTab {
+        font-family: $font-mono;
+        font-size: 14px;
+        letter-spacing: 0.02em;
+        border-radius: $radius-pill;
+        min-height: 28px;
+        padding: 4px 10px;
+        border: 1px solid transparent;
+
+        &.source {
+            color: rgba(30, 64, 175, 0.94);
+            background: rgba(37, 99, 235, 0.08);
+            border-color: rgba(37, 99, 235, 0.14);
+        }
+
+        &.derived {
+            color: #0f766e;
+            background: rgba(13, 148, 136, 0.08);
+            border-color: rgba(13, 148, 136, 0.16);
+        }
+
+        &.csv {
+            color: #166534;
+            background: rgba(22, 163, 74, 0.08);
+            border-color: rgba(22, 163, 74, 0.16);
+        }
+    }
+
+    .FileSetMembers {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    .SetMember {
+        display: grid;
+        grid-template-columns: 18px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 6px;
+        min-height: 32px;
+        padding: 5px 8px;
+        border-radius: $radius-sm;
+        background: rgba(0, 0, 0, 0.018);
+
+        &.kind-csv {
+            .SetMemberIcon {
+                color: #16a34a;
+            }
+        }
+
+        &.kind-video.variant-remux,
+        &.kind-video.variant-h264 {
+            .SetMemberIcon {
+                color: #0d9488;
+            }
+        }
+
+        &.csv-pickable {
+            grid-template-columns: 14px 18px minmax(0, 1fr) auto;
+            cursor: pointer;
+            transition: background 0.1s, border-color 0.1s;
+            border: 1px solid transparent;
+
+            &:hover {
+                background: rgba(37, 99, 235, 0.05);
+                border-color: rgba(37, 99, 235, 0.2);
+            }
+            &:focus-visible {
+                outline: 2px solid rgba(37, 99, 235, 0.4);
+                outline-offset: 1px;
+            }
+        }
+
+        &.csv-active {
+            background: rgba(22, 163, 74, 0.1);
+            border-color: rgba(22, 163, 74, 0.32);
+
+            .SetMemberRole {
+                color: #15803d;
+            }
+        }
+    }
+
+    .CsvRadio {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 1.5px solid rgba(22, 163, 74, 0.45);
+        background: $surface-0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        flex-shrink: 0;
+        transition: background 0.12s, border-color 0.12s;
+
+        &.on {
+            background: #16a34a;
+            border-color: #16a34a;
+        }
+    }
+
+    .SetMemberIcon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: $accent;
+    }
+
+    .SetMemberName {
+        min-width: 0;
+        font-family: $font-mono;
+        font-size: 16px;
+        color: $text-secondary;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .SetMemberRole {
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        color: $text-muted;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+
     .DirEntry {
         display: flex;
         align-items: center;
         gap: 8px;
         padding: 5px 10px;
         cursor: pointer;
-        font-size: 16px;
+        font-size: 19px;
         transition: background 0.08s;
+        position: relative;
 
         &:hover,
         &.active {
@@ -220,6 +1139,19 @@
             .EntryName {
                 color: var(--color-text-primary, rgba(0, 0, 0, 0.92));
             }
+        }
+
+        // Files in dir+preview mode: shown as context, not selectable.
+        // Muted color, no hover affordance, default cursor — communicates
+        // "you're seeing what's here, but folder selection is the action."
+        &.preview {
+            cursor: default;
+            opacity: 0.55;
+
+            &:hover { background: transparent; }
+
+            .EntryIcon { opacity: 0.7; }
+            .EntryName { color: $text-muted; }
         }
 
         // Parent (..) entry
@@ -255,6 +1187,26 @@
             }
         }
 
+        // CSV files get a calmer slate tint — readable next to videos which
+        // wear the accent blue.
+        &.kind-csv .EntryIcon {
+            color: $text-secondary;
+            opacity: 0.7;
+        }
+
+        .EntryKind {
+            margin-left: auto;
+            flex-shrink: 0;
+            font-family: $font-mono;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            padding: 1px 6px;
+            border-radius: $radius-pill;
+            background: rgba(0, 0, 0, 0.04);
+            color: $text-muted;
+        }
+
         .EntryIcon {
             flex-shrink: 0;
             width: 14px;
@@ -285,7 +1237,7 @@
     .EmptyState {
         padding: 16px 10px;
         text-align: center;
-        font-size: 15px;
+        font-size: 18px;
         color: var(--color-text-muted, rgba(0, 0, 0, 0.28));
     }
 }

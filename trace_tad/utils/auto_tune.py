@@ -21,8 +21,10 @@ def _get_system_resources():
                 elif line.startswith("MemAvailable:"):
                     ram_available_mb = int(line.split()[1]) / 1024
     except (FileNotFoundError, ValueError):
-        ram_total_mb = 64 * 1024
-        ram_available_mb = 32 * 1024
+        # Estimate ~4 GB per CPU core; assume half is currently free.
+        # Degrades gracefully on small VMs without overestimating into OOM.
+        ram_total_mb = (cpu_count * 4) * 1024
+        ram_available_mb = ram_total_mb // 2
 
     return dict(
         gpu_total_mb=gpu_total_mb,

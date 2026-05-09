@@ -6,13 +6,13 @@
 
     .PanelHeader {
         h2 {
-            font-size: 20px;
+            font-size: 23px;
             font-weight: 600;
             color: var(--color-text-primary, rgba(0, 0, 0, 0.88));
             margin: 0 0 6px;
         }
         p {
-            font-size: 17px;
+            font-size: 20px;
             color: var(--color-text-muted, rgba(0, 0, 0, 0.4));
             margin: 0;
             line-height: 1.5;
@@ -26,7 +26,7 @@
     }
 
     .FieldLabel {
-        font-size: 16px;
+        font-size: 19px;
         font-weight: 500;
         color: var(--color-text-secondary, rgba(0, 0, 0, 0.55));
         text-transform: uppercase;
@@ -57,13 +57,13 @@
             }
 
             .ModelName {
-                font-size: 17px;
+                font-size: 20px;
                 color: var(--color-text-primary, rgba(0, 0, 0, 0.88));
                 font-weight: 500;
             }
 
             .ModelMeta {
-                font-size: 15px;
+                font-size: 18px;
                 color: var(--color-text-muted, rgba(0, 0, 0, 0.28));
                 margin-top: 3px;
             }
@@ -71,7 +71,7 @@
     }
 
     .ModelDetail {
-        font-size: 16px;
+        font-size: 19px;
         color: var(--color-text-secondary, rgba(0, 0, 0, 0.55));
         font-family: var(--font-mono, monospace);
     }
@@ -80,11 +80,12 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 8px;
-        padding: 10px 20px;
+        gap: 10px;
+        min-height: 48px;
+        padding: 12px 26px;
         border: none;
         border-radius: var(--radius-md, 8px);
-        font-size: 17px;
+        font-size: 20px;
         font-weight: 500;
         cursor: pointer;
         transition: all 0.15s;
@@ -105,7 +106,7 @@
         background: var(--color-surface-1, #f5f6f8);
 
         .MetricsTitle {
-            font-size: 16px;
+            font-size: 19px;
             font-weight: 500;
             color: var(--color-text-secondary, rgba(0, 0, 0, 0.55));
             text-transform: uppercase;
@@ -118,11 +119,11 @@
             justify-content: space-between;
             align-items: center;
             padding: 6px 0;
-            font-size: 17px;
+            font-size: 20px;
             color: var(--color-text-secondary, rgba(0, 0, 0, 0.55));
 
             &.primary {
-                font-size: 19px;
+                font-size: 22px;
                 color: var(--color-text-primary, rgba(0, 0, 0, 0.88));
             }
 
@@ -143,6 +144,6 @@
         border: 1px solid rgba(255, 107, 107, 0.15);
         border-radius: var(--radius-md, 8px);
         color: #ff6b6b;
-        font-size: 16px;
+        font-size: 19px;
     }
 }

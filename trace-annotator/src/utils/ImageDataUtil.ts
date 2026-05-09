@@ -14,7 +14,11 @@ export class ImageDataUtil {
         }
     }
 
-    public static createImageDataFromUrl(url: string, filename: string): ImageData {
+    public static createImageDataFromUrl(
+        url: string,
+        filename: string,
+        frameRate?: number,
+    ): ImageData {
         const placeholderFile = new File([], filename, {
             type: 'video/mp4',
             lastModified: 0
@@ -27,6 +31,11 @@ export class ImageDataUtil {
             loadStatus: false,
             labelRects: [],
             labelNameIds: [],
+            // Per-file frame rate sourced from the backend's `/api/files`
+            // (Phase 4 of docs/pts-based-frame-mapping.md). Optional —
+            // legacy callers / unit tests can omit it and consumers fall
+            // back to 30 fps via `?? 30` / `|| 30`.
+            ...(frameRate !== undefined && frameRate > 0 ? { frameRate } : {}),
         }
     }
 

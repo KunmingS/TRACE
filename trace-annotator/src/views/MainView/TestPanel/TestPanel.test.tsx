@@ -46,7 +46,7 @@ describe('TestPanel', () => {
                 {
                     path: '/models/dev-model',
                     label: 'dev-model',
-                    config_path: 'configs/tridet/tridet_large.py',
+                    config_path: 'configs/large.py',
                     classes: ['drink', 'eat'],
                     num_classes: 2,
                     size_mb: 48.2,
@@ -82,7 +82,7 @@ describe('TestPanel', () => {
                     {
                         path: '/models/dev-model',
                         label: 'dev-model',
-                        config_path: 'configs/tridet/tridet_large.py',
+                        config_path: 'configs/large.py',
                         classes: ['drink', 'eat'],
                         num_classes: 2,
                         size_mb: 48.2,
@@ -96,9 +96,9 @@ describe('TestPanel', () => {
             // Prep artifact
             .mockImplementationOnce(() =>
                 jsonResponse({
-                    clips_dir: '/prepared/clips',
-                    json_path: '/prepared/dataset.json',
-                    classmap_path: '/prepared/classmap.txt',
+                    model_dir: '/datasets/raw/model_20260507_120000',
+                    dataset_json: '/datasets/raw/model_20260507_120000/dataset.json',
+                    classmap_path: '/datasets/raw/model_20260507_120000/classmap.txt',
                 })
             )
             // Test job submission
@@ -129,12 +129,61 @@ describe('TestPanel', () => {
             expect(testCall).toBeTruthy();
             const testRequest = JSON.parse(testCall[1].body);
             expect(testRequest).toMatchObject({
-                config_path: 'configs/tridet/tridet_large.py',
-                checkpoint: '/models/dev-model/best.pth',
-                class_map: '/models/dev-model/classmap.txt',
-                dataset_dir: '/prepared/clips',
-                annotation_path: '/prepared/dataset.json',
+                model_dir: '/models/dev-model',
+                dataset_dir: '/datasets/raw/model_20260507_120000',
+                annotation_path: '/datasets/raw/model_20260507_120000/dataset.json',
             });
         });
+    });
+
+    test('shows CUDA-unavailable error when evaluation submission rejects', async () => {
+        const fetchMock = global.fetch as jest.Mock;
+        fetchMock
+            .mockImplementationOnce(() =>
+                jsonResponse([
+                    {
+                        path: '/models/dev-model',
+                        label: 'dev-model',
+                        config_path: 'configs/large.py',
+                        classes: ['drink', 'eat'],
+                        num_classes: 2,
+                        size_mb: 48.2,
+                    },
+                ])
+            )
+            .mockImplementationOnce(() => jsonResponse({ job_id: 'prep-1' }))
+            .mockImplementationOnce(() => jsonResponse({ status: 'completed' }))
+            .mockImplementationOnce(() =>
+                jsonResponse({
+                    model_dir: '/datasets/raw/model_20260507_120000',
+                    dataset_json: '/datasets/raw/model_20260507_120000/dataset.json',
+                    classmap_path: '/datasets/raw/model_20260507_120000/classmap.txt',
+                })
+            )
+            .mockImplementationOnce(() => Promise.resolve({
+                ok: false,
+                status: 400,
+                json: async () => ({
+                    detail: { code: 'CUDA_UNAVAILABLE', message: 'No GPU on server.' },
+                }),
+            }));
+
+        render(<TestPanel />);
+
+        fireEvent.change(await screen.findByPlaceholderText('/path/to/dataset'), {
+            target: { value: '/datasets/raw' },
+        });
+        fireEvent.click(await screen.findByRole('button', { name: /dev-model/i }));
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: 'Run Evaluation' }));
+        });
+
+        await act(async () => {
+            jest.advanceTimersByTime(2000);
+            await Promise.resolve();
+        });
+
+        expect(await screen.findByText('No GPU on server.')).toBeInTheDocument();
     });
 });

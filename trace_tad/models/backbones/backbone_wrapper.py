@@ -200,6 +200,8 @@ class BackboneWrapper(nn.Module):
 
     def _load_pretrained(self, checkpoint_path: str):
         """Load pretrained weights with flexible key matching."""
+        from trace_tad.weights import resolve as _resolve_weights
+        checkpoint_path = _resolve_weights(checkpoint_path)
         print(f"Loading pretrained backbone from: {checkpoint_path}")
         ckpt = torch.load(checkpoint_path, map_location="cpu")
 

@@ -3,7 +3,10 @@ Pure decord + torchvision replacements for mmaction video pipeline steps.
 Replaces: mmaction.DecordInit, DecordDecode, Resize, RandomResizedCrop,
           CenterCrop, Flip, ImgAug, ColorJitter, FormatShape.
 """
+import os
 import random
+from collections import OrderedDict
+
 import numpy as np
 import torch
 import cv2
@@ -15,18 +18,69 @@ from PIL import Image
 from ..builder import PIPELINES
 
 
+class _VideoReaderCache:
+    """Per-process LRU cache of decord.VideoReader instances.
+
+    Virtual clips read frame ranges directly from the original source video
+    rather than from pre-extracted clip files. Without caching, every
+    __getitem__ call would reopen the source (parsing moov atom etc.). With
+    caching + DataLoader's persistent_workers=True, hot source videos stay
+    open across samples and across epochs.
+
+    Each PyTorch worker is a separate process, so each gets its own cache.
+    """
+
+    def __init__(self, maxsize: int = 8):
+        self._cache: "OrderedDict[tuple[str, int, int, int], decord.VideoReader]" = OrderedDict()
+        self._max = maxsize
+
+    def get(self, path: str, num_threads: int, width: int = -1, height: int = -1) -> decord.VideoReader:
+        path = os.path.abspath(path)
+        key = (path, int(width), int(height), int(num_threads))
+        if key in self._cache:
+            self._cache.move_to_end(key)
+            return self._cache[key]
+        if len(self._cache) >= self._max:
+            _, old = self._cache.popitem(last=False)
+            del old
+        vr = decord.VideoReader(path, width=width, height=height, num_threads=num_threads)
+        self._cache[key] = vr
+        return vr
+
+
+_video_reader_cache = _VideoReaderCache()
+
+
 @PIPELINES.register_module()
 class VideoInit:
-    """Replaces mmaction.DecordInit."""
+    """Open the video for this sample.
 
-    def __init__(self, num_threads: int = 4):
+    For virtual clips (sample dict contains `clip_frame_count`), `total_frames`
+    is the clip's logical length, not the source video's full length, so that
+    downstream LoadFrames/LoadSnippetFrames sample within the clip's span. The
+    actual seek to source-frame coordinates happens in VideoDecode by adding
+    `source_frame_offset` to the clip-local indices.
+    """
+
+    def __init__(self, num_threads: int = 4, resize=None, width: int = -1, height: int = -1):
         self.num_threads = num_threads
+        if resize is not None:
+            if isinstance(resize, int):
+                height = width = resize
+            else:
+                height, width = resize
+        self.width = int(width)
+        self.height = int(height)
 
     def __call__(self, results):
         filename = results["filename"]
-        results["video_reader"] = decord.VideoReader(filename, num_threads=self.num_threads)
-        results["total_frames"] = len(results["video_reader"])
-        results["avg_fps"] = results["video_reader"].get_avg_fps()
+        vr = _video_reader_cache.get(filename, self.num_threads, width=self.width, height=self.height)
+        results["video_reader"] = vr
+        if "clip_frame_count" in results:
+            results["total_frames"] = int(results["clip_frame_count"])
+        else:
+            results["total_frames"] = len(vr)
+        results["avg_fps"] = vr.get_avg_fps()
         return results
 
 
@@ -114,13 +168,22 @@ class VideoTemporalAugment:
 
 @PIPELINES.register_module()
 class VideoDecode:
-    """Replaces mmaction.DecordDecode."""
+    """Decode the chosen frames into image arrays.
+
+    For virtual clips, `frame_inds` are clip-local; `source_frame_offset`
+    translates them into source-video coordinates before `get_batch`. The
+    VideoReader is removed from `results` (workers don't need to ship it
+    downstream) but kept alive in the per-process cache.
+    """
 
     def __call__(self, results):
         frame_inds = results["frame_inds"]
         vr = results["video_reader"]
         flat_inds = frame_inds.flatten()
-        # clamp to valid range
+        offset = int(results.get("decode_frame_offset", results.get("source_frame_offset", 0)))
+        if offset:
+            flat_inds = flat_inds + offset
+        # clamp to valid source-frame range
         flat_inds = np.clip(flat_inds, 0, len(vr) - 1)
         imgs = vr.get_batch(flat_inds.tolist()).asnumpy()  # [N, H, W, 3]
         imgs = imgs.reshape(*frame_inds.shape, *imgs.shape[1:])  # [..., H, W, 3]

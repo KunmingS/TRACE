@@ -23,6 +23,15 @@ export function updateActivePopupType(activePopupType: PopupWindowType): General
     }
 }
 
+export function updatePopupPayload(popupPayload: unknown): GeneralActionTypes {
+    return {
+        type: Action.UPDATE_POPUP_PAYLOAD,
+        payload: {
+            popupPayload,
+        }
+    }
+}
+
 export function updateCustomCursorStyle(customCursorStyle: CustomCursorStyle): GeneralActionTypes {
     return {
         type: Action.UPDATE_CUSTOM_CURSOR_STYLE,
@@ -113,6 +122,20 @@ export function updateVideoFiles(videoFiles: string[]): GeneralActionTypes {
     return {
         type: Action.UPDATE_VIDEO_FILES,
         payload: { videoFiles }
+    };
+}
+
+export function markVideoHasCsv(filename: string): GeneralActionTypes {
+    return {
+        type: Action.MARK_VIDEO_HAS_CSV,
+        payload: { filename }
+    };
+}
+
+export function clearVideoHasCsv(filename: string): GeneralActionTypes {
+    return {
+        type: Action.CLEAR_VIDEO_HAS_CSV,
+        payload: { filename }
     };
 }
 

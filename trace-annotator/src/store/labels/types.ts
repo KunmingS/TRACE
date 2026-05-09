@@ -17,6 +17,7 @@ export type LabelRect = Annotation & {
     endTimestamp?: string;
     endFrame?: number;
     behavior?: string;
+    animalId?: string;
 }
 
 export type LabelName = {
@@ -24,6 +25,11 @@ export type LabelName = {
     id: string;
     color?: string;
     shortcut?: string;
+}
+
+export type Subject = {
+    id: string;
+    name: string;
 }
 
 export type VideoData = {
@@ -67,6 +73,14 @@ export type LabelsState = {
     imagesData: ImageData[];
     firstLabelCreatedFlag: boolean;
     labels: LabelName[];
+    subjects: Subject[];
+    activeSubjectId: string | null;
+    // When non-null, the editor is "focused" on a single behavior:
+    // the timeline hides clips of every other behavior, the top bar
+    // hides every other chip, and Shift/Cmd+Arrow boundary navigation
+    // is filtered to the focused behavior's clips. Click the focused
+    // chip again to exit.
+    focusedLabelNameId: string | null;
 }
 
 interface UpdateActiveImageIndex {
@@ -140,6 +154,27 @@ interface UpdateFirstLabelCreatedFlag {
     }
 }
 
+interface UpdateSubjects {
+    type: typeof Action.UPDATE_SUBJECTS;
+    payload: {
+        subjects: Subject[];
+    }
+}
+
+interface UpdateActiveSubjectId {
+    type: typeof Action.UPDATE_ACTIVE_SUBJECT_ID;
+    payload: {
+        activeSubjectId: string | null;
+    }
+}
+
+interface UpdateFocusedLabelNameId {
+    type: typeof Action.UPDATE_FOCUSED_LABEL_NAME_ID;
+    payload: {
+        focusedLabelNameId: string | null;
+    }
+}
+
 export type LabelsActionTypes = UpdateActiveImageIndex
     | UpdateActiveLabelNameId
     | UpdateActiveLabelType
@@ -150,3 +185,6 @@ export type LabelsActionTypes = UpdateActiveImageIndex
     | UpdateActiveLabelId
     | UpdateHighlightedLabelId
     | UpdateFirstLabelCreatedFlag
+    | UpdateSubjects
+    | UpdateActiveSubjectId
+    | UpdateFocusedLabelNameId

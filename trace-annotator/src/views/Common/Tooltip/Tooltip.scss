@@ -1,0 +1,81 @@
+@use '../../../settings/Settings' as *;
+
+// Floating tooltip styled to match the rest of the editor surfaces. Lives
+// in a portal at document.body — coordinates are set inline by the JS.
+.Tooltip {
+  position: fixed;
+  z-index: 9000;  // above modals/popups but below toast notifications
+  pointer-events: none;
+  padding: 8px 12px;
+  border-radius: $radius-md;
+  background: $surface-0;
+  color: $text-primary;
+  border: 1px solid $border-default;
+  font-family: $font-ui;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: 0;
+  box-shadow:
+    0 8px 24px rgba(15, 23, 42, 0.10),
+    0 2px 6px rgba(15, 23, 42, 0.06);
+  // Tiny entrance animation so tooltips don't pop in jarringly.
+  opacity: 0;
+  transform: translateY(2px);
+  animation: TooltipIn 120ms ease-out 30ms forwards;
+  // Wrap long strings (e.g., full file paths) onto multiple lines instead
+  // of pushing the tooltip off-screen.
+  white-space: normal;
+  word-break: break-word;
+
+  // While we're still computing the position (offscreen), keep the
+  // tooltip invisible so the first paint never flashes at (-9999, -9999).
+  &.measuring {
+    visibility: hidden;
+    animation: none;
+  }
+
+  // Direction-aware arrow that points back at the anchor. Two stacked
+  // triangles — the outer one renders the border, the inner one fills
+  // with the surface color so the seam disappears against the popup.
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 0;
+    border: 6px solid transparent;
+    left: 50%;
+  }
+  &.placement-top {
+    &::before {
+      bottom: -12px;
+      transform: translateX(-50%);
+      border-top-color: $border-default;
+    }
+    &::after {
+      bottom: -11px;
+      transform: translateX(-50%);
+      border-top-color: $surface-0;
+    }
+  }
+  &.placement-bottom {
+    &::before {
+      top: -12px;
+      transform: translateX(-50%);
+      border-bottom-color: $border-default;
+    }
+    &::after {
+      top: -11px;
+      transform: translateX(-50%);
+      border-bottom-color: $surface-0;
+    }
+  }
+}
+
+@keyframes TooltipIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

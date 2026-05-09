@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TRACE Documentation</title>
+  <meta name="description" content="Documentation for TRACE, a temporal action detection system for animal behavior analysis in untrimmed video.">
+  <link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="TRACE documentation home">
+      <span class="brand-mark">T</span>
+      <span>TRACE Docs</span>
+    </a>
+    <nav class="top-nav" aria-label="Documentation navigation">
+      <a href="#quick-start">Quick Start</a>
+      <a href="#workflow">Workflow</a>
+      <a href="#cli">CLI</a>
+      <a href="https://github.com/KunmingS/TRACE">GitHub</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow">Temporal action detection for animal behavior</p>
+        <h1 id="hero-title">TRACE</h1>
+        <p class="hero-lede">
+          Pair untrimmed lab videos with annotation files, train temporal
+          behavior detectors, and use them to draft annotations for new videos.
+        </p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#quick-start">Start Here</a>
+          <a class="button button-secondary" href="https://github.com/KunmingS/TRACE">View Source</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="quick-start" class="section section-grid">
+      <div>
+        <p class="section-label">Quick Start</p>
+        <h2>Install TRACE and launch the annotator.</h2>
+        <p>
+          Create a Python 3.9+ environment with conda, mamba, or uv before
+          installing TRACE from PyPI. Training, evaluation, and prediction
+          require a CUDA-capable PyTorch environment; the annotator app can run
+          without local model jobs.
+        </p>
+      </div>
+      <div class="code-panel" aria-label="Quick start commands">
+<pre><code># conda
+conda create -n trace-tad python=3.11 pip
+conda activate trace-tad
+
+# mamba
+mamba create -n trace-tad python=3.11 pip
+mamba activate trace-tad
+
+# uv
+uv venv --python 3.11 --seed .venv
+source .venv/bin/activate
+
+python -m pip install trace-tad
+trace prepare --weights all
+trace app</code></pre>
+      </div>
+    </section>
+
+    <section id="workflow" class="section">
+      <div class="section-heading">
+        <p class="section-label">Workflow</p>
+        <h2>From labeled video to predictions.</h2>
+      </div>
+      <div class="step-grid">
+        <article class="step-card">
+          <span class="step-number">01</span>
+          <h3>Annotate</h3>
+          <p>
+            Open the TRACE app, choose a video directory, and save annotation
+            CSVs beside each source video. One video can have multiple CSVs.
+          </p>
+        </article>
+        <article class="step-card">
+          <span class="step-number">02</span>
+          <h3>Train</h3>
+          <p>
+            Choose the video/annotation pairs for the run. TRACE prepares
+            PTS-aligned clips and writes a timestamped model artifact directory.
+          </p>
+        </article>
+        <article class="step-card">
+          <span class="step-number">03</span>
+          <h3>Evaluate</h3>
+          <p>
+            Reuse the training dataset or pass a new set of video/annotation
+            pairs to score a trained model on held-out recordings.
+          </p>
+        </article>
+        <article class="step-card">
+          <span class="step-number">04</span>
+          <h3>Predict</h3>
+          <p>
+            Run a trained model against new videos and write prediction CSVs
+            that reviewers can use as draft annotation files.
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section split-section">
+      <div>
+        <p class="section-label">Training Data</p>
+        <h2>Use explicit video and annotation pairs.</h2>
+        <p>
+          The annotation CSV format is time-based. Each row maps a behavior
+          label to start and end times in seconds. A single source video can
+          have multiple CSVs, and each training pair chooses which annotation
+          file to use.
+        </p>
+      </div>
+      <div class="code-panel compact" aria-label="Annotation CSV example">
+<pre><code>labelId,timestamp,endTimestamp
+grooming,12.430,18.970
+rearing,42.100,45.650</code></pre>
+      </div>
+    </section>
+
+    <section class="section split-section">
+      <div>
+        <p class="section-label">UI + CLI</p>
+        <h2>Generate reproducible commands from the app.</h2>
+        <p>
+          You can annotate in the browser, select video/annotation pairs in the
+          UI, and copy the matching CLI command for training, evaluation,
+          prediction, or a full pipeline run.
+        </p>
+      </div>
+      <div class="code-panel compact" aria-label="Generated CLI command example">
+<pre><code>trace train --model large \
+  --work-dir /data \
+  --pairs video01.mp4=video01_final.csv</code></pre>
+      </div>
+    </section>
+
+    <section id="cli" class="section">
+      <div class="section-heading">
+        <p class="section-label">CLI Reference</p>
+        <h2>Core commands.</h2>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Command</th>
+              <th>Purpose</th>
+              <th>Example</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>trace prepare</code></td>
+              <td>Download local model weights.</td>
+              <td><code>trace prepare --weights all</code></td>
+            </tr>
+            <tr>
+              <td><code>trace update</code></td>
+              <td>Check PyPI for a newer TRACE package.</td>
+              <td><code>trace update</code></td>
+            </tr>
+            <tr>
+              <td><code>trace app</code></td>
+              <td>Start the production annotation server.</td>
+              <td><code>trace app --host 0.0.0.0 --port 8000</code></td>
+            </tr>
+            <tr>
+              <td><code>trace train</code></td>
+              <td>Prepare selected video/annotation pairs and train a small or large model.</td>
+              <td><code>trace train --model large --work-dir /data --pairs video01.mp4=video01_final.csv</code></td>
+            </tr>
+            <tr>
+              <td><code>trace eval</code></td>
+              <td>Evaluate a trained model, optionally on new paired data.</td>
+              <td><code>trace eval --model-dir /data/model_YYYYMMDD_HHMMSS</code></td>
+            </tr>
+            <tr>
+              <td><code>trace predict</code></td>
+              <td>Predict new videos and write draft annotation CSVs.</td>
+              <td><code>trace predict --model-dir /data/model_YYYYMMDD_HHMMSS --input /data/video03.mp4</code></td>
+            </tr>
+            <tr>
+              <td><code>trace pipeline</code></td>
+              <td>Run configured train, predict, and export workflows.</td>
+              <td><code>trace pipeline configs/small.py --export csv</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section split-section">
+      <div>
+        <p class="section-label">Artifacts</p>
+        <h2>Model runs are self-contained.</h2>
+        <p>
+          Training creates <code>model_YYYYMMDD_HHMMSS/</code> under
+          <code>--work-dir</code>. TRACE records the generated
+          <code>dataset.json</code>, <code>classmap.txt</code>, selected config,
+          and checkpoint files so later eval and predict commands can resolve
+          the same model bundle.
+        </p>
+      </div>
+      <div class="artifact-list" aria-label="Model artifact files">
+        <span>best.pth</span>
+        <span>classmap.txt</span>
+        <span>config.txt</span>
+        <span>dataset.json</span>
+        <span>eval_YYYYMMDD_HHMMSS/</span>
+      </div>
+    </section>
+
+    <section id="notes" class="section">
+      <div class="section-heading">
+        <p class="section-label">Public Notes</p>
+        <h2>What this page publishes.</h2>
+        <p>
+          The public site intentionally keeps the surface small: installation,
+          workflow, CLI usage, artifact layout, and deployment status. Internal
+          engineering notes can stay local until they are ready to publish.
+        </p>
+      </div>
+      <div class="note-grid">
+        <article class="note-card">
+          <h3>Install</h3>
+          <p>Package installation and model-weight preparation commands.</p>
+        </article>
+        <article class="note-card">
+          <h3>Annotate</h3>
+          <p>How saved CSV annotations pair behavior labels with timestamps.</p>
+        </article>
+        <article class="note-card">
+          <h3>Train</h3>
+          <p>Explicit video/annotation pair examples for reproducible model runs.</p>
+        </article>
+        <article class="note-card">
+          <h3>Evaluate</h3>
+          <p>Model artifact directories and evaluation entry points.</p>
+        </article>
+        <article class="note-card">
+          <h3>Predict</h3>
+          <p>Prediction commands that create draft annotation files for new recordings.</p>
+        </article>
+        <article class="note-card">
+          <h3>Deploy</h3>
+          <p>GitHub Pages deployment from the curated public docs artifact.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section publish-section">
+      <div>
+        <p class="section-label">GitHub Pages</p>
+        <h2>Ready to publish from <code>docs/</code>.</h2>
+        <p>
+          This repository now includes a Pages workflow that deploys this static
+          documentation site. After the workflow runs on <code>main</code>, the
+          project docs are expected at
+          <a href="https://kunmings.github.io/TRACE/">kunmings.github.io/TRACE</a>.
+        </p>
+      </div>
+      <a class="button button-primary" href="https://github.com/KunmingS/TRACE/actions">Open Actions</a>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span>TRACE documentation</span>
+    <a href="https://github.com/KunmingS/TRACE/blob/main/LICENSE">Apache-2.0</a>
+  </footer>
+</body>
+</html>

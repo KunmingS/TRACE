@@ -83,8 +83,11 @@ export function useJobRunner(): UseJobRunnerReturn {
         });
 
         if (!res.ok) {
-            const detail = await res.json().catch(() => ({}));
-            const msg = detail.detail || `Job submission failed (${res.status})`;
+            const body = await res.json().catch(() => ({}));
+            const raw = body.detail;
+            const msg = typeof raw === 'string'
+                ? raw
+                : (raw?.message || `Job submission failed (${res.status})`);
             setStatus('failed');
             setError(msg);
             throw new Error(msg);

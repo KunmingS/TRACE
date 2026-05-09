@@ -25,6 +25,7 @@ $accent-border: $accent-glow;
     background-size: 64px 64px;
     mask-image: radial-gradient(ellipse 80% 70% at 30% 40%, black 10%, transparent 70%);
     pointer-events: none;
+    contain: layout paint;
     z-index: 0;
   }
 
@@ -36,6 +37,7 @@ $accent-border: $accent-glow;
       radial-gradient(circle 400px at 75% 12%, rgba($glow-cyan, 0.04), transparent),
       radial-gradient(circle 500px at 50% 90%, rgba(100, 140, 200, 0.03), transparent);
     pointer-events: none;
+    contain: layout paint;
     z-index: 0;
   }
 
@@ -47,6 +49,7 @@ $accent-border: $accent-glow;
     background-size: 256px;
     opacity: 0.02;
     pointer-events: none;
+    contain: layout paint;
     z-index: 0;
   }
 
@@ -59,12 +62,12 @@ $accent-border: $accent-glow;
   .MainShell {
     position: relative;
     z-index: 10;
-    width: min(1320px, calc(100vw - clamp(32px, 6vw, 80px)));
+    width: min(1680px, calc(100vw - clamp(24px, 4vw, 64px)));
     min-height: 100vh;
     margin: 0 auto;
     padding: clamp(28px, 5vh, 56px) 0 clamp(36px, 6vh, 60px);
     display: grid;
-    grid-template-columns: minmax(220px, 300px) minmax(520px, 1fr);
+    grid-template-columns: minmax(220px, 300px) minmax(640px, 1fr);
     grid-template-rows: auto 1fr;
     gap: 0 clamp(32px, 4vw, 56px);
     align-items: start;
@@ -114,7 +117,7 @@ $accent-border: $accent-glow;
   .Wordmark {
     margin: 0;
     font-family: $font-mono;
-    font-size: clamp(2.2rem, 4vw, 3.2rem);
+    font-size: calc(clamp(2.2rem, 4vw, 3.2rem) + 3px);
     font-weight: 700;
     line-height: 1;
     letter-spacing: 0.1em;
@@ -123,7 +126,7 @@ $accent-border: $accent-glow;
   }
 
   .Expansion {
-    font-size: clamp(11px, 1.1vw, 13px);
+    font-size: clamp(14px, calc(1.1vw + 3px), 16px);
     font-weight: 400;
     line-height: 1.5;
     letter-spacing: 0.02em;
@@ -142,7 +145,7 @@ $accent-border: $accent-glow;
   .Tagline {
     margin: 0;
     max-width: 52ch;
-    font-size: 17px;
+    font-size: 20px;
     line-height: 1.6;
     color: $text-secondary;
     padding-left: 76px; // Align with text after logo (52px logo + 24px gap)
@@ -182,7 +185,7 @@ $accent-border: $accent-glow;
   }
 
   .TabNavLabel {
-    font-size: 14px;
+    font-size: 17px;
     font-weight: 600;
     letter-spacing: 0.16em;
     text-transform: uppercase;
@@ -200,19 +203,21 @@ $accent-border: $accent-glow;
     appearance: none; background: none; border: none; margin: 0; padding: 0; text-align: inherit; color: inherit; font: inherit;
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 9px 14px;
+    gap: 12px;
+    min-height: 44px;
+    padding: 11px 18px;
     border-radius: $radius-lg;
     border-left: 2px solid transparent;
-    font-size: 17px;
+    font-size: 20px;
     font-weight: 500;
     color: $text-secondary;
     cursor: pointer;
+    contain: paint;
     transition: background 0.2s, color 0.2s, border-color 0.2s;
 
     svg {
-      width: 18px;
-      height: 18px;
+      width: 22px;
+      height: 22px;
       flex-shrink: 0;
       color: inherit;
     }
@@ -245,8 +250,9 @@ $accent-border: $accent-glow;
   .StepToggle {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 6px 0;
+    gap: 12px;
+    min-height: 36px;
+    padding: 8px 0;
     cursor: pointer;
 
     input[type='checkbox'] {
@@ -254,8 +260,8 @@ $accent-border: $accent-glow;
     }
 
     .ToggleTrack {
-      width: 28px;
-      height: 16px;
+      width: 40px;
+      height: 24px;
       border-radius: $radius-md;
       background: rgba(0, 0, 0, 0.10);
       position: relative;
@@ -266,8 +272,8 @@ $accent-border: $accent-glow;
         position: absolute;
         top: 2px;
         left: 2px;
-        width: 12px;
-        height: 12px;
+        width: 18px;
+        height: 18px;
         border-radius: $radius-circle;
         background: rgba(0, 0, 0, 0.25);
         transition: transform 0.2s, background 0.2s;
@@ -278,13 +284,13 @@ $accent-border: $accent-glow;
       background: rgba($glow-blue, 0.2);
 
       .ToggleThumb {
-        transform: translateX(12px);
+        transform: translateX(16px);
         background: $glow-blue;
       }
     }
 
     .ToggleLabel {
-      font-size: 16px;
+      font-size: 19px;
       font-weight: 500;
       color: $text-secondary;
       transition: color 0.2s;
@@ -298,7 +304,7 @@ $accent-border: $accent-glow;
   // ─── Workspace Panel (bottom-right) ───
 
   .WorkspacePanel {
-    padding: clamp(20px, 3vw, 32px);
+    padding: clamp(28px, 3.2vw, 48px);
     border-radius: $radius-xl;
     background: #ffffff;
     border: 1px solid rgba(0, 0, 0, 0.08);
@@ -306,7 +312,7 @@ $accent-border: $accent-glow;
       0 1px 3px rgba(0, 0, 0, 0.04),
       0 8px 24px rgba(0, 0, 0, 0.06);
     animation: panelIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both;
-    min-height: 340px;
+    min-height: 560px;
   }
 }
 

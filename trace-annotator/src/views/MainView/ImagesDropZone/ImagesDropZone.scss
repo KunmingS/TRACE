@@ -34,6 +34,7 @@ $info: #2563eb;
     color: $text-2;
     cursor: pointer;
     text-align: left;
+    will-change: transform;
     transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
 
     &:hover {
@@ -61,13 +62,13 @@ $info: #2563eb;
     background: rgba(37, 99, 235, 0.06);
     border: 1px solid rgba(37, 99, 235, 0.12);
     font-family: $font-mono;
-    font-size: 15px;
+    font-size: 18px;
     color: $info;
     flex-shrink: 0;
   }
 
   .ModeLabel {
-    font-size: 18px;
+    font-size: 21px;
     font-weight: 600;
     letter-spacing: -0.01em;
   }
@@ -79,7 +80,7 @@ $info: #2563eb;
   }
 
   .LeadTitle {
-    font-size: 26px;
+    font-size: 29px;
     font-weight: 600;
     letter-spacing: -0.03em;
     color: $text-1;
@@ -87,7 +88,7 @@ $info: #2563eb;
 
   .LeadText {
     max-width: 58ch;
-    font-size: 18px;
+    font-size: 21px;
     line-height: 1.65;
     color: $text-2;
   }
@@ -118,7 +119,7 @@ $info: #2563eb;
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 15px;
+    font-size: 18px;
     font-weight: 600;
     color: $text-2;
     letter-spacing: 0.4px;
@@ -131,7 +132,7 @@ $info: #2563eb;
     .CountBadge {
       background: $accent-dim;
       color: $accent;
-      font-size: 14px;
+      font-size: 17px;
       font-weight: 600;
       padding: 1px 7px;
       border-radius: $radius-lg;
@@ -155,11 +156,16 @@ $info: #2563eb;
     padding: 0 14px;
     border-radius: $radius-md;
     font-family: $font-ui;
-    font-size: 17px;
+    font-size: 20px;
     font-weight: 600;
     white-space: nowrap;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      box-shadow 0.15s ease,
+      color 0.15s ease,
+      opacity 0.15s ease;
   }
 
   .LoadBtn {
@@ -251,7 +257,7 @@ $info: #2563eb;
   }
 
   .DropTitle {
-    font-size: 22px;
+    font-size: 25px;
     font-weight: 600;
     color: $text-1;
     letter-spacing: -0.02em;
@@ -259,7 +265,7 @@ $info: #2563eb;
 
   .DropText,
   .PromptText {
-    font-size: 17px;
+    font-size: 20px;
     line-height: 1.6;
     color: $text-2;
   }
@@ -271,7 +277,7 @@ $info: #2563eb;
   }
 
   .PromptTitle {
-    font-size: 16px;
+    font-size: 19px;
     font-weight: 600;
     letter-spacing: 0.12em;
     text-transform: uppercase;
@@ -293,7 +299,7 @@ $info: #2563eb;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    font-size: 16px;
+    font-size: 19px;
     color: $text-2;
   }
 
@@ -316,17 +322,38 @@ $info: #2563eb;
   }
 
   .LocalFileName,
+  .LocalFileKind,
   .LocalFileSize,
   .LocalFileOverflow {
     font-family: $font-mono;
-    font-size: 16px;
+    font-size: 19px;
   }
 
   .LocalFileName {
+    flex: 1 1 auto;
     color: $text-1;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .LocalFileKind {
+    flex-shrink: 0;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: $radius-pill;
+    color: rgba(30, 64, 175, 0.94);
+    background: rgba(37, 99, 235, 0.08);
+    border: 1px solid rgba(37, 99, 235, 0.14);
+
+    &.csv {
+      color: #166534;
+      background: rgba(22, 163, 74, 0.08);
+      border-color: rgba(22, 163, 74, 0.16);
+    }
   }
 
   .LocalFileSize,
@@ -342,7 +369,7 @@ $info: #2563eb;
     gap: 10px;
     padding: 20px;
     color: $text-2;
-    font-size: 17px;
+    font-size: 20px;
 
     .LoadingDots {
       display: flex;
@@ -369,7 +396,7 @@ $info: #2563eb;
     gap: 8px;
     border-radius: $radius-lg;
     padding: 10px 14px;
-    font-size: 16px;
+    font-size: 19px;
     line-height: 1.4;
 
     svg {
@@ -454,7 +481,7 @@ $info: #2563eb;
     }
 
     .LeadTitle {
-      font-size: 22px;
+      font-size: 25px;
     }
 
     .IntakePanel {
