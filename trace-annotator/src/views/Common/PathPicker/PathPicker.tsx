@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './PathPicker.scss';
 import { API_URL } from '../../../config';
+import { usePathAdapter } from './PlatformContext';
+import { DriveRoot, PathAdapter } from './pathAdapter';
 
 interface PathPickerProps {
     value: string;
@@ -108,22 +110,10 @@ function getCsvStem(name: string): string | null {
     return name.toLowerCase().endsWith('.csv') ? name.slice(0, -4) : null;
 }
 
-function joinPath(dir: string, name: string): string {
-    if (!dir) return name;
-    if (dir === '/') return '/' + name;
-    return dir.replace(/\/+$/, '') + '/' + name;
-}
-
-function dirOfPath(p: string): string {
-    const idx = p.lastIndexOf('/');
-    if (idx <= 0) return '/';
-    return p.substring(0, idx);
-}
-
-function basenameOfPath(p: string): string {
-    const idx = p.lastIndexOf('/');
-    return idx >= 0 ? p.substring(idx + 1) : p;
-}
+// Path-shape utilities live on the OS adapter (PathAdapter). Anywhere this
+// file used to call joinPath/dirOfPath/basenameOfPath/getParentDir/
+// splitBreadcrumbs, it now reaches for adapter.join / .parent / .basename /
+// .splitCrumbs so Windows paths keep their drive letter and backslash.
 
 function stemKeyFromVideoBasename(basename: string): string {
     // Mirrors parseVideoFile() — collapse .remux.mp4 / .h264.mp4 onto the
@@ -143,7 +133,7 @@ interface ParsedPair {
     stemKey: string;
 }
 
-function parsePairSpec(spec: string): ParsedPair | null {
+function parsePairSpec(adapter: PathAdapter, spec: string): ParsedPair | null {
     const eq = spec.indexOf('=');
     if (eq < 0) return null;
     const videoPath = spec.substring(0, eq);
@@ -152,8 +142,8 @@ function parsePairSpec(spec: string): ParsedPair | null {
     return {
         videoPath,
         csvPath,
-        folder: dirOfPath(videoPath),
-        stemKey: stemKeyFromVideoBasename(basenameOfPath(videoPath)),
+        folder: adapter.parent(videoPath),
+        stemKey: stemKeyFromVideoBasename(adapter.basename(videoPath)),
     };
 }
 
@@ -224,6 +214,18 @@ function buildRelatedFileGroups(entries: DirEntry[]): RelatedFileGroup[] {
         .sort((a, b) => a.firstIndex - b.firstIndex || a.key.localeCompare(b.key));
 }
 
+function formatBytesShort(bytes: number): string {
+    if (!Number.isFinite(bytes) || bytes < 0) return '';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+    let value = bytes;
+    let i = 0;
+    while (value >= 1024 && i < units.length - 1) {
+        value /= 1024;
+        i += 1;
+    }
+    return `${value >= 10 || i === 0 ? Math.round(value) : value.toFixed(1)} ${units[i]}`;
+}
+
 const MAX_RECENT = 5;
 const RECENT_PREFIX = 'trace:recent:';
 
@@ -236,37 +238,22 @@ function getRecentPaths(key: string): string[] {
     }
 }
 
-function saveRecentPath(key: string, path: string) {
-    const clean = path.replace(/\/+$/, '') || '/';
+function saveRecentPath(adapter: PathAdapter, key: string, path: string) {
+    const clean = adapter.stripTrailing(path) || (adapter.os === 'posix' ? '/' : '');
+    if (!clean) return; // Drive-list view itself isn't worth recording.
     const existing = getRecentPaths(key).filter((p) => p !== clean);
     const updated = [clean, ...existing].slice(0, MAX_RECENT);
     localStorage.setItem(RECENT_PREFIX + key, JSON.stringify(updated));
 }
 
-function splitBreadcrumbs(path: string): { segment: string; fullPath: string }[] {
-    if (!path || path === '/') return [{ segment: '/', fullPath: '/' }];
-    const parts = path.replace(/\/+$/, '').split('/').filter(Boolean);
-    const crumbs = [{ segment: '/', fullPath: '/' }];
-    let acc = '';
-    for (const part of parts) {
-        acc += '/' + part;
-        crumbs.push({ segment: part, fullPath: acc });
-    }
-    return crumbs;
-}
-
-function getParentDir(dir: string): string {
-    const trimmed = dir.replace(/\/+$/, '');
-    const lastSlash = trimmed.lastIndexOf('/');
-    if (lastSlash <= 0) return '/';
-    return trimmed.substring(0, lastSlash);
-}
+// splitBreadcrumbs/getParentDir/joinPath used to live here — they are now
+// adapter.splitCrumbs / adapter.parent / adapter.join (OS-aware).
 
 const PathPicker: React.FC<PathPickerProps> = ({
     value,
     onChange,
     onSubmit,
-    placeholder = '/path/to/folder',
+    placeholder,
     mode = 'dir',
     extensions,
     disabled = false,
@@ -300,18 +287,22 @@ const PathPicker: React.FC<PathPickerProps> = ({
     // multiFolder: parse the pair specs once. Selection state for the
     // currently browsed folder is derived from this; rows in the manifest
     // are derived from this; there's no separate stem book-keeping.
+    const adapter = usePathAdapter();
     const parsedPairs = useMemo<ParsedPair[]>(() => {
         if (!isMultiFolder) return [];
         return (selectedPairs || [])
-            .map(parsePairSpec)
+            .map((spec) => parsePairSpec(adapter, spec))
             .filter((p): p is ParsedPair => !!p);
-    }, [isMultiFolder, selectedPairs]);
+    }, [isMultiFolder, selectedPairs, adapter]);
     const [entries, setEntries] = useState<DirEntry[]>([]);
     const [currentDir, setCurrentDir] = useState('');
+    // Latest drive list reported by /api/ls on empty path. We fall back to the
+    // platform context's roots when the API hasn't been called yet (e.g. on
+    // first focus into a Windows machine), so the drive view always has data.
+    const [liveRoots, setLiveRoots] = useState<DriveRoot[] | null>(null);
     const [isOpen, setIsOpen] = useState(false);
     const [selectedIndex, setSelectedIndex] = useState(-1);
     const [isLoading, setIsLoading] = useState(false);
-    const [homeDir, setHomeDir] = useState<string | null>(null);
     const [siblingDropdown, setSiblingDropdown] = useState<{
         crumbIndex: number;
         items: { path: string; type: 'dir' | 'file' }[];
@@ -322,20 +313,7 @@ const PathPicker: React.FC<PathPickerProps> = ({
     const listRef = useRef<HTMLDivElement>(null);
     const debounceRef = useRef<number | null>(null);
 
-    // Fetch home directory once
-    useEffect(() => {
-        fetch(`${API_URL}/api/home-dir`)
-            .then((res) => res.json())
-            .then((data) => setHomeDir(data.home || null))
-            .catch(() => {});
-    }, []);
-
-    const resolveTilde = useCallback((path: string): string => {
-        if (path.startsWith('~') && homeDir) {
-            return homeDir + path.slice(1);
-        }
-        return path;
-    }, [homeDir]);
+    const resolveTilde = useCallback((path: string): string => adapter.resolveTilde(path), [adapter]);
 
     const fetchListing = useCallback(async (dir: string) => {
         setIsLoading(true);
@@ -349,7 +327,13 @@ const PathPicker: React.FC<PathPickerProps> = ({
                 const data = await res.json();
                 const fetched: DirEntry[] = data.entries || [];
                 setEntries(fetched);
-                if (data.resolved) setCurrentDir(data.resolved);
+                // Drive-list view: backend returns {entries: [], resolved: '',
+                // roots: [...]}. Use that to keep the drive enumeration fresh
+                // (volumes can mount/unmount between picks).
+                if (Array.isArray(data.roots)) {
+                    setLiveRoots(data.roots);
+                }
+                if (typeof data.resolved === 'string') setCurrentDir(data.resolved);
                 // Populate the multi-folder popover cache atomically with
                 // the fresh fetch. Doing this from a useEffect on
                 // (currentDir, entries) is racy because currentDir updates
@@ -368,33 +352,57 @@ const PathPicker: React.FC<PathPickerProps> = ({
     }, [showsFiles, effectiveExtensions, mode, multiFolder]);
 
     const navigateToDir = useCallback((dir: string) => {
-        const dirWithSlash = dir.endsWith('/') ? dir : dir + '/';
-        onChange(dirWithSlash);
+        if (!dir) {
+            // '' is the explicit "drive list view" state (Windows). Backend
+            // returns the drive enumeration when we hit /api/ls with empty path.
+            onChange('');
+            setCurrentDir('');
+            setSelectedIndex(-1);
+            fetchListing('');
+            inputRef.current?.focus();
+            return;
+        }
+        onChange(adapter.ensureTrailing(dir));
         setCurrentDir(dir);
         setSelectedIndex(-1);
-        saveRecentPath(storageKey, dir);
+        saveRecentPath(adapter, storageKey, dir);
         fetchListing(dir);
         inputRef.current?.focus();
-    }, [onChange, storageKey, fetchListing]);
+    }, [onChange, storageKey, fetchListing, adapter]);
 
     const selectFile = useCallback((filePath: string) => {
         onChange(filePath);
-        saveRecentPath(storageKey, filePath);
+        saveRecentPath(adapter, storageKey, filePath);
         setIsOpen(false);
-    }, [onChange, storageKey]);
+    }, [onChange, storageKey, adapter]);
 
     const handleFocus = () => {
         setIsOpen(true);
         setSiblingDropdown(null);
         if (!value) {
-            // Start at home directory
-            const startDir = homeDir || '/';
-            onChange(startDir + '/');
-            setCurrentDir(startDir);
-            fetchListing(startDir);
+            // Start at home directory. On Windows that's e.g. C:\Users\skm,
+            // on POSIX it's /home/<user> — the adapter has it from /api/platform.
+            const startDir = adapter.home;
+            if (startDir) {
+                onChange(adapter.ensureTrailing(startDir));
+                setCurrentDir(startDir);
+                fetchListing(startDir);
+            } else if (adapter.os === 'windows') {
+                // No home info yet → drop into drive list view rather than
+                // guess a path.
+                setCurrentDir('');
+                fetchListing('');
+            } else {
+                setCurrentDir('/');
+                fetchListing('/');
+            }
         } else {
-            const resolved = resolveTilde(value);
-            const dir = resolved.endsWith('/') ? resolved.replace(/\/+$/, '') || '/' : getParentDir(resolved);
+            const resolved = adapter.normalize(adapter.resolveTilde(value));
+            const lastChar = resolved.charAt(resolved.length - 1);
+            const isTrailingSep = lastChar === '/' || lastChar === '\\';
+            const dir = isTrailingSep
+                ? (adapter.stripTrailing(resolved) || (adapter.os === 'posix' ? '/' : ''))
+                : adapter.parent(resolved);
             if (dir !== currentDir) {
                 setCurrentDir(dir);
                 fetchListing(dir);
@@ -403,21 +411,34 @@ const PathPicker: React.FC<PathPickerProps> = ({
     };
 
     const handleChange = (rawValue: string) => {
-        let val = rawValue;
-        if (val && !val.startsWith('/') && !val.startsWith('~')) val = '/' + val;
+        // Normalize separators on the fly (Windows: '/' → '\') so the rest of
+        // the picker only ever sees adapter-native paths. Drop the old
+        // "force-leading-slash" hack — on Windows it broke `C:\...` inputs,
+        // and on POSIX a normalize() round-trip is harmless.
+        const val = adapter.normalize(rawValue);
         onChange(val);
         setSiblingDropdown(null);
 
         if (debounceRef.current) clearTimeout(debounceRef.current);
         debounceRef.current = window.setTimeout(() => {
-            const resolved = resolveTilde(val);
-            if (resolved.endsWith('/')) {
-                const dir = resolved.replace(/\/+$/, '') || '/';
-                setCurrentDir(dir);
-                fetchListing(dir);
+            const resolved = adapter.normalize(adapter.resolveTilde(val));
+            if (!resolved) {
+                if (currentDir !== '') {
+                    setCurrentDir('');
+                    fetchListing('');
+                }
+                return;
+            }
+            const lastChar = resolved.charAt(resolved.length - 1);
+            const isTrailingSep = lastChar === '/' || lastChar === '\\';
+            if (isTrailingSep) {
+                const dir = adapter.stripTrailing(resolved) || (adapter.os === 'posix' ? '/' : '');
+                if (dir !== currentDir) {
+                    setCurrentDir(dir);
+                    fetchListing(dir);
+                }
             } else {
-                // Typing a partial name — show parent dir contents (filter happens in render)
-                const parent = getParentDir(resolved);
+                const parent = adapter.parent(resolved);
                 if (parent !== currentDir) {
                     setCurrentDir(parent);
                     fetchListing(parent);
@@ -426,15 +447,23 @@ const PathPicker: React.FC<PathPickerProps> = ({
         }, 150);
     };
 
-    // Compute filtered entries based on what's typed after the last /
-    const resolvedValue = resolveTilde(value);
-    const typedFilter = resolvedValue.endsWith('/') ? '' : (resolvedValue.split('/').pop() || '').toLowerCase();
+    // Compute filtered entries based on what's typed after the last separator.
+    const resolvedValue = adapter.normalize(resolveTilde(value));
+    const lastValueChar = resolvedValue.charAt(resolvedValue.length - 1);
+    const valueHasTrailingSep = lastValueChar === '/' || lastValueChar === '\\';
+    const typedFilter = valueHasTrailingSep
+        ? ''
+        : (adapter.basename(resolvedValue) || '').toLowerCase();
 
-    // Build display list: parent entry + filtered entries
+    // Build display list: parent entry + filtered entries.
     const filteredEntries = typedFilter
         ? entries.filter((e) => e.name.toLowerCase().startsWith(typedFilter))
         : entries;
-    const showParent = currentDir !== '/' && !typedFilter;
+    // Drive-list state (currentDir === '') and POSIX root ('/') both hide the
+    // '..' parent entry — there's nowhere to go up to.
+    const inDriveListView = currentDir === '';
+    const driveRoots: DriveRoot[] = liveRoots ?? adapter.roots;
+    const showParent = !inDriveListView && currentDir !== '/' && !typedFilter;
     const selectableEntries = filePreviewMode
         ? filteredEntries.filter((entry) => entry.type === 'dir')
         : filteredEntries;
@@ -510,12 +539,12 @@ const PathPicker: React.FC<PathPickerProps> = ({
                 }
                 const isParentSelected = showParent && selectedIndex === 0;
                 if (isParentSelected) {
-                    navigateToDir(getParentDir(currentDir));
+                    navigateToDir(adapter.parent(currentDir));
                 } else {
                     const entryIndex = selectedIndex - (showParent ? 1 : 0);
                     const entry = selectableEntries[entryIndex];
                     if (entry) {
-                        const fullPath = currentDir === '/' ? '/' + entry.name : currentDir + '/' + entry.name;
+                        const fullPath = adapter.join(currentDir, entry.name);
                         if (entry.type === 'dir') {
                             navigateToDir(fullPath);
                         } else if (mode === 'file') {
@@ -530,18 +559,18 @@ const PathPicker: React.FC<PathPickerProps> = ({
                     e.preventDefault();
                     const isParentSelected = showParent && selectedIndex === 0;
                     if (isParentSelected) {
-                        navigateToDir(getParentDir(currentDir));
+                        navigateToDir(adapter.parent(currentDir));
                     } else {
                         const entryIndex = selectedIndex - (showParent ? 1 : 0);
                         const entry = selectableEntries[entryIndex];
                         if (entry?.type === 'dir') {
-                            navigateToDir(currentDir === '/' ? '/' + entry.name : currentDir + '/' + entry.name);
+                            navigateToDir(adapter.join(currentDir, entry.name));
                         }
                     }
                 } else if (selectableEntries.length === 1 && selectableEntries[0].type === 'dir') {
                     e.preventDefault();
                     const entry = selectableEntries[0];
-                    navigateToDir(currentDir === '/' ? '/' + entry.name : currentDir + '/' + entry.name);
+                    navigateToDir(adapter.join(currentDir, entry.name));
                 }
                 break;
             }
@@ -549,13 +578,17 @@ const PathPicker: React.FC<PathPickerProps> = ({
                 setIsOpen(false);
                 setSiblingDropdown(null);
                 break;
-            case 'Backspace':
-                // If input ends with / and cursor is at end, go to parent
-                if (value.endsWith('/') && inputRef.current?.selectionStart === value.length) {
+            case 'Backspace': {
+                // Input ends with a separator + cursor at end → go to parent.
+                // On a drive root ('C:\'), adapter.parent returns '' which
+                // navigateToDir interprets as "back to drive list".
+                const last = value.charAt(value.length - 1);
+                if ((last === '/' || last === '\\') && inputRef.current?.selectionStart === value.length) {
                     e.preventDefault();
-                    navigateToDir(getParentDir(currentDir));
+                    navigateToDir(adapter.parent(currentDir));
                 }
                 break;
+            }
         }
     };
 
@@ -565,9 +598,16 @@ const PathPicker: React.FC<PathPickerProps> = ({
             setSiblingDropdown(null);
             return;
         }
-        const parent = fullPath === '/' ? '/' : fullPath.replace(/\/[^/]*$/, '') || '/';
+        // Sibling lookup walks up to the parent of the clicked crumb. On a
+        // drive root ('C:\') the parent is '' (drive-list view) — skip the
+        // /api/dirs call in that case; the user clicks "This PC" instead.
+        const parent = adapter.parent(fullPath);
+        if (!parent) {
+            setSiblingDropdown({ crumbIndex, items: [] });
+            return;
+        }
         try {
-            const res = await fetch(`${API_URL}/api/dirs?prefix=${encodeURIComponent(parent + '/')}`);
+            const res = await fetch(`${API_URL}/api/dirs?prefix=${encodeURIComponent(adapter.ensureTrailing(parent))}`);
             if (res.ok) {
                 const data = await res.json();
                 const items = (data.dirs || []).map((d: string) => ({ path: d, type: 'dir' as const }));
@@ -584,8 +624,7 @@ const PathPicker: React.FC<PathPickerProps> = ({
     };
 
     const getFolderName = (fullPath: string): string => {
-        const parts = fullPath.replace(/\/+$/, '').split('/');
-        return parts[parts.length - 1] || '/';
+        return adapter.basename(fullPath) || fullPath;
     };
 
     // Click outside handler
@@ -682,7 +721,7 @@ const PathPicker: React.FC<PathPickerProps> = ({
             const video = group.videos.find((f) => f.variant === 'source') || group.videos[0];
             const csv = group.csvs[0];
             if (!video || !csv) return;
-            const spec = `${joinPath(currentDir, video.name)}=${joinPath(currentDir, csv.name)}`;
+            const spec = `${adapter.join(currentDir, video.name)}=${adapter.join(currentDir, csv.name)}`;
             setPairs((prev) => prev.includes(spec) ? prev : [...prev, spec]);
             return;
         }
@@ -692,13 +731,13 @@ const PathPicker: React.FC<PathPickerProps> = ({
         } else {
             emitStems([...(selectedStems || []), stem]);
         }
-    }, [isMultiPair, isMultiFolder, currentFolderPairsByStem, relatedFileGroups, currentDir, setPairs, stemSet, selectedStems, emitStems, dropCsvForStems]);
+    }, [isMultiPair, isMultiFolder, currentFolderPairsByStem, relatedFileGroups, currentDir, setPairs, stemSet, selectedStems, emitStems, dropCsvForStems, adapter]);
 
     const setStemCsv = useCallback((stem: string, csvName: string) => {
         if (!isMultiPair) return;
         if (isMultiFolder) {
             const existing = currentFolderPairsByStem.get(stem);
-            const newCsvPath = joinPath(currentDir, csvName);
+            const newCsvPath = adapter.join(currentDir, csvName);
             if (existing) {
                 if (existing.csvPath === newCsvPath) return;
                 const oldSpec = `${existing.videoPath}=${existing.csvPath}`;
@@ -710,7 +749,7 @@ const PathPicker: React.FC<PathPickerProps> = ({
                 if (!group) return;
                 const video = group.videos.find((f) => f.variant === 'source') || group.videos[0];
                 if (!video) return;
-                const spec = `${joinPath(currentDir, video.name)}=${newCsvPath}`;
+                const spec = `${adapter.join(currentDir, video.name)}=${newCsvPath}`;
                 setPairs((prev) => prev.includes(spec) ? prev : [...prev, spec]);
             }
             return;
@@ -721,7 +760,7 @@ const PathPicker: React.FC<PathPickerProps> = ({
         if (!stemSet.has(stem)) {
             emitStems([...(selectedStems || []), stem]);
         }
-    }, [isMultiPair, isMultiFolder, currentFolderPairsByStem, relatedFileGroups, currentDir, setPairs, onSelectedCsvByStemChange, selectedCsvByStem, stemSet, selectedStems, emitStems]);
+    }, [isMultiPair, isMultiFolder, currentFolderPairsByStem, relatedFileGroups, currentDir, setPairs, onSelectedCsvByStemChange, selectedCsvByStem, stemSet, selectedStems, emitStems, adapter]);
 
     const selectableGroupKeys = isMultiPair
         ? relatedFileGroups.filter(isGroupSelectable).map((g) => g.key)
@@ -736,17 +775,17 @@ const PathPicker: React.FC<PathPickerProps> = ({
     // Manifest: trailing path segment shown as the folder "name" (head crumbs
     // shown verbatim, but the leaf gets prominent treatment in the panel).
     const folderLabel = (() => {
-        const resolved = resolveTilde(value || '').replace(/\/+$/, '');
-        if (!resolved || resolved === '/') return '/';
-        const segs = resolved.split('/').filter(Boolean);
-        return segs[segs.length - 1] || '/';
+        const resolved = adapter.stripTrailing(adapter.normalize(resolveTilde(value || '')));
+        if (!resolved) return adapter.os === 'posix' ? '/' : '';
+        if (adapter.isRoot(resolved)) return resolved;
+        return adapter.basename(resolved) || resolved;
     })();
     const folderHeadPath = (() => {
-        const resolved = resolveTilde(value || '').replace(/\/+$/, '');
-        if (!resolved || resolved === '/') return '';
-        const segs = resolved.split('/').filter(Boolean);
-        if (segs.length <= 1) return '/';
-        return '/' + segs.slice(0, -1).join('/') + '/';
+        const resolved = adapter.stripTrailing(adapter.normalize(resolveTilde(value || '')));
+        if (!resolved || adapter.isRoot(resolved)) return '';
+        const parent = adapter.parent(resolved);
+        if (!parent) return '';
+        return adapter.ensureTrailing(parent);
     })();
 
     const openPicker = useCallback(() => {
@@ -840,7 +879,7 @@ const PathPicker: React.FC<PathPickerProps> = ({
         if (showCsvPicker) {
             if (isMultiFolder) {
                 const sel = currentFolderPairsByStem.get(group.key);
-                const selBase = sel ? basenameOfPath(sel.csvPath) : undefined;
+                const selBase = sel ? adapter.basename(sel.csvPath) : undefined;
                 activeCsvName = (selBase && group.csvs.some((c) => c.name === selBase))
                     ? selBase
                     : group.csvs[0]?.name;
@@ -905,7 +944,9 @@ const PathPicker: React.FC<PathPickerProps> = ({
         );
     };
 
-    const breadcrumbs = splitBreadcrumbs(currentDir || resolveTilde(value));
+    const breadcrumbs = inDriveListView
+        ? []
+        : adapter.splitCrumbs(currentDir || adapter.normalize(resolveTilde(value)));
 
     // multiFolder: group selected pairs by source folder for the manifest.
     // Order is "first appearance" so adding a new shelf doesn't rearrange
@@ -960,7 +1001,7 @@ const PathPicker: React.FC<PathPickerProps> = ({
             pairSpec: `${parsed.videoPath}=${parsed.csvPath}`,
             folder: parsed.folder,
             videoPath: parsed.videoPath,
-            currentCsv: basenameOfPath(parsed.csvPath),
+            currentCsv: adapter.basename(parsed.csvPath),
             stemKey: parsed.stemKey,
             alternates: [],
             loading: true,
@@ -969,14 +1010,14 @@ const PathPicker: React.FC<PathPickerProps> = ({
         const dirEntries = await fetchFolderEntries(parsed.folder);
         const groups = buildRelatedFileGroups(dirEntries);
         const match = groups.find((g) => g.key === parsed.stemKey);
-        const alternates = match ? match.csvs.map((c) => c.name) : [basenameOfPath(parsed.csvPath)];
+        const alternates = match ? match.csvs.map((c) => c.name) : [adapter.basename(parsed.csvPath)];
         setCsvPopover((prev) => prev && prev.pairSpec === baseState.pairSpec
             ? { ...prev, alternates, loading: false }
             : prev);
-    }, [fetchFolderEntries]);
+    }, [fetchFolderEntries, adapter]);
 
     const swapCsvForPair = useCallback((parsed: ParsedPair, newCsvName: string) => {
-        const newCsvPath = joinPath(parsed.folder, newCsvName);
+        const newCsvPath = adapter.join(parsed.folder, newCsvName);
         if (newCsvPath === parsed.csvPath) {
             setCsvPopover(null);
             return;
@@ -985,7 +1026,7 @@ const PathPicker: React.FC<PathPickerProps> = ({
         const newSpec = `${parsed.videoPath}=${newCsvPath}`;
         setPairs((prev) => prev.map((p) => p === oldSpec ? newSpec : p));
         setCsvPopover(null);
-    }, [setPairs]);
+    }, [setPairs, adapter]);
 
     const removePair = useCallback((parsed: ParsedPair) => {
         const spec = `${parsed.videoPath}=${parsed.csvPath}`;
@@ -1012,19 +1053,37 @@ const PathPicker: React.FC<PathPickerProps> = ({
 
     const dropShelf = useCallback((folder: string) => {
         setPairs((prev) => prev.filter((spec) => {
-            const parsed = parsePairSpec(spec);
+            const parsed = parsePairSpec(adapter, spec);
             return parsed?.folder !== folder;
         }));
-    }, [setPairs]);
+    }, [setPairs, adapter]);
 
+    // Windows: render a "This PC" lead-in segment so the user can always step
+    // back to the drive list. POSIX keeps the lead segment ('/') that
+    // splitCrumbs already returns.
+    const showThisPcLead = adapter.os === 'windows' && currentDir && !inDriveListView;
     return (
         <div className={`PathPicker ${isOpen ? 'open' : ''}`} ref={wrapperRef}>
             {/* Breadcrumb bar */}
-            {currentDir && breadcrumbs.length > 1 && (
+            {currentDir && (breadcrumbs.length > 1 || showThisPcLead) && (
                 <div className='BreadcrumbBar'>
+                    {showThisPcLead && (
+                        <React.Fragment>
+                            <button
+                                className='BreadcrumbSegment ThisPc'
+                                onClick={() => navigateToDir('')}
+                                type='button'
+                                tabIndex={-1}
+                                title='This PC — back to drive list'
+                            >
+                                This PC
+                            </button>
+                            <span className='BreadcrumbSep'>{adapter.sep}</span>
+                        </React.Fragment>
+                    )}
                     {breadcrumbs.map((crumb, i) => (
                         <React.Fragment key={i}>
-                            {i > 0 && <span className='BreadcrumbSep'>/</span>}
+                            {i > 0 && <span className='BreadcrumbSep'>{adapter.sep}</span>}
                             <button
                                 className={`BreadcrumbSegment ${siblingDropdown?.crumbIndex === i ? 'open' : ''}`}
                                 onClick={() => handleBreadcrumbClick(i, crumb.fullPath)}
@@ -1064,7 +1123,7 @@ const PathPicker: React.FC<PathPickerProps> = ({
                     onChange={(e) => handleChange(e.target.value)}
                     onFocus={handleFocus}
                     onKeyDown={handleKeyDown}
-                    placeholder={placeholder}
+                    placeholder={placeholder || adapter.samplePath}
                     autoComplete='off'
                     spellCheck={false}
                     disabled={disabled}
@@ -1248,7 +1307,7 @@ const PathPicker: React.FC<PathPickerProps> = ({
                                     </div>
                                     <ol className='PairManifest__list'>
                                         {shelf.pairs.map((parsed, i) => {
-                                            const csvBase = basenameOfPath(parsed.csvPath);
+                                            const csvBase = adapter.basename(parsed.csvPath);
                                             const spec = `${parsed.videoPath}=${parsed.csvPath}`;
                                             const popoverOpen = csvPopover?.pairSpec === spec;
                                             return (
@@ -1360,20 +1419,54 @@ const PathPicker: React.FC<PathPickerProps> = ({
                 <div className='DirBrowser'>
                     <div className='BrowserHeader'>
                         <span className='BrowserPath'>
-                            {currentDir || '/'}
+                            {inDriveListView ? 'This PC' : (currentDir || (adapter.os === 'posix' ? '/' : ''))}
                         </span>
                         <span className='BrowserMeta'>
-                            {filteredEntries.length} item{filteredEntries.length !== 1 ? 's' : ''}
+                            {inDriveListView
+                                ? `${driveRoots.length} drive${driveRoots.length !== 1 ? 's' : ''}`
+                                : `${filteredEntries.length} item${filteredEntries.length !== 1 ? 's' : ''}`}
                             <span className='HintKeys'>
                                 <kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>Enter</kbd>
                             </span>
                         </span>
                     </div>
                     <div className='BrowserList' ref={listRef}>
+                        {inDriveListView && driveRoots.map((drive) => {
+                            const meta: string[] = [];
+                            if (drive.volumeName) meta.push(drive.volumeName);
+                            if (typeof drive.free === 'number' && typeof drive.total === 'number') {
+                                meta.push(`${formatBytesShort(drive.free)} free of ${formatBytesShort(drive.total)}`);
+                            }
+                            return (
+                                <div
+                                    key={drive.path}
+                                    className='DirEntry dir drive'
+                                    onMouseDown={() => navigateToDir(drive.path)}
+                                    title={drive.path}
+                                >
+                                    <svg className='EntryIcon' width="14" height="14" viewBox="0 0 16 16" fill="none">
+                                        <rect x="2" y="4.5" width="12" height="7" rx="1" stroke="currentColor" strokeWidth="1" fill="none" />
+                                        <circle cx="12" cy="8" r="0.8" fill="currentColor" />
+                                    </svg>
+                                    <span className='EntryName'>{drive.label}</span>
+                                    {meta.length > 0 && (
+                                        <span className='EntryKind kind-meta'>{meta.join(' • ')}</span>
+                                    )}
+                                    <svg className='EntryChevron' width="12" height="12" viewBox="0 0 16 16" fill="none">
+                                        <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                                    </svg>
+                                </div>
+                            );
+                        })}
+                        {inDriveListView && driveRoots.length === 0 && (
+                            <div className='DirEntry empty'>
+                                <span className='EntryName'>No drives reported. Check server logs.</span>
+                            </div>
+                        )}
                         {showParent && (
                             <div
                                 className={`DirEntry parent ${selectedIndex === 0 ? 'active' : ''}`}
-                                onMouseDown={() => navigateToDir(getParentDir(currentDir))}
+                                onMouseDown={() => navigateToDir(adapter.parent(currentDir))}
                                 onMouseEnter={() => setSelectedIndex(0)}
                             >
                                 <svg className='EntryIcon' width="14" height="14" viewBox="0 0 16 16" fill="none">
@@ -1384,7 +1477,7 @@ const PathPicker: React.FC<PathPickerProps> = ({
                         )}
                         {selectableEntries.map((entry, i) => {
                             const itemIndex = i + (showParent ? 1 : 0);
-                            const fullPath = currentDir === '/' ? '/' + entry.name : currentDir + '/' + entry.name;
+                            const fullPath = adapter.join(currentDir, entry.name);
                             const isFile = entry.type === 'file';
                             const fileKind = isFile ? classifyFile(entry.name) : null;
                             return (
@@ -1446,7 +1539,7 @@ const PathPicker: React.FC<PathPickerProps> = ({
                                                             // Drop only the current folder's pairs; pairs from other shelves stay
                                                             const dirPrefix = currentDir;
                                                             setPairs((prev) => prev.filter((spec) => {
-                                                                const parsed = parsePairSpec(spec);
+                                                                const parsed = parsePairSpec(adapter, spec);
                                                                 return parsed?.folder !== dirPrefix;
                                                             }));
                                                         } else {
@@ -1457,7 +1550,7 @@ const PathPicker: React.FC<PathPickerProps> = ({
                                                                 const video = g.videos.find((f) => f.variant === 'source') || g.videos[0];
                                                                 const csv = g.csvs[0];
                                                                 if (!video || !csv) continue;
-                                                                additions.push(`${joinPath(currentDir, video.name)}=${joinPath(currentDir, csv.name)}`);
+                                                                additions.push(`${adapter.join(currentDir, video.name)}=${adapter.join(currentDir, csv.name)}`);
                                                             }
                                                             if (additions.length > 0) {
                                                                 setPairs((prev) => [...prev, ...additions]);

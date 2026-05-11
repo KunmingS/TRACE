@@ -1,3 +1,4 @@
 fastapi
 uvicorn
 python-multipart
+static-ffmpeg>=2.5

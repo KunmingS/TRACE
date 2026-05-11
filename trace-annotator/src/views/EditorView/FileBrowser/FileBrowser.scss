@@ -902,8 +902,9 @@
         color: $text-primary;
       }
 
-      &.preview:hover:not(:disabled) { color: $accent; }
-      &.rename:hover:not(:disabled)  { color: $accent; }
+      &.preview:hover:not(:disabled)  { color: $accent; }
+      &.download:hover:not(:disabled) { color: $accent; }
+      &.rename:hover:not(:disabled)   { color: $accent; }
       &.delete:hover:not(:disabled)  { color: #dc2626; background: rgba(220, 38, 38, 0.08); }
       &.delete.confirmDelete {
         color: #dc2626;

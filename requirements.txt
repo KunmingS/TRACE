@@ -10,3 +10,4 @@ opencv-python-headless>=4.6.0
 fastapi
 uvicorn
 python-multipart
+static-ffmpeg>=2.5

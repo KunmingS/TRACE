@@ -226,10 +226,12 @@ def serve(args):
             # Start backend
             if not args.frontend_only:
                 print(f"Starting backend server on port {args.port}...")
+                # Use TRACE's runner instead of uvicorn's CLI so loop="none"
+                # can be passed through the programmatic API. Some uvicorn CLI
+                # versions reject "--loop none" even though Config supports it.
                 backend_proc = subprocess.Popen(
                     [
-                        sys.executable, "-m", "uvicorn",
-                        "trace_tad.server.app:app",
+                        sys.executable, "-m", "trace_tad.server.run_dev",
                         "--host", args.host,
                         "--port", str(args.port),
                         "--reload",
@@ -356,10 +358,52 @@ def _download_weights_selection(selection):
     return paths
 
 
+def _ensure_ffmpeg() -> None:
+    """Download bundled ffmpeg/ffprobe via static_ffmpeg if not on PATH.
+
+    Called from `prepare` and `update` so a fresh install / upgrade lands
+    with working video tooling on Windows (where ffmpeg isn't part of the OS).
+    """
+    have_ffmpeg = shutil.which("ffmpeg")
+    have_ffprobe = shutil.which("ffprobe")
+    if have_ffmpeg and have_ffprobe:
+        print(f"ffmpeg already available ({have_ffmpeg}).")
+        return
+    try:
+        import static_ffmpeg
+        from static_ffmpeg.run import get_platform_dir
+    except ImportError:
+        print("Warning: static-ffmpeg not installed; cannot auto-fetch ffmpeg.",
+              file=sys.stderr)
+        return
+
+    # Distinguish "first-time fetch" from "binaries already cached, just
+    # activate them on PATH" so the ~80MB message doesn't lie on every run.
+    cache_dir = get_platform_dir()
+    cache_ready = (
+        os.path.isfile(os.path.join(cache_dir, "ffmpeg.exe" if sys.platform.startswith("win") else "ffmpeg"))
+        and os.path.isfile(os.path.join(cache_dir, "ffprobe.exe" if sys.platform.startswith("win") else "ffprobe"))
+    )
+    if cache_ready:
+        print("Activating bundled ffmpeg/ffprobe...")
+    else:
+        print("Fetching bundled ffmpeg/ffprobe (one-time, ~80MB)...")
+
+    try:
+        static_ffmpeg.add_paths(weak=True)
+    except Exception as exc:
+        print(f"Warning: ffmpeg fetch failed: {exc}", file=sys.stderr)
+        return
+    print(f"  ffmpeg:  {shutil.which('ffmpeg')}")
+    print(f"  ffprobe: {shutil.which('ffprobe')}")
+
+
 def prepare(args):
     """Prepare local assets needed by TRACE."""
+    _ensure_ffmpeg()
+
     if args.weights == "none":
-        print("No prepare tasks selected.")
+        print("No weight downloads selected.")
         return []
 
     print(f"Preparing model weights: {args.weights}")
@@ -386,6 +430,11 @@ def update(args):
         print()
         print("Update with:")
         print(f"  python -m pip install --upgrade {PYPI_PROJECT_NAME}")
+
+    # Upgrades can introduce new native deps. Run after the version check so
+    # the user sees their TRACE status first, then any ffmpeg work.
+    print()
+    _ensure_ffmpeg()
     return 0
 
 

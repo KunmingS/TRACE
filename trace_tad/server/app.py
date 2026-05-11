@@ -8,9 +8,12 @@ import asyncio
 import logging
 import os
 import re
+import string
 import subprocess
+import sys
 import time
 import json
+import shutil
 from typing import Optional, List, Dict, Tuple
 import csv
 
@@ -20,7 +23,26 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 import mimetypes
 
+# uvicorn's --reload watcher installs a SelectorEventLoop on Windows, but
+# asyncio subprocess transports require the Proactor loop on win32. Without
+# this, `create_subprocess_exec` raises NotImplementedError and ffmpeg streaming
+# (process-stream) fails.
+if sys.platform.startswith('win'):
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 logger = logging.getLogger(__name__)
+
+# Ensure ffmpeg/ffprobe are available. `static_ffmpeg` lazy-downloads platform
+# binaries on first use and adds them to PATH. weak=True respects a system
+# install if the user already has one. This makes TRACE self-contained on
+# Windows where ffmpeg isn't part of the OS.
+try:
+    import static_ffmpeg
+    if not shutil.which('ffmpeg') or not shutil.which('ffprobe'):
+        logger.info('Fetching bundled ffmpeg/ffprobe (one-time, ~80MB)...')
+    static_ffmpeg.add_paths(weak=True)
+except Exception as e:
+    logger.warning(f"static_ffmpeg setup skipped ({e}); falling back to system ffmpeg if present")
 
 app = FastAPI(title="TRACE", description="Temporal action detection for animal behavior")
 
@@ -430,11 +452,35 @@ async def _stream_ffmpeg_progress(args: List[str], output_path: str, total_secon
     tmp_path = base + '.tmp' + ext
     cmd = list(args) + [tmp_path]
 
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    # Pre-flight: a missing `ffmpeg` binary surfaces as a vague subprocess error
+    # otherwise. shutil.which lets us point the user at the real fix.
+    if not shutil.which(cmd[0]):
+        yield ('error', {
+            'message': (
+                f"{cmd[0]} not found. Install ffmpeg and ensure it's on PATH "
+                "or run `trace prepare --weights none` to fetch TRACE's bundled ffmpeg."
+            ),
+        })
+        return
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except FileNotFoundError:
+        yield ('error', {'message': f"{cmd[0]} not found on PATH"})
+        return
+    except NotImplementedError:
+        yield ('error', {
+            'message': (
+                'Subprocess unsupported on the current asyncio loop. '
+                'On Windows this means a SelectorEventLoop is active — '
+                'restart the server so the Proactor loop is in use.'
+            ),
+        })
+        return
 
     last_emit = 0.0
     last_processed: Optional[float] = None
@@ -534,10 +580,42 @@ async def _stream_ffmpeg_progress(args: List[str], output_path: str, total_secon
         raise
 
 
+_IS_WINDOWS = sys.platform.startswith('win')
+
+
+def _looks_like_windows_abs(path: str) -> bool:
+    """True for paths like 'C:\\foo' or 'C:/foo' — must have drive letter + sep."""
+    return len(path) >= 3 and path[1:3] in (':\\', ':/')
+
+
+def _validate_windows_abs(dir_param: str) -> None:
+    """On Windows, reject POSIX-style absolute paths (e.g. '/srv/videos').
+
+    Without this, `os.path.abspath('/srv/videos')` silently joins against the
+    current drive and returns `C:\\srv\\videos`, which masks frontend bugs that
+    forgot to attach a drive letter.
+    """
+    if not _IS_WINDOWS:
+        return
+    if path_startswith_drive := _looks_like_windows_abs(dir_param):  # noqa: F841
+        return
+    if dir_param.startswith('\\\\'):  # UNC — let abspath handle (we don't surface in UI)
+        return
+    if dir_param.startswith('/') or dir_param.startswith('\\'):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f'Absolute Windows path required, like C:\\path\\to\\folder. '
+                f'Got: {dir_param}'
+            ),
+        )
+
+
 def _resolve_abs_dir(dir_param: Optional[str]) -> str:
     """Resolve an absolute directory path. The dir param IS the absolute path."""
     if not dir_param:
         raise HTTPException(status_code=400, detail='Directory parameter required')
+    _validate_windows_abs(dir_param)
     real = os.path.abspath(dir_param)
     if not os.path.isdir(real):
         raise HTTPException(status_code=400, detail=f'Not a directory: {dir_param}')
@@ -548,6 +626,7 @@ def _resolve_upload_dir(dir_param: Optional[str]) -> str:
     """Resolve and create a directory for uploaded files."""
     if not dir_param:
         raise HTTPException(status_code=400, detail='Upload destination required')
+    _validate_windows_abs(dir_param)
     real = os.path.abspath(dir_param)
     try:
         os.makedirs(real, exist_ok=True)
@@ -569,10 +648,75 @@ def _allocate_unique_filename(directory: str, filename: str) -> str:
     return candidate
 
 
+def _windows_volume_label(drive: str) -> str:
+    """Best-effort Windows volume label via GetVolumeInformationW; '' on failure."""
+    try:
+        import ctypes
+        buf = ctypes.create_unicode_buffer(1024)
+        rc = ctypes.windll.kernel32.GetVolumeInformationW(
+            ctypes.c_wchar_p(drive), buf, ctypes.sizeof(buf),
+            None, None, None, None, 0,
+        )
+        return buf.value if rc else ''
+    except Exception:
+        return ''
+
+
+def _enumerate_roots() -> List[Dict[str, object]]:
+    """Return the set of top-level mount points for the drive-list view.
+
+    Windows: every existing drive letter A:\\..Z:\\ with optional volume label
+    and free-bytes. POSIX: a single '/' root.
+    """
+    if not _IS_WINDOWS:
+        return [{
+            'path': '/',
+            'label': '/',
+            'volumeName': '',
+            'free': None,
+            'total': None,
+        }]
+    roots: List[Dict[str, object]] = []
+    for letter in string.ascii_uppercase:
+        drive = f'{letter}:\\'
+        if not os.path.exists(drive):
+            continue
+        try:
+            usage = shutil.disk_usage(drive)
+            free = usage.free
+            total = usage.total
+        except OSError:
+            free, total = None, None
+        roots.append({
+            'path': drive,
+            'label': f'{letter}:',
+            'volumeName': _windows_volume_label(drive),
+            'free': free,
+            'total': total,
+        })
+    return roots
+
+
 @app.get('/api/home-dir')
 def get_home_dir():
-    """Return the current user's home directory path."""
+    """Return the current user's home directory path. (Legacy — prefer /api/platform.)"""
     return {"home": os.path.expanduser("~")}
+
+
+@app.get('/api/platform')
+def get_platform():
+    """Return OS-specific path metadata for the frontend path picker.
+
+    Frontend uses this to choose path separator, root view ("This PC" vs '/'),
+    and home-dir start location. Cached implicitly per server process — drives
+    are re-enumerated on each call since users can plug/unplug them.
+    """
+    return {
+        'os': 'windows' if _IS_WINDOWS else 'posix',
+        'sep': '\\' if _IS_WINDOWS else '/',
+        'home': os.path.expanduser('~'),
+        'roots': _enumerate_roots(),
+    }
 
 
 def _resolve_tilde(path: str) -> str:
@@ -638,12 +782,36 @@ def list_directory(
     """List full contents of a directory for the folder browser.
 
     Returns all non-hidden entries: directories first, then files (if extensions given).
+    An empty `path` is the explicit "root view" signal: the response carries
+    `resolved=""` and `roots=[...]` so the frontend can render the drive list
+    (Windows) or fall back to '/' (POSIX). This replaces the prior reliance on
+    `os.listdir('/')` happening to return the C: drive contents on Windows.
     """
     try:
-        resolved = _resolve_tilde(path or '~')
-        if not resolved.startswith('/'):
+        if path is None or path == '':
+            return {
+                'entries': [],
+                'resolved': '',
+                'roots': _enumerate_roots(),
+            }
+
+        resolved = _resolve_tilde(path)
+        # POSIX-style absolute on POSIX hosts only — Windows expects 'C:\...'.
+        if not _IS_WINDOWS and not resolved.startswith('/'):
             resolved = '/' + resolved
-        resolved = resolved.rstrip('/') or '/'
+        if _IS_WINDOWS:
+            # Reject POSIX absolute on Windows; abspath would silently anchor it
+            # to the current drive and mask frontend bugs.
+            if (resolved.startswith('/') or resolved.startswith('\\')) \
+                    and not _looks_like_windows_abs(resolved) \
+                    and not resolved.startswith('\\\\'):
+                return {'entries': [], 'resolved': resolved}
+            resolved = os.path.normpath(resolved)
+            # normpath on a bare drive ('C:') drops the trailing sep; restore it.
+            if len(resolved) == 2 and resolved[1] == ':':
+                resolved = resolved + '\\'
+        else:
+            resolved = resolved.rstrip('/') or '/'
 
         if not os.path.isdir(resolved):
             return {"entries": [], "resolved": resolved}
@@ -1344,4 +1512,4 @@ if _static_dir:
 
 if __name__ == '__main__':
     import uvicorn
-    uvicorn.run("trace_tad.server.app:app", host='0.0.0.0', port=8000, reload=True)
+    uvicorn.run("trace_tad.server.app:app", host='0.0.0.0', port=8000, reload=True, loop="none")

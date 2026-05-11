@@ -14,6 +14,7 @@ import {updateProjectData, updateVideoDirectory, updateVideoFiles} from '../../.
 import {ProjectData} from '../../../store/general/types';
 import {API_URL} from '../../../config';
 import PathPicker from '../../Common/PathPicker/PathPicker';
+import {usePathAdapter} from '../../Common/PathPicker/PlatformContext';
 
 interface IProps {
     updateProjectDataAction: (projectData: ProjectData) => any;
@@ -30,6 +31,7 @@ const SUPPORTED_LABEL_EXTENSIONS = ['.csv'];
 const SUPPORTED_INTAKE_EXTENSIONS = [...SUPPORTED_VIDEO_EXTENSIONS, ...SUPPORTED_LABEL_EXTENSIONS];
 
 const ImagesDropZone: React.FC<IProps> = (props: PropsWithChildren<IProps>) => {
+    const adapter = usePathAdapter();
     const [intakeMode, setIntakeMode] = useState<IntakeMode>('server');
     const [busyState, setBusyState] = useState<BusyState>('idle');
     const [error, setError] = useState<string>('');
@@ -48,7 +50,11 @@ const ImagesDropZone: React.FC<IProps> = (props: PropsWithChildren<IProps>) => {
     };
 
     const listDirectoryFiles = async (targetDirectory: string) => {
-        const cleanDir = targetDirectory.replace(/\/+$/, '') || '/';
+        const cleanDir = adapter.stripTrailing(adapter.normalize(targetDirectory))
+            || (adapter.os === 'posix' ? '/' : '');
+        if (!cleanDir) {
+            throw new Error('Pick a drive or folder before loading.');
+        }
         const res = await fetch(`${API_URL}/api/files?dir=${encodeURIComponent(cleanDir)}`, {method: 'GET'});
 
         if (!res.ok) {
@@ -100,7 +106,12 @@ const ImagesDropZone: React.FC<IProps> = (props: PropsWithChildren<IProps>) => {
             return;
         }
 
-        const cleanDir = uploadDirectory.replace(/\/+$/, '') || '/';
+        const cleanDir = adapter.stripTrailing(adapter.normalize(uploadDirectory))
+            || (adapter.os === 'posix' ? '/' : '');
+        if (!cleanDir) {
+            setError('Pick a drive or folder for the upload destination.');
+            return;
+        }
         const formData = new FormData();
         formData.append('destination', cleanDir);
         localFiles.forEach((file) => formData.append('files', file, file.name));
@@ -189,7 +200,7 @@ const ImagesDropZone: React.FC<IProps> = (props: PropsWithChildren<IProps>) => {
         }
 
         if (!uploadDirectory && directory) {
-            setUploadDirectory(directory.endsWith('/') ? directory : `${directory}/`);
+            setUploadDirectory(adapter.ensureTrailing(directory));
         }
 
         const totalSize = acceptedFiles.reduce((sum, file) => sum + file.size, 0);
@@ -290,7 +301,7 @@ const ImagesDropZone: React.FC<IProps> = (props: PropsWithChildren<IProps>) => {
                                 value={directory}
                                 onChange={setDirectory}
                                 onSubmit={loadServerFiles}
-                                placeholder='/path/to/videos'
+                                placeholder={adapter.samplePath}
                                 storageKey='annotate-server'
                                 previewExtensions='.mp4,.avi,.mov,.mkv,.webm,.csv'
                             />
@@ -360,7 +371,7 @@ const ImagesDropZone: React.FC<IProps> = (props: PropsWithChildren<IProps>) => {
                             value={uploadDirectory}
                             onChange={setUploadDirectory}
                             onSubmit={localFiles.length > 0 ? uploadLocalFiles : undefined}
-                            placeholder='/srv/trace/session-01'
+                            placeholder={adapter.os === 'windows' ? 'C:\\trace\\session-01' : '/srv/trace/session-01'}
                             storageKey='annotate-upload'
                         />
                         <button

@@ -95,6 +95,34 @@
         flex-shrink: 0;
     }
 
+    .DownloadBtn {
+        appearance: none;
+        margin-left: 4px;
+        padding: 4px 10px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-family: $font-ui;
+        font-size: 14px;
+        color: $text-secondary;
+        background: $surface-1;
+        border: 1px solid $border-subtle;
+        border-radius: $radius-pill;
+        cursor: pointer;
+        transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+
+        &:hover:not(:disabled) {
+            color: $accent;
+            border-color: $accent;
+            background: $surface-0;
+        }
+
+        &:disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+    }
+
     .StatChip {
         display: inline-flex;
         align-items: baseline;

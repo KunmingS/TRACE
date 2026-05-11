@@ -36,6 +36,7 @@ dependencies = [
     "fastapi",
     "uvicorn",
     "python-multipart",
+    "static-ffmpeg>=2.5",
 ]
 
 [project.optional-dependencies]

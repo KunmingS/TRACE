@@ -13,6 +13,7 @@ import classNames from 'classnames';
 import { submitNewNotification } from '../../../store/notifications/actionCreators';
 import { NotificationUtil } from '../../../utils/NotificationUtil';
 import { decideServeAction, browserCanPlay, ServeAction } from '../../../utils/CodecSupport';
+import { saveAs } from 'file-saver';
 import PathPicker from '../../Common/PathPicker/PathPicker';
 import Tooltip from '../../Common/Tooltip/Tooltip';
 import './FileBrowser.scss';
@@ -402,6 +403,37 @@ const FileBrowser: React.FC<IProps> = (props) => {
         props.updateActivePopupType(PopupWindowType.ANNOTATION_PREVIEW);
     };
 
+    // Pull a CSV down to the user's machine via the same endpoint the
+    // preview popup uses. We fetch through JS (rather than a plain <a
+    // download>) so the API_URL prefix and any future auth headers stay
+    // centralised, and so we can surface load failures as notifications.
+    const downloadCsv = async (file: string, csvName: string, dir: string) => {
+        setDeleteTarget(null);
+        try {
+            const params = new URLSearchParams({ dir, csvName });
+            const res = await fetch(
+                `${API_URL}/api/files/${encodeURIComponent(file)}/csv?${params}`,
+            );
+            if (!res.ok) {
+                props.submitNewNotification(NotificationUtil.createMessageNotification({
+                    header: 'Download failed',
+                    description: res.status === 404
+                        ? `${csvName} was not found on the server.`
+                        : `Server returned ${res.status}`,
+                }));
+                return;
+            }
+            const text = await res.text();
+            const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+            saveAs(blob, csvName);
+        } catch {
+            props.submitNewNotification(NotificationUtil.createMessageNotification({
+                header: 'Download failed',
+                description: 'Network error while downloading CSV',
+            }));
+        }
+    };
+
     // Extract the variant identifier from a CSV name. CSV names follow the
     // `{videoBase}_{variant}.csv` convention for variants, or `{videoBase}.csv`
     // for the canonical file. The rename UI exposes only the variant — the
@@ -690,6 +722,18 @@ const FileBrowser: React.FC<IProps> = (props) => {
                                 <svg width="17" height="17" viewBox="0 0 16 16" fill="none">
                                     <path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" stroke="currentColor" strokeWidth="1.1" fill="none"/>
                                     <circle cx="8" cy="8" r="1.6" stroke="currentColor" strokeWidth="1.1" fill="none"/>
+                                </svg>
+                            </button>
+                            <button
+                                type="button"
+                                className="RowAction download"
+                                onClick={() => void downloadCsv(ownerFile, csvName, dir)}
+                                title="Download CSV"
+                                aria-label={`Download ${csvName}`}
+                            >
+                                <svg width="17" height="17" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 2v8m0 0l-3-3m3 3l3-3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                                    <path d="M3 12v1.5A0.5 0.5 0 0 0 3.5 14h9a0.5 0.5 0 0 0 0.5-0.5V12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
                                 </svg>
                             </button>
                             <button

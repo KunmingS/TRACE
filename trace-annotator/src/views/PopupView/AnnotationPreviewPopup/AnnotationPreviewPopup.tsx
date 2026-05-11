@@ -1,9 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { connect } from 'react-redux';
 import { Scrollbars } from 'react-custom-scrollbars-2';
+import { saveAs } from 'file-saver';
 import { GenericYesNoPopup } from '../GenericYesNoPopup/GenericYesNoPopup';
 import { AppState } from '../../../store';
 import { updateActivePopupType } from '../../../store/general/actionCreators';
+import { submitNewNotification } from '../../../store/notifications/actionCreators';
+import { NotificationUtil } from '../../../utils/NotificationUtil';
 import { PopupWindowType } from '../../../data/enums/PopupWindowType';
 import { CSVImporter, CSVRow } from '../../../logic/import/csv/CSVImporter';
 import { Settings } from '../../../settings/Settings';
@@ -19,6 +22,7 @@ interface PreviewPayload {
 interface IProps {
     payload: PreviewPayload | null;
     updateActivePopupTypeAction: (type: PopupWindowType) => void;
+    submitNewNotification: typeof submitNewNotification;
 }
 
 type LoadState =
@@ -42,7 +46,7 @@ const colorForBehavior = (name: string): string => {
     return palette[Math.abs(hash) % palette.length];
 };
 
-const AnnotationPreviewPopup: React.FC<IProps> = ({ payload, updateActivePopupTypeAction }) => {
+const AnnotationPreviewPopup: React.FC<IProps> = ({ payload, updateActivePopupTypeAction, submitNewNotification }) => {
     const [state, setState] = useState<LoadState>({ kind: 'loading' });
 
     useEffect(() => {
@@ -97,6 +101,35 @@ const AnnotationPreviewPopup: React.FC<IProps> = ({ payload, updateActivePopupTy
 
     const onClose = () => updateActivePopupTypeAction(null);
 
+    // Re-fetch and save to disk. Mirrors the FileBrowser download path so
+    // the user can grab the CSV without leaving the preview.
+    const onDownload = async () => {
+        if (!payload) return;
+        try {
+            const params = new URLSearchParams({ dir: payload.dir, csvName: payload.csvName });
+            const res = await fetch(
+                `${API_URL}/api/files/${encodeURIComponent(payload.file)}/csv?${params}`,
+            );
+            if (!res.ok) {
+                submitNewNotification(NotificationUtil.createMessageNotification({
+                    header: 'Download failed',
+                    description: res.status === 404
+                        ? `${payload.csvName} was not found on the server.`
+                        : `Server returned ${res.status}`,
+                }));
+                return;
+            }
+            const text = await res.text();
+            const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+            saveAs(blob, payload.csvName);
+        } catch {
+            submitNewNotification(NotificationUtil.createMessageNotification({
+                header: 'Download failed',
+                description: 'Network error while downloading CSV',
+            }));
+        }
+    };
+
     const renderContent = () => {
         if (!payload) {
             return <div className='AnnotationPreviewPopup empty'>No annotation file selected.</div>;
@@ -114,6 +147,20 @@ const AnnotationPreviewPopup: React.FC<IProps> = ({ payload, updateActivePopupTy
                         <Stat n={stats.count}     label='clips' />
                         <Stat n={stats.behaviors} label='behaviors' />
                         <Stat n={stats.subjects}  label='subjects' />
+                        <button
+                            type='button'
+                            className='DownloadBtn'
+                            onClick={() => void onDownload()}
+                            disabled={state.kind !== 'ready'}
+                            title='Download CSV'
+                            aria-label={`Download ${payload.csvName}`}
+                        >
+                            <svg width='14' height='14' viewBox='0 0 16 16' fill='none' aria-hidden='true'>
+                                <path d='M8 2v8m0 0l-3-3m3 3l3-3' stroke='currentColor' strokeWidth='1.4' strokeLinecap='round' strokeLinejoin='round'/>
+                                <path d='M3 12v1.5A0.5 0.5 0 0 0 3.5 14h9a0.5 0.5 0 0 0 0.5-0.5V12' stroke='currentColor' strokeWidth='1.4' strokeLinecap='round' strokeLinejoin='round'/>
+                            </svg>
+                            <span>Download</span>
+                        </button>
                     </div>
                 </div>
 
@@ -223,6 +270,7 @@ const mapStateToProps = (state: AppState) => ({
 
 const mapDispatchToProps = {
     updateActivePopupTypeAction: updateActivePopupType,
+    submitNewNotification,
 };
 
 export default connect(mapStateToProps, mapDispatchToProps)(AnnotationPreviewPopup);
