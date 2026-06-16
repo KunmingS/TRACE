@@ -592,7 +592,8 @@ class JobManager:
         ]
         if request.output:
             cmd.extend(["--output", request.output])
-        cmd.extend(["--threshold", str(request.threshold)])
+        if request.threshold is not None:
+            cmd.extend(["--threshold", str(request.threshold)])
         if request.annotated_video:
             cmd.append("--annotated-video")
         if request.profile:
@@ -617,6 +618,8 @@ class JobManager:
             "--clip-frames", str(request.clip_frames),
             "--train-ratio", str(request.train_ratio),
             "--cache-mode", request.cache_mode,
+            *(["--val-ratio", str(request.val_ratio)] if request.val_ratio is not None else []),
+            *(["--test-ratio", str(request.test_ratio)] if request.test_ratio is not None else []),
             "--cache-resolution", str(request.cache_resolution),
             "--cache-crf", str(request.cache_crf),
             "--output-dir", request.model_dir,

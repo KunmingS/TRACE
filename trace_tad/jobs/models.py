@@ -106,7 +106,9 @@ class InferRequest(BaseModel):
     profile: bool = False
     auto_tune: bool = False
     annotated_video: bool = False
-    threshold: float = Field(default=0.0, ge=0.0, le=1.0)
+    # None ⇒ unspecified: infer.py auto-applies the recommended thresholds saved
+    # at training time (recommended_thresholds.json), falling back to 0.0.
+    threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     cfg_options: Optional[dict] = None
     included_stems: Optional[List[str]] = None
 
@@ -117,7 +119,9 @@ class PrepRequest(BaseModel):
     work_dir: str
     model_dir: Optional[str] = None
     clip_frames: int = 768
-    train_ratio: float = 0.8
+    train_ratio: float = 0.7
+    val_ratio: Optional[float] = None
+    test_ratio: Optional[float] = None
     cache_mode: Literal["virtual", "cached_video"] = "cached_video"
     cache_resolution: int = 144
     cache_crf: int = 23

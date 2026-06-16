@@ -14,6 +14,44 @@ from trace_tad.cores import eval_one_epoch
 from trace_tad.utils import update_workdir, set_seed, create_folder, setup_logger
 
 
+def _resolve_eval_subset(ann_file, preferred="test", fallback="validation"):
+    """Pick the subset to evaluate for a standalone test/eval run.
+
+    Prefers the held-out ``test`` split (unbiased final reporting) when the
+    annotation actually contains test entries; otherwise falls back to
+    ``validation`` so legacy 2-way datasets keep working unchanged.
+    """
+    try:
+        import json
+        with open(ann_file, "r") as f:
+            database = json.load(f).get("database", {})
+    except Exception:
+        return fallback
+    subsets = {v.get("subset") for v in database.values()}
+    return preferred if preferred in subsets else fallback
+
+
+def _load_recommended_global_threshold(*dirs):
+    """Return ``(global_threshold, path)`` from the first
+    ``recommended_thresholds.json`` found among ``dirs`` (val-tuned at training
+    time), or ``(None, None)``."""
+    import json
+    for d in dirs:
+        if not d:
+            continue
+        path = os.path.join(d, "recommended_thresholds.json")
+        if os.path.isfile(path):
+            try:
+                with open(path) as f:
+                    spec = json.load(f)
+                g = spec.get("global")
+                if g is not None:
+                    return float(g), path
+            except Exception:
+                pass
+    return None, None
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Test a Temporal Action Detector")
     parser.add_argument("config", metavar="FILE", type=str, help="path to config file")
@@ -107,6 +145,15 @@ def main():
         if hasattr(cfg, "evaluation"):
             cfg.evaluation.ground_truth_filename = cached_annotation
 
+    # Evaluate the held-out 'test' split when the dataset has one (3-way split);
+    # fall back to 'validation' for legacy 2-way datasets. Both the loader's
+    # subset and the evaluator's subset must agree.
+    eval_subset = _resolve_eval_subset(getattr(cfg.dataset.test, "ann_file", None))
+    cfg.dataset.test.subset_name = eval_subset
+    if hasattr(cfg, "evaluation"):
+        cfg.evaluation.subset = eval_subset
+    logger.info(f"Evaluating on '{eval_subset}' subset.")
+
     # build dataset
     test_dataset = build_dataset(cfg.dataset.test, default_args=dict(logger=logger))
 
@@ -121,6 +168,7 @@ def main():
     model = build_detector(cfg.model)
     model = model.cuda()
 
+    checkpoint_path = None
     if cfg.inference.load_from_raw_predictions:
         logger.info(f"Loading from raw predictions: {cfg.inference.fuse_list}")
     else:
@@ -167,6 +215,24 @@ def main():
     use_amp = getattr(cfg.solver, "amp", False)
     if use_amp:
         logger.info("Using Automatic Mixed Precision...")
+
+    # On the held-out 'test' subset, report precision/recall/F1 at the threshold
+    # tuned on validation (the one `trace predict` deploys), not one re-optimized
+    # on test — otherwise the held-out P/R/F1 would be optimistically biased. mAP
+    # is threshold-free and unaffected. Only when the user didn't pin a threshold.
+    if (hasattr(cfg, "evaluation")
+            and cfg.evaluation.get("subset") == "test"
+            and cfg.evaluation.get("score_threshold") is None):
+        ckpt_dir = os.path.dirname(os.path.abspath(checkpoint_path)) if checkpoint_path else None
+        parent_dir = os.path.dirname(ckpt_dir) if ckpt_dir else None
+        thr, src = _load_recommended_global_threshold(cfg.work_dir, ckpt_dir, parent_dir)
+        if thr is not None:
+            cfg.evaluation.score_threshold = thr
+            logger.info(f"Reporting test precision/recall/F1 at the val-tuned "
+                        f"threshold {thr:.2f} (from {src}).")
+        else:
+            logger.info("No val-tuned threshold found; test precision/recall/F1 "
+                        "uses the F1-optimal threshold on test.")
 
     # test the detector
     logger.info("Testing Starts...\n")

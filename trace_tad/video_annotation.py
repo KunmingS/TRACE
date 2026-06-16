@@ -109,18 +109,50 @@ def _prediction_name_for_video(video_path: str) -> str:
     return os.path.splitext(name)[0]
 
 
+def _threshold_for(threshold: Any, label: Any) -> float:
+    """Resolve the score cutoff for one class label.
+
+    ``threshold`` is either a scalar (applied to every class) or a mapping
+    ``{"global": float, "per_class": {label: float}}`` — the per-class form used
+    when ``trace predict`` auto-loads the val-tuned recommended thresholds. A
+    class with no per-class entry falls back to ``global``.
+    """
+    if isinstance(threshold, Mapping):
+        per_class = threshold.get("per_class") or {}
+        if label in per_class and per_class[label] is not None:
+            value = per_class[label]
+        else:
+            value = threshold.get("global", 0.0)
+    else:
+        value = threshold
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        value = 0.0
+    return max(0.0, min(1.0, value))
+
+
+def _threshold_display(threshold: Any) -> str:
+    """Human-readable threshold for overlays/metadata (handles per-class)."""
+    if isinstance(threshold, Mapping):
+        return f"per-class (global {_threshold_for(threshold, None):.2f})"
+    return f"{_threshold_for(threshold, None):.2f}"
+
+
 def filter_predictions(
     predictions: Mapping[str, list[Detection]],
-    threshold: float,
+    threshold: Any,
 ) -> dict[str, list[dict[str, Any]]]:
-    """Return predictions with detections below ``threshold`` removed."""
-    threshold = max(0.0, min(1.0, float(threshold)))
+    """Return predictions with detections below the threshold removed.
+
+    ``threshold`` may be a scalar or a per-class mapping (see ``_threshold_for``).
+    """
     filtered: dict[str, list[dict[str, Any]]] = {}
     for video_name, detections in predictions.items():
         kept = [
             dict(det)
             for det in detections
-            if float(det.get("score", 0.0)) >= threshold
+            if float(det.get("score", 0.0)) >= _threshold_for(threshold, det.get("label"))
         ]
         filtered[video_name] = kept
     return filtered
@@ -130,7 +162,7 @@ def render_annotated_videos(
     video_paths: list[str],
     predictions: Mapping[str, list[Detection]],
     output_dir: str,
-    threshold: float = 0.0,
+    threshold: Any = 0.0,
     logger: Any | None = None,
 ) -> dict[str, str]:
     """Write annotated MP4s for ``video_paths`` and return video-name -> path."""
@@ -190,7 +222,7 @@ def _render_single_video(
     output_path: str,
     video_name: str,
     detections: list[Detection],
-    threshold: float,
+    threshold: Any,
     logger: Any | None = None,
 ) -> None:
     assert cv2 is not None
@@ -342,12 +374,12 @@ def _label_color(label: str) -> tuple[int, int, int]:
 
 def _prepare_render_detections(
     detections: list[Detection],
-    threshold: float,
+    threshold: Any,
 ) -> list[_RenderDetection]:
     prepared: list[_RenderDetection] = []
     for det in detections:
         score = float(det.get("score", 0.0))
-        if score < threshold:
+        if score < _threshold_for(threshold, det.get("label")):
             continue
         label = str(det.get("label", "unknown"))
         color = _label_color(label)
@@ -375,7 +407,7 @@ def _draw_frame(
     detections: list[_RenderDetection],
     active: list[_RenderDetection],
     current_time: float,
-    threshold: float,
+    threshold: Any,
     timeline: _TimelineOverlay,
     scale: float,
 ) -> Any:
@@ -388,7 +420,7 @@ def _draw_frame(
 
     title = video_name
     cv2.putText(out, title, (pad, int(30 * scale)), font, 0.62 * scale, (245, 245, 240), max(1, int(2 * scale)), cv2.LINE_AA)
-    subtitle = f"{_fmt_time(current_time)}  |  threshold {threshold:.2f}  |  {len(detections)} detections"
+    subtitle = f"{_fmt_time(current_time)}  |  threshold {_threshold_display(threshold)}  |  {len(detections)} detections"
     cv2.putText(out, subtitle, (pad, int(58 * scale)), font, 0.46 * scale, (196, 202, 210), max(1, int(1 * scale)), cv2.LINE_AA)
 
     if active:

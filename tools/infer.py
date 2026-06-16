@@ -355,8 +355,12 @@ def parse_args():
                         help="Class map file (one class name per line)")
     parser.add_argument("--output", type=str, default=None,
                         help="Output JSON path (default: predictions.json in work_dir)")
-    parser.add_argument("--threshold", type=float, default=0.0,
-                        help="Minimum score for predictions.json, CSV, and annotated videos")
+    parser.add_argument("--threshold", type=float, default=None,
+                        help="Minimum score for predictions.json, CSV, and annotated "
+                             "videos. If omitted, TRACE auto-applies the per-class "
+                             "F1-optimal thresholds recommended during training "
+                             "(recommended_thresholds.json next to the checkpoint), "
+                             "falling back to 0.0 when none are available.")
     parser.add_argument("--annotated-video", action="store_true",
                         help="Render predictions onto annotated MP4 videos in work_dir")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
@@ -373,9 +377,47 @@ def parse_args():
     parser.add_argument("--cfg-options", nargs="+", action=DictAction,
                         help="Override config settings (key=value pairs)")
     args = parser.parse_args()
-    if args.threshold < 0.0 or args.threshold > 1.0:
+    if args.threshold is not None and (args.threshold < 0.0 or args.threshold > 1.0):
         parser.error("--threshold must be between 0 and 1")
     return args
+
+
+def _resolve_inference_threshold(args, logger):
+    """Resolve the score threshold(s) used to filter predictions.
+
+    An explicit ``--threshold`` always wins (scalar, applied to every class).
+    Otherwise TRACE looks for ``recommended_thresholds.json`` (written next to
+    the best checkpoint during training, tuned on validation) and applies its
+    per-class thresholds, falling back to 0.0 when no such file exists.
+    """
+    if args.threshold is not None:
+        logger.info(f"Using explicit --threshold {args.threshold:.2f} for all classes.")
+        return float(args.threshold)
+
+    ckpt = getattr(args, "checkpoint", None)
+    candidates = []
+    if ckpt and ckpt != "none":
+        ckpt_dir = os.path.dirname(os.path.abspath(ckpt))
+        candidates = [
+            os.path.join(ckpt_dir, "recommended_thresholds.json"),
+            os.path.join(os.path.dirname(ckpt_dir), "recommended_thresholds.json"),
+        ]
+    for path in candidates:
+        if os.path.isfile(path):
+            try:
+                with open(path) as f:
+                    spec = json.load(f)
+            except Exception as exc:
+                logger.warning(f"Could not read {path}: {exc}; using threshold 0.0.")
+                return 0.0
+            logger.info(
+                f"Auto-applying recommended thresholds from {path}: "
+                f"global={spec.get('global')}, per_class={spec.get('per_class')}"
+            )
+            return spec
+
+    logger.info("No recommended_thresholds.json found; using threshold 0.0 (no score filtering).")
+    return 0.0
 
 
 def _video_stem(video_path: str) -> str:
@@ -538,11 +580,12 @@ def main():
                 result_data.get("results", {}),
                 pseudo_anno["database"],
             )
-            predictions = filter_predictions(raw_predictions, args.threshold)
+            threshold_spec = _resolve_inference_threshold(args, logger)
+            predictions = filter_predictions(raw_predictions, threshold_spec)
             output = {
                 "num_videos": len(predictions),
                 "class_map": test_dataset.class_map,
-                "threshold": args.threshold,
+                "threshold": threshold_spec,
                 "predictions": predictions,
             }
 
@@ -567,7 +610,7 @@ def main():
                     video_paths,
                     predictions,
                     cfg.work_dir,
-                    threshold=args.threshold,
+                    threshold=threshold_spec,
                     logger=logger,
                 )
                 output["annotated_videos"] = {

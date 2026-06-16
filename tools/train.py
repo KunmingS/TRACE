@@ -1,5 +1,6 @@
 import os
 import argparse
+import json
 import sys
 import torch
 from torch.amp import GradScaler
@@ -34,6 +35,39 @@ def parse_args():
     parser.add_argument("--cfg-options", nargs="+", action=DictAction, help="override settings")
     args = parser.parse_args()
     return args
+
+
+def _save_recommended_thresholds(work_dir, logger=None):
+    """Flatten this epoch's recommended thresholds from metrics.json and pin
+    them next to best.pth as recommended_thresholds.json.
+
+    eval_one_epoch writes metrics.json for the just-finished validation eval, so
+    calling this right after a new-best checkpoint save captures the thresholds
+    tuned at the best epoch. `trace predict` auto-loads this file.
+    """
+    metrics_path = os.path.join(work_dir, "metrics.json")
+    if not os.path.isfile(metrics_path):
+        return
+    try:
+        with open(metrics_path) as f:
+            metrics = json.load(f)
+    except Exception:
+        return
+    rec = metrics.get("recommended_thresholds")
+    if not rec:
+        return
+    flat = {
+        "global": rec.get("global", {}).get("threshold", 0.0),
+        "per_class": {
+            label: info.get("threshold")
+            for label, info in (rec.get("per_class") or {}).items()
+        },
+    }
+    out_path = os.path.join(work_dir, "recommended_thresholds.json")
+    with open(out_path, "w") as f:
+        json.dump(flat, f, indent=2)
+    if logger:
+        logger.info(f"Saved recommended thresholds to {out_path}: {flat}")
 
 
 def main():
@@ -219,6 +253,9 @@ def main():
                     best_metric = primary_metric
                     logger.info(f"New best metric: {best_metric:.4f}, saving best checkpoint...")
                     save_best_checkpoint(model, model_ema, epoch, work_dir=cfg.work_dir)
+                    # Pin THIS epoch's val-tuned recommended thresholds next to
+                    # best.pth so `trace predict` can apply them automatically.
+                    _save_recommended_thresholds(cfg.work_dir, logger)
     # Make the work_dir itself a self-contained model folder.
     best_pth = os.path.join(cfg.work_dir, "checkpoint", "best.pth")
     if os.path.isfile(best_pth):

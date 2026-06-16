@@ -64,9 +64,11 @@ class PipelineSpec(BaseModel):
     epochs: int = 100
     val_start_epoch: int = 50
     val_interval: int = 10
-    train_ratio: float = 0.8
+    train_ratio: float = 0.7
+    val_ratio: Optional[float] = None
+    test_ratio: Optional[float] = None
     annotated_video: bool = False
-    threshold: float = Field(default=0.0, ge=0.0, le=1.0)
+    threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     seed: int = 42
 
 
@@ -275,7 +277,10 @@ def validate_pipeline_spec(spec: PipelineSpec) -> None:
         if not isinstance(spec.val_interval, int) or spec.val_interval < 1:
             raise PipelineSpecError("Validation interval must be at least 1.")
         if not isinstance(spec.train_ratio, (int, float)) or spec.train_ratio <= 0 or spec.train_ratio >= 1:
-            raise PipelineSpecError("Train/val ratio must be between 0 and 1 (exclusive).")
+            raise PipelineSpecError("Train ratio must be between 0 and 1 (exclusive).")
+        for name, val in (("Validation", spec.val_ratio), ("Test", spec.test_ratio)):
+            if val is not None and (not isinstance(val, (int, float)) or val < 0 or val >= 1):
+                raise PipelineSpecError(f"{name} ratio must be between 0 and 1 (test may be 0).")
 
     if (steps.train or steps.extra_test) and not prep_work_dir(spec):
         raise PipelineSpecError("Dataset work folder is required.")
@@ -348,6 +353,10 @@ def build_pipeline_argv(spec: PipelineSpec) -> list[str]:
             "--cache-resolution", str(spec.cache_resolution),
             "--train-ratio", _fmt_number(spec.train_ratio),
         ])
+        if spec.val_ratio is not None:
+            argv.extend(["--val-ratio", _fmt_number(spec.val_ratio)])
+        if spec.test_ratio is not None:
+            argv.extend(["--test-ratio", _fmt_number(spec.test_ratio)])
 
     if spec.steps.train:
         train_settings = train_resource_settings(spec)
@@ -389,7 +398,7 @@ def build_pipeline_argv(spec: PipelineSpec) -> list[str]:
             argv.extend(["--include-stems", *spec.input_selection.stems])
         if spec.annotated_video:
             argv.append("--annotated-video")
-        if spec.threshold != 0.0:
+        if spec.threshold is not None:
             argv.extend(["--threshold", _fmt_number(spec.threshold)])
 
     if spec.seed != 42:
@@ -481,8 +490,10 @@ def spec_from_cli_args(args: Any) -> PipelineSpec:
         epochs=getattr(args, "epochs", 100),
         val_start_epoch=getattr(args, "val_start_epoch", 50),
         val_interval=getattr(args, "val_interval", 10),
-        train_ratio=getattr(args, "train_ratio", 0.8),
+        train_ratio=getattr(args, "train_ratio", 0.7),
+        val_ratio=getattr(args, "val_ratio", None),
+        test_ratio=getattr(args, "test_ratio", None),
         annotated_video=bool(getattr(args, "annotated_video", False)),
-        threshold=getattr(args, "threshold", 0.0),
+        threshold=getattr(args, "threshold", None),
         seed=getattr(args, "seed", 42),
     )

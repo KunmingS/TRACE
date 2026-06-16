@@ -97,7 +97,9 @@ def _prepare_pairs_into(work_dir, output_dir, args, force_cache_mode=None):
     output_dir, dataset_json, classmap_path = prepare_dataset(
         work_dir,
         clip_frames=getattr(args, "clip_frames", 768),
-        train_ratio=getattr(args, "train_ratio", 0.8),
+        train_ratio=getattr(args, "train_ratio", 0.7),
+        val_ratio=getattr(args, "val_ratio", None),
+        test_ratio=getattr(args, "test_ratio", None),
         virtual_clips=cache_mode == "virtual",
         cache_mode=cache_mode,
         cache_resolution=getattr(args, "cache_resolution", 144),
@@ -629,6 +631,8 @@ def _run_pipeline_spec(spec):
         prep_job = manager.start_prep_job(PrepRequest(
             work_dir=prep_work_dir(spec),
             train_ratio=spec.train_ratio,
+            val_ratio=spec.val_ratio,
+            test_ratio=spec.test_ratio,
             cache_mode=prep_cache_mode(spec),
             cache_resolution=spec.cache_resolution,
             cache_workers=prep_cache_workers,
@@ -802,6 +806,20 @@ def _add_pair_args(parser, *, required=True):
              "--work-dir; absolute paths are accepted.")
 
 
+def _add_split_args(parser):
+    """Stratified train/val/test split ratios shared by prep-capable commands."""
+    parser.add_argument("--train-ratio", type=float, default=0.7,
+        help="Train split ratio for dataset prep (default: 0.7)")
+    parser.add_argument("--val-ratio", type=float, default=None,
+        help="Validation split ratio — used for best-epoch selection and "
+             "threshold tuning. Default: half the remainder after --train-ratio.")
+    parser.add_argument("--test-ratio", type=float, default=None,
+        help="Held-out test split ratio — unbiased final reporting only, never "
+             "used to pick the checkpoint or threshold. Default: the other half "
+             "of the remainder. Pass 0 for a 2-way train/val split. The split is "
+             "stratified by behavior category to keep class proportions even.")
+
+
 def _add_common_job_args(parser, *, include_nproc=False, include_profile=False, include_auto_tune=False):
     if include_nproc:
         parser.add_argument("--nproc", type=int, default=1, help="Number of GPUs (default: 1)")
@@ -820,6 +838,7 @@ def _add_train_args(parser):
     _add_model_config_args(parser)
     _add_work_dir_arg(parser)
     _add_pair_args(parser)
+    _add_split_args(parser)
     parser.add_argument("--pretrained", type=str, default=None,
         help="Pretrained backbone weights path (overrides config's pretrain)")
     parser.add_argument("--reencode-clips", action="store_true",
@@ -855,8 +874,10 @@ def _add_predict_args(parser):
         help="Output JSON path (default: predictions.json in work_dir)")
     parser.add_argument("--annotated-video", action="store_true",
         help="Render annotated MP4 video(s) with prediction overlays")
-    parser.add_argument("--threshold", type=float, default=0.0,
-        help="Minimum prediction score for JSON, CSV, and annotated video output")
+    parser.add_argument("--threshold", type=float, default=None,
+        help="Minimum prediction score for JSON, CSV, and annotated video output. "
+             "If omitted, TRACE auto-applies the per-class F1-optimal thresholds "
+             "recommended during training; falls back to 0.0 if none are saved.")
     _add_common_job_args(parser, include_profile=True, include_auto_tune=True)
     parser.set_defaults(func=infer)
 
@@ -889,8 +910,7 @@ def _add_pipeline_args(parser):
         help="Dataset cache mode for prep (default: cached_video)")
     parser.add_argument("--cache-resolution", type=int, choices=[112, 144, 192, 224], default=144,
         help="Square resolution for cached_video clips (default: 144)")
-    parser.add_argument("--train-ratio", type=float, default=0.8,
-        help="Train/validation split ratio for prep (default: 0.8)")
+    _add_split_args(parser)
     parser.add_argument("--epochs", type=int, default=100,
         help="Total training epochs (default: 100)")
     parser.add_argument("--val-start-epoch", type=int, default=50,
@@ -931,8 +951,9 @@ def _add_pipeline_args(parser):
         help="Restrict inference to selected video stems")
     parser.add_argument("--annotated-video", action="store_true",
         help="Render annotated MP4 video(s) for pipeline inference")
-    parser.add_argument("--threshold", type=float, default=0.0,
-        help="Minimum prediction score for pipeline inference outputs")
+    parser.add_argument("--threshold", type=float, default=None,
+        help="Minimum prediction score for pipeline inference outputs. If omitted, "
+             "auto-applies the recommended thresholds saved during training.")
     parser.set_defaults(func=run)
 
 

@@ -20,7 +20,14 @@ def main():
     parser = argparse.ArgumentParser(description="Prepare dataset for training")
     parser.add_argument("work_dir", type=str, help="Directory containing video/CSV files")
     parser.add_argument("--clip-frames", type=int, default=768, help="Frames per clip")
-    parser.add_argument("--train-ratio", type=float, default=0.8, help="Train split ratio")
+    parser.add_argument("--train-ratio", type=float, default=0.7, help="Train split ratio")
+    parser.add_argument("--val-ratio", type=float, default=None,
+                        help="Validation split ratio (best-epoch + threshold tuning). "
+                             "Default: half the remainder after --train-ratio.")
+    parser.add_argument("--test-ratio", type=float, default=None,
+                        help="Held-out test split ratio (unbiased reporting only). "
+                             "Default: the other half of the remainder; pass 0 for 2-way. "
+                             "Split is stratified by behavior category.")
     parser.add_argument("--reencode-clips", action="store_true",
                         help="Physically extract each clip with ffmpeg (CRF-18 re-encode). "
                              "Default is virtual clips: dataset.json records source_video + "
@@ -58,6 +65,8 @@ def main():
         args.work_dir,
         clip_frames=args.clip_frames,
         train_ratio=args.train_ratio,
+        val_ratio=args.val_ratio,
+        test_ratio=args.test_ratio,
         virtual_clips=cache_mode == "virtual",
         cache_mode=cache_mode,
         cache_resolution=args.cache_resolution,

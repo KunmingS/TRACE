@@ -45,6 +45,7 @@ class Precision:
         thread=16,
         gt_fps=30.0,
         eval_fps=30.0,
+        score_threshold=None,
     ):
         super().__init__()
 
@@ -61,6 +62,12 @@ class Precision:
         self.thread = thread
         self.gt_fps = float(gt_fps)
         self.eval_fps = float(eval_fps)
+        # Score threshold for the reported precision/recall/F1. When None, the
+        # F1-optimal global threshold found by the sweep is used (and logged),
+        # instead of the historical ~0 cutoff that silently inflated recall.
+        self.score_threshold = None if score_threshold is None else float(score_threshold)
+        # Cache for the aligned all-frame score/GT matrices (built lazily).
+        self._frame_matrices = None
 
         if blocked_videos is None:
             self.blocked_videos = list()
@@ -306,153 +313,166 @@ class Precision:
         ap = np.sum((recall[1:] - recall[:-1]) * precision[1:])
         return ap
 
-    def compute_frame_based_mAP(self):
-        """Compute frame-level mean Average Precision.
+    def _build_frame_matrices(self):
+        """Build aligned ``[N_frames, N_classes]`` score + GT-binary matrices
+        over **all** frames of the videos common to GT and predictions.
 
-        For each frame, we have per-class scores from all overlapping predictions.
-        Frames with empty GT (no labels) are excluded.
-        Supports multi-label: a frame can have multiple GT labels simultaneously.
+        Background (empty-GT) frames are INCLUDED: their GT row is all-zero, so
+        a prediction firing on a background frame counts as a false positive.
+        That inclusion is exactly what makes the headline mAP and the threshold
+        sweep penalize over-prediction (the high-recall / low-precision failure
+        mode). A boolean ``nonempty`` mask is returned alongside so the legacy
+        "exclude empty GT frames" mAP can still be reported as a diagnostic.
+
+        Returns ``(scores, gt_binary, nonempty_mask, labels)`` and caches it.
         """
-        gt_video_clip_name = set(self.gt_anno.keys())
-        pred_video_clip_name = set(self.pred_frame_scores.keys())
-        common_videos = gt_video_clip_name & pred_video_clip_name
+        if self._frame_matrices is not None:
+            return self._frame_matrices
 
-        if len(common_videos) == 0:
-            return {"mAP": 0.0, "per_class_AP": {}, "evaluated_labels": []}
+        common_videos = sorted(set(self.gt_anno.keys()) & set(self.pred_frame_scores.keys()))
+        labels = sorted(self.label_to_idx.keys())
+        col = {label: i for i, label in enumerate(labels)}
 
-        # Collect all non-empty GT labels
-        all_labels = set()
-        for clip_name in common_videos:
-            for frame_labels in self.gt_anno[clip_name]:
-                all_labels.update(frame_labels)
+        total_frames = sum(self.video_frames.get(c, 0) for c in common_videos)
+        scores = np.zeros((total_frames, len(labels)), dtype=np.float32)
+        gt_binary = np.zeros((total_frames, len(labels)), dtype=np.int8)
+        nonempty = np.zeros(total_frames, dtype=bool)
 
-        all_labels = sorted(list(all_labels))
-
-        if len(all_labels) == 0:
-            return {"mAP": 0.0, "per_class_AP": {}, "evaluated_labels": []}
-
-        # Pre-count total valid frames (frames with at least one GT label)
-        total_valid_frames = 0
-        for clip_name in common_videos:
-            for frame_labels in self.gt_anno[clip_name]:
-                if len(frame_labels) > 0:
-                    total_valid_frames += 1
-
-        if total_valid_frames == 0:
-            return {"mAP": 0.0, "per_class_AP": {}, "evaluated_labels": []}
-
-        num_labels = len(all_labels)
-        label_to_col = {label: i for i, label in enumerate(all_labels)}
-
-        # Pre-allocate: [total_valid_frames, num_labels]
-        all_scores = np.zeros((total_valid_frames, num_labels), dtype=np.float32)
-        all_gt_binary = np.zeros((total_valid_frames, num_labels), dtype=np.int8)
-
-        # Fill arrays
-        current_row = 0
+        row = 0
         for clip_name in common_videos:
             num_frames = self.video_frames[clip_name]
             gt_labels_array = self.gt_anno[clip_name]
             frame_scores_dict = self.pred_frame_scores[clip_name]
-
             for frame_idx in range(num_frames):
                 frame_gt_labels = gt_labels_array[frame_idx]
+                if frame_gt_labels:
+                    nonempty[row] = True
+                    for label in frame_gt_labels:
+                        if label in col:
+                            gt_binary[row, col[label]] = 1
+                for label, score in frame_scores_dict.get(frame_idx, {}).items():
+                    if label in col:
+                        scores[row, col[label]] = score
+                row += 1
 
-                # Skip frames with no GT labels
-                if len(frame_gt_labels) == 0:
-                    continue
+        self._frame_matrices = (scores, gt_binary, nonempty, labels)
+        return self._frame_matrices
 
-                frame_score_dict = frame_scores_dict.get(frame_idx, {})
+    def compute_frame_based_mAP(self):
+        """Compute frame-level mean Average Precision (background-aware).
 
-                # Fill scores and multi-label GT binary
-                for label in all_labels:
-                    col_idx = label_to_col[label]
-                    all_scores[current_row, col_idx] = frame_score_dict.get(label, 0.0)
-                    all_gt_binary[current_row, col_idx] = 1 if label in frame_gt_labels else 0
+        ``mAP`` is computed over ALL frames — background (empty-GT) frames act as
+        negatives for every class, so a model that over-fires is penalized rather
+        than rewarded. Supports multi-label: a frame can carry several GT labels
+        at once.
+        """
+        scores, gt_binary, _nonempty, labels = self._build_frame_matrices()
 
-                current_row += 1
+        if scores.shape[0] == 0 or len(labels) == 0:
+            return {"mAP": 0.0, "per_class_AP": {}, "evaluated_labels": []}
 
-        # Compute AP for each class
         per_class_AP = {}
-        valid_aps = []
-
-        for label_idx, label in enumerate(all_labels):
-            scores = all_scores[:, label_idx]
-            labels = all_gt_binary[:, label_idx]
-
-            if np.sum(labels) > 0:
-                ap = self.compute_average_precision(scores, labels)
+        aps = []
+        for i, label in enumerate(labels):
+            col_scores = scores[:, i]
+            col_gt = gt_binary[:, i]
+            if np.sum(col_gt) > 0:
+                ap = self.compute_average_precision(col_scores, col_gt)
                 per_class_AP[label] = ap
-                valid_aps.append(ap)
+                aps.append(ap)
             else:
                 per_class_AP[label] = 0.0
 
-        mAP = np.mean(valid_aps) if len(valid_aps) > 0 else 0.0
+        mAP = float(np.mean(aps)) if aps else 0.0
 
         return {
             "mAP": mAP,
             "per_class_AP": per_class_AP,
-            "evaluated_labels": all_labels
+            "evaluated_labels": labels,
         }
 
-    def compute_frame_based_precision(self):
-        """Compute frame-based precision, recall, and F1.
+    def compute_threshold_sweep(self, thresholds=None):
+        """Sweep score thresholds and recommend F1-optimal cutoffs.
 
-        Supports multi-label: both GT and predictions can have multiple labels per frame.
-        Metrics are computed per-class using binary matrices.
+        Computes per-class precision/recall/F1 over ALL frames (background
+        included, so false positives count) at each threshold, then reports:
+          - ``per_class``: the threshold maximizing each class's F1, and
+          - ``global``: the single threshold maximizing mean per-class F1.
+
+        Tuned on whatever subset this evaluator runs over (validation, by
+        convention). Returns a dict ready to drop into ``metrics.json``.
         """
-        gt_video_clip_name = set(self.gt_anno.keys())
-        pred_video_clip_name = set(self.pred_data.keys())
+        if thresholds is None:
+            thresholds = [round(0.05 * k, 2) for k in range(1, 20)]  # 0.05 .. 0.95
+        thresholds = [float(t) for t in thresholds]
 
-        common_videos = gt_video_clip_name & pred_video_clip_name
+        scores, gt_binary, _nonempty, labels = self._build_frame_matrices()
 
-        if len(common_videos) == 0 or self.num_classes == 0:
-            return {
-                "labels": [],
-                "precision": np.zeros(0, dtype=np.float64),
-                "recall": np.zeros(0, dtype=np.float64),
-                "f1": np.zeros(0, dtype=np.float64),
-            }
+        per_class = {}
+        f1_curves = []
+        for i, label in enumerate(labels):
+            col_scores = scores[:, i]
+            gt_pos = gt_binary[:, i].astype(bool)
+            n_pos = int(np.sum(gt_pos))
+            best = {"threshold": thresholds[0], "f1": 0.0, "precision": 0.0, "recall": 0.0}
+            curve = []
+            for t in thresholds:
+                pred = col_scores >= t
+                tp = int(np.sum(pred & gt_pos))
+                fp = int(np.sum(pred & ~gt_pos))
+                fn = n_pos - tp
+                precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+                recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+                f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+                curve.append(f1)
+                if f1 > best["f1"]:
+                    best = {"threshold": t, "f1": f1, "precision": precision, "recall": recall}
+            per_class[label] = best
+            f1_curves.append(curve)
 
-        if len(common_videos) < len(gt_video_clip_name):
-            missing_in_pred = gt_video_clip_name - pred_video_clip_name
-            print(f"Warning: {len(missing_in_pred)} GT videos not found in predictions")
+        if f1_curves:
+            mean_f1 = np.mean(np.asarray(f1_curves), axis=0)
+            gi = int(np.argmax(mean_f1))
+            global_best = {"threshold": thresholds[gi], "f1": float(mean_f1[gi])}
+        else:
+            global_best = {"threshold": thresholds[0], "f1": 0.0}
 
-        # Build GT and prediction binary matrices [total_frames, num_classes]
-        all_gt_rows = []
-        all_pred_rows = []
+        return {"per_class": per_class, "global": global_best}
 
-        for clip_name in common_videos:
-            # GT: already encoded as binary matrix [num_frames, num_classes]
-            all_gt_rows.append(self.gt_anno_encoded[clip_name])
+    def compute_frame_based_precision(self, score_threshold=0.0):
+        """Compute frame-based precision, recall, and F1 at a score threshold.
 
-            # Predictions: convert set-of-labels per frame to binary matrix
-            pred_label_sets = self.pred_data[clip_name]
-            num_frames = len(pred_label_sets)
-            pred_encoded = np.zeros((num_frames, self.num_classes), dtype=np.int8)
-            for fi, frame_labels in enumerate(pred_label_sets):
-                for label in frame_labels:
-                    if label in self.label_to_idx:
-                        pred_encoded[fi, self.label_to_idx[label]] = 1
-            all_pred_rows.append(pred_encoded)
-
-        all_gt = np.concatenate(all_gt_rows, axis=0)    # [N, C]
-        all_pred = np.concatenate(all_pred_rows, axis=0)  # [N, C]
-
-        unique_labels = sorted(self.label_to_idx.keys())
-        num_labels = len(unique_labels)
+        A frame is a positive prediction for a class when that class's score is
+        ``>= score_threshold`` (over all frames, background included). With
+        ``score_threshold <= 0`` any non-zero prediction counts — the historical
+        behavior that reported near-100% recall regardless of confidence.
+        Supports multi-label: each class is scored independently.
+        """
+        scores, gt_binary, _nonempty, labels = self._build_frame_matrices()
+        num_labels = len(labels)
         precision_list = np.zeros(num_labels, dtype=np.float64)
         recall_list = np.zeros(num_labels, dtype=np.float64)
         f1_list = np.zeros(num_labels, dtype=np.float64)
 
-        for i, label in enumerate(unique_labels):
-            col = self.label_to_idx[label]
-            gt_col = all_gt[:, col]
-            pred_col = all_pred[:, col]
+        if scores.shape[0] == 0 or num_labels == 0:
+            return {
+                "labels": labels,
+                "precision": precision_list,
+                "recall": recall_list,
+                "f1": f1_list,
+            }
+
+        for i in range(num_labels):
+            col_scores = scores[:, i]
+            gt_col = gt_binary[:, i].astype(bool)
+            if score_threshold > 0:
+                pred_col = col_scores >= score_threshold
+            else:
+                pred_col = col_scores > 0
 
             tp = np.sum(gt_col & pred_col)
-            fp = np.sum((~gt_col.astype(bool)) & pred_col.astype(bool))
-            fn = np.sum(gt_col.astype(bool) & (~pred_col.astype(bool)))
+            fp = np.sum((~gt_col) & pred_col)
+            fn = np.sum(gt_col & (~pred_col))
 
             precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
             recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
@@ -463,26 +483,34 @@ class Precision:
             f1_list[i] = f1
 
         return {
-            "labels": unique_labels,
+            "labels": labels,
             "precision": precision_list,
             "recall": recall_list,
             "f1": f1_list,
         }
 
     def evaluate(self):
-        # compute frame-based metrics
-        metrics = self.compute_frame_based_precision()
-
-        self.precision = metrics["precision"]
-        self.recall = metrics["recall"]
-        self.f1_score = metrics["f1"]
-        self.unique_labels = metrics["labels"]
-
-        # compute frame-based mAP
+        # Background-aware mAP (the only mAP reported).
         mAP_metrics = self.compute_frame_based_mAP()
         self.mAP = mAP_metrics["mAP"]
         self.per_class_AP = mAP_metrics["per_class_AP"]
         self.mAP_labels = mAP_metrics["evaluated_labels"]
+
+        # Threshold recommendation (per-class F1-optimal + global).
+        self.threshold_sweep = self.compute_threshold_sweep()
+        self.recommended_threshold = self.threshold_sweep["global"]["threshold"]
+
+        # Precision/recall/F1 reported at the evaluation threshold: the value
+        # configured on the evaluator, else the F1-optimal global threshold.
+        if self.score_threshold is not None:
+            self.eval_threshold = self.score_threshold
+        else:
+            self.eval_threshold = self.recommended_threshold
+        metrics = self.compute_frame_based_precision(score_threshold=self.eval_threshold)
+        self.precision = metrics["precision"]
+        self.recall = metrics["recall"]
+        self.f1_score = metrics["f1"]
+        self.unique_labels = metrics["labels"]
 
         metric_dict = {
             "precision": self.precision,
@@ -490,6 +518,11 @@ class Precision:
             "f1_score": self.f1_score,
             "mAP": self.mAP,
             "per_class_AP": self.per_class_AP,
+            "eval_threshold": self.eval_threshold,
+            "recommended_thresholds": {
+                "global": self.threshold_sweep["global"],
+                "per_class": self.threshold_sweep["per_class"],
+            },
         }
 
         return metric_dict
@@ -507,18 +540,34 @@ class Precision:
         pprint(f"GT fps: {self.gt_fps}, eval fps: {self.eval_fps}")
         pprint(f"Unique labels: {self.unique_labels}")
 
-        # Format arrays to two decimal places and append percent sign
+        # Precision/recall/F1 are reported AT a concrete score threshold so they
+        # are no longer the misleading ~0-threshold (recall≈100%) numbers.
+        thr_src = "configured" if self.score_threshold is not None else "F1-optimal"
+        pprint(f"\nPrecision/recall/F1 @ threshold {self.eval_threshold:.2f} ({thr_src}):")
         precision_str = [f"{p*100:.2f}%" for p in self.precision]
         recall_str = [f"{r*100:.2f}%" for r in self.recall]
         f1_str = [f"{f*100:.2f}%" for f in self.f1_score]
-        # Print formatted arrays
         pprint(f"Frame-based precision: {precision_str}")
         pprint(f"Frame-based recall: {recall_str}")
         pprint(f"Frame-based F1-score: {f1_str}")
 
-        # Print mAP results
-        pprint(f"\nFrame-based mAP (excluding empty GT frames): {self.mAP*100:.2f}%")
+        # mAP is background-aware (empty GT frames count as negatives), so
+        # over-prediction is penalized rather than rewarded.
+        pprint(f"\nFrame-based mAP (background-aware, all frames): {self.mAP*100:.2f}%")
         pprint(f"Per-class AP:")
         for label in self.mAP_labels:
             ap = self.per_class_AP.get(label, 0.0)
             pprint(f"  {label}: {ap*100:.2f}%")
+
+        # Recommended confidence thresholds (tuned on this subset by F1).
+        gthr = self.threshold_sweep["global"]
+        pprint(f"\nRecommended threshold (global, max mean-F1): "
+               f"{gthr['threshold']:.2f}  (mean F1 {gthr['f1']*100:.2f}%)")
+        pprint(f"Recommended threshold per class (max F1):")
+        for label in self.unique_labels:
+            best = self.threshold_sweep["per_class"].get(label)
+            if best is None:
+                continue
+            pprint(f"  {label}: thr={best['threshold']:.2f} "
+                   f"(F1 {best['f1']*100:.2f}%, P {best['precision']*100:.2f}%, "
+                   f"R {best['recall']*100:.2f}%)")

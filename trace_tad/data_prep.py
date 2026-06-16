@@ -11,6 +11,8 @@ this module:
 import csv
 import json
 import os
+import random
+from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -1033,7 +1035,147 @@ def materialize_dataset_cached_videos(
     return cached_path
 
 
-def prepare_dataset(dataset_path, clip_frames=768, train_ratio=0.8, virtual_clips=True,
+# Synthetic stratum used to keep background-only clips (no behavior labels)
+# proportional across the train/val/test split alongside the real classes.
+_BG_STRATUM = "(background)"
+
+
+def _clip_label_set(clip_entry):
+    """Behavior labels present in one clip (empty set => background-only)."""
+    labels = set()
+    for anno in clip_entry.get("annotations", []) or []:
+        lab = anno.get("label")
+        if lab is not None and str(lab).strip():
+            labels.add(str(lab).strip())
+    return labels
+
+
+def _resolve_split_ratios(train_ratio, val_ratio, test_ratio):
+    """Resolve a normalized ``(train, val, test)`` fraction triple.
+
+    Back-compat: when only ``train_ratio`` is supplied (``val_ratio`` and
+    ``test_ratio`` left as ``None``), the remaining mass is divided evenly
+    between validation and test so legacy 2-way callers transparently gain a
+    held-out test split. Passing ``test_ratio=0`` explicitly yields a 2-way
+    train/val split.
+    """
+    train_ratio = float(train_ratio)
+    if val_ratio is None and test_ratio is None:
+        rem = max(0.0, 1.0 - train_ratio)
+        val_ratio = test_ratio = rem / 2.0
+    elif val_ratio is None:
+        val_ratio = max(0.0, 1.0 - train_ratio - float(test_ratio))
+    elif test_ratio is None:
+        test_ratio = max(0.0, 1.0 - train_ratio - float(val_ratio))
+
+    train_ratio = max(0.0, train_ratio)
+    val_ratio = max(0.0, float(val_ratio))
+    test_ratio = max(0.0, float(test_ratio))
+    total = train_ratio + val_ratio + test_ratio
+    if total <= 0:
+        raise ValueError("Split ratios must sum to a positive value.")
+    return train_ratio / total, val_ratio / total, test_ratio / total
+
+
+def _stratified_split(clip_records, split_ratios, seed=42):
+    """Distribute multi-label clips into named splits with even per-class shares.
+
+    Implements the multi-label iterative stratification of Sechidis, Tsoumakas
+    & Vlahavas (2011): repeatedly pick the label with the fewest remaining
+    unassigned clips and hand each of those clips to whichever split has the
+    largest remaining quota for that label (ties broken by largest overall
+    remaining quota, then deterministically via a seeded RNG). This keeps every
+    behavior category — and the background-only stratum — at a consistent
+    proportion across train/val/test, which a per-video random cut does not.
+
+    Args:
+        clip_records: list of ``(clip_key, label_set)`` pairs. An empty
+            ``label_set`` marks a background-only clip; it is stratified under a
+            synthetic background label so those clips stay proportional too.
+        split_ratios: list of ``(split_name, fraction)`` with fractions that
+            sum to 1.
+        seed: RNG seed for deterministic tie-breaking.
+
+    Returns:
+        dict mapping ``clip_key`` -> ``split_name``.
+    """
+    rng = random.Random(seed)
+    names = [n for n, _ in split_ratios]
+    fracs = {n: f for n, f in split_ratios}
+
+    label_pool = defaultdict(set)   # label -> set of still-unassigned clip keys
+    clip_labels = {}                # clip key -> set of strata it belongs to
+    for clip_key, label_set in clip_records:
+        strata = set(label_set) if label_set else {_BG_STRATUM}
+        clip_labels[clip_key] = strata
+        for lab in strata:
+            label_pool[lab].add(clip_key)
+
+    n_total = len(clip_records)
+    desired_total = {n: fracs[n] * n_total for n in names}
+    desired_label = {
+        lab: {n: fracs[n] * len(keys) for n in names}
+        for lab, keys in label_pool.items()
+    }
+
+    assignment = {}
+    unassigned = set(clip_labels.keys())
+
+    def _assign(clip_key, split_name):
+        assignment[clip_key] = split_name
+        unassigned.discard(clip_key)
+        desired_total[split_name] -= 1
+        for lab in clip_labels[clip_key]:
+            if clip_key in label_pool[lab]:
+                label_pool[lab].discard(clip_key)
+                desired_label[lab][split_name] -= 1
+
+    while unassigned:
+        candidate_labels = [lab for lab, keys in label_pool.items() if keys]
+        if not candidate_labels:
+            break
+        # Rarest remaining label first; deterministic tie-break by name.
+        lab = min(candidate_labels, key=lambda l: (len(label_pool[l]), l))
+        for clip_key in sorted(label_pool[lab]):
+            if clip_key not in unassigned:
+                continue
+            best = max(
+                names,
+                key=lambda n: (desired_label[lab][n], desired_total[n], rng.random()),
+            )
+            _assign(clip_key, best)
+
+    # Leftovers (clips whose every stratum pool emptied) -> by total quota.
+    for clip_key in sorted(unassigned):
+        best = max(names, key=lambda n: (desired_total[n], rng.random()))
+        _assign(clip_key, best)
+
+    return assignment
+
+
+def _log_split_composition(database, class_map):
+    """Print per-split clip counts and per-class clip counts for verification."""
+    per_split = defaultdict(Counter)
+    totals = Counter()
+    for entry in database.values():
+        s = entry["subset"]
+        totals[s] += 1
+        labs = _clip_label_set(entry)
+        if not labs:
+            per_split[s][_BG_STRATUM] += 1
+        for lab in labs:
+            per_split[s][lab] += 1
+
+    order = [s for s in ("train", "validation", "test") if totals.get(s)]
+    print("Split composition (stratified by behavior category):")
+    print("  totals: " + ", ".join(f"{s}={totals[s]}" for s in order))
+    for lab in list(class_map) + [_BG_STRATUM]:
+        counts = ", ".join(f"{s}={per_split[s].get(lab, 0)}" for s in order)
+        print(f"    {lab}: {counts}")
+
+
+def prepare_dataset(dataset_path, clip_frames=768, train_ratio=0.7,
+                    val_ratio=None, test_ratio=None, virtual_clips=True,
                     included_stems=None, explicit_pairs=None, output_dir=None,
                     cache_mode=None, cache_resolution=144, cache_crf=23,
                     cache_workers=None):
@@ -1045,7 +1187,15 @@ def prepare_dataset(dataset_path, clip_frames=768, train_ratio=0.8, virtual_clip
     Args:
         dataset_path: Directory containing videos and CSV annotations.
         clip_frames: Number of frames per clip (default: 768).
-        train_ratio: Fraction of clips for training (default: 0.8).
+        train_ratio: Fraction of clips for training (default: 0.7).
+        val_ratio: Fraction of clips for validation (best-epoch selection +
+            threshold tuning). Defaults to half of the remainder after
+            ``train_ratio`` when both ``val_ratio`` and ``test_ratio`` are None.
+        test_ratio: Fraction of clips for the held-out test split (unbiased
+            final reporting only — never used to pick the checkpoint or the
+            threshold). Defaults to the other half of the remainder. Pass 0 for
+            a 2-way train/val split. The split is stratified by behavior
+            category so each class keeps a consistent proportion across splits.
         virtual_clips: If True (default), record `source_video` + `source_frame_offset`
             metadata instead of re-encoding clip files. Eliminates CRF-18 quality loss
             and ~10x speedup. Pass False for `--reencode-clips` workflows that want
@@ -1140,17 +1290,27 @@ def prepare_dataset(dataset_path, clip_frames=768, train_ratio=0.8, virtual_clip
         )
         all_clips_data[video_name] = clips_data
 
-    # Generate dataset.json with train/val split
-    np.random.seed(42)
+    # Generate dataset.json with a stratified train/val/test split.
+    # The split is computed globally at clip level (not per-video) so behavior
+    # categories stay proportional across splits. val drives best-epoch
+    # selection + threshold tuning; test is held out for unbiased reporting.
+    train_r, val_r, test_r = _resolve_split_ratios(train_ratio, val_ratio, test_ratio)
+    clip_records = []
+    for video_name, clips_data in all_clips_data.items():
+        for clip_idx in clips_data.keys():
+            clip_key = f"{video_name}_clip_{clip_idx}"
+            clip_records.append((clip_key, _clip_label_set(clips_data[clip_idx])))
+
+    split_ratios = [("train", train_r), ("validation", val_r)]
+    if test_r > 0:
+        split_ratios.append(("test", test_r))
+    assignment = _stratified_split(clip_records, split_ratios, seed=42)
+
     database = {}
     for video_name, clips_data in all_clips_data.items():
-        clip_indices = list(clips_data.keys())
-        np.random.shuffle(clip_indices)
-        train_count = int(len(clip_indices) * train_ratio)
-
-        for i, clip_idx in enumerate(clip_indices):
-            subset = "train" if i < train_count else "validation"
+        for clip_idx in clips_data.keys():
             clip_key = f"{video_name}_clip_{clip_idx}"
+            subset = assignment.get(clip_key, "train")
             entry = {
                 "duration": clips_data[clip_idx]["duration"],
                 "frame": clips_data[clip_idx]["frame"],
@@ -1168,6 +1328,8 @@ def prepare_dataset(dataset_path, clip_frames=768, train_ratio=0.8, virtual_clip
             if "cached_video" in clips_data[clip_idx]:
                 entry["cached_video"] = clips_data[clip_idx]["cached_video"]
             database[clip_key] = entry
+
+    _log_split_composition(database, class_map)
 
     os.makedirs(output_dir, exist_ok=True)
     with open(json_path, "w", encoding="utf-8") as f:
