@@ -205,7 +205,76 @@ def test_update_prompts_when_pypi_has_newer_version(monkeypatch, capsys):
     assert result == 0
     assert "TRACE 0.3.0 is available on PyPI." in captured.out
     assert "Installed version: 0.2.0" in captured.out
+    # Non-interactive (no TTY in tests): prints the manual command, never hangs.
     assert "python -m pip install --upgrade trace-tad" in captured.out
+
+
+class _FakeTTY:
+    def isatty(self):
+        return True
+
+
+def _stub_update_env(monkeypatch, latest="0.3.0"):
+    monkeypatch.setattr(cli, "__version__", "0.2.0")
+    monkeypatch.setattr(cli, "_fetch_latest_pypi_version", lambda timeout: latest)
+    monkeypatch.setattr(cli, "_ensure_ffmpeg", lambda: None)
+
+
+def test_update_check_only_never_installs(monkeypatch, capsys):
+    _stub_update_env(monkeypatch)
+
+    def _boom():
+        raise AssertionError("--check-only must not install")
+
+    monkeypatch.setattr(cli, "_run_pip_upgrade", _boom)
+    result = cli.main(["update", "--check-only"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "python -m pip install --upgrade trace-tad" in out
+
+
+def test_update_yes_installs_without_prompt(monkeypatch, capsys):
+    _stub_update_env(monkeypatch)
+    calls = []
+    monkeypatch.setattr(cli, "_run_pip_upgrade", lambda: calls.append(True) or 0)
+    result = cli.main(["update", "--yes"])
+    out = capsys.readouterr().out
+    assert result == 0 and calls == [True]
+    assert "Updated to trace-tad 0.3.0" in out
+
+
+def test_update_interactive_yes_installs(monkeypatch, capsys):
+    _stub_update_env(monkeypatch)
+    monkeypatch.setattr("sys.stdin", _FakeTTY())
+    monkeypatch.setattr("builtins.input", lambda prompt="": "y")
+    calls = []
+    monkeypatch.setattr(cli, "_run_pip_upgrade", lambda: calls.append(True) or 0)
+    result = cli.main(["update"])
+    assert result == 0 and calls == [True]
+
+
+def test_update_interactive_no_skips_install(monkeypatch, capsys):
+    _stub_update_env(monkeypatch)
+    monkeypatch.setattr("sys.stdin", _FakeTTY())
+    monkeypatch.setattr("builtins.input", lambda prompt="": "n")
+
+    def _boom():
+        raise AssertionError("answering n must not install")
+
+    monkeypatch.setattr(cli, "_run_pip_upgrade", _boom)
+    result = cli.main(["update"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "python -m pip install --upgrade trace-tad" in out
+
+
+def test_update_yes_propagates_pip_failure(monkeypatch, capsys):
+    _stub_update_env(monkeypatch)
+    monkeypatch.setattr(cli, "_run_pip_upgrade", lambda: 1)
+    result = cli.main(["update", "--yes"])
+    out = capsys.readouterr().out
+    assert result == 1
+    assert "Update failed" in out
 
 
 def test_update_reports_pypi_check_failure(monkeypatch, capsys):

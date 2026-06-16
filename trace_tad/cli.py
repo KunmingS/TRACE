@@ -415,8 +415,16 @@ def prepare(args):
     return paths
 
 
+def _run_pip_upgrade():
+    """Upgrade the installed TRACE package via pip. Returns the pip exit code."""
+    cmd = [sys.executable, "-m", "pip", "install", "--upgrade", PYPI_PROJECT_NAME]
+    print(f"Running: {' '.join(cmd)}\n")
+    return subprocess.run(cmd).returncode
+
+
 def update(args):
-    """Check whether the installed TRACE package matches the PyPI version."""
+    """Check whether the installed TRACE package matches the PyPI version, and
+    optionally upgrade it in place after a confirmation prompt."""
     try:
         latest = _fetch_latest_pypi_version(timeout=args.timeout)
     except RuntimeError as exc:
@@ -424,20 +432,47 @@ def update(args):
         sys.exit(2)
 
     current = __version__
+    return_code = 0
     if latest == current:
         print(f"TRACE is up to date ({current}).")
     else:
         print(f"TRACE {latest} is available on PyPI.")
         print(f"Installed version: {current}")
         print()
-        print("Update with:")
-        print(f"  python -m pip install --upgrade {PYPI_PROJECT_NAME}")
+
+        # Decide whether to upgrade now. --yes auto-confirms; --check-only never
+        # installs; otherwise prompt only on an interactive TTY so piped/job
+        # runs never hang waiting for input.
+        if getattr(args, "check_only", False):
+            do_install = False
+        elif getattr(args, "yes", False):
+            do_install = True
+        elif sys.stdin is not None and sys.stdin.isatty():
+            try:
+                answer = input(f"Install {PYPI_PROJECT_NAME} {latest} now? [y/N] ").strip().lower()
+            except EOFError:
+                answer = ""
+            do_install = answer in ("y", "yes")
+        else:
+            do_install = False
+
+        if do_install:
+            return_code = _run_pip_upgrade()
+            if return_code == 0:
+                print(f"\nUpdated to {PYPI_PROJECT_NAME} {latest}. "
+                      "Restart any running TRACE processes to use it.")
+            else:
+                print(f"\nUpdate failed (pip exit {return_code}). Run it manually:")
+                print(f"  python -m pip install --upgrade {PYPI_PROJECT_NAME}")
+        else:
+            print("Update with:")
+            print(f"  python -m pip install --upgrade {PYPI_PROJECT_NAME}")
 
     # Upgrades can introduce new native deps. Run after the version check so
     # the user sees their TRACE status first, then any ffmpeg work.
     print()
     _ensure_ffmpeg()
-    return 0
+    return return_code
 
 
 def train(args):
@@ -974,9 +1009,13 @@ def main(argv=None):
     prepare_parser.set_defaults(func=prepare)
 
     update_parser = subparsers.add_parser("update",
-        help="Check PyPI for a newer TRACE package")
+        help="Check PyPI for a newer TRACE package and optionally install it")
     update_parser.add_argument("--timeout", type=float, default=5.0,
         help="Seconds to wait for the PyPI version check (default: 5)")
+    update_parser.add_argument("-y", "--yes", action="store_true",
+        help="Install the new version without prompting")
+    update_parser.add_argument("--check-only", action="store_true",
+        help="Only report whether a newer version exists; never install")
     update_parser.set_defaults(func=update)
 
     train_parser = subparsers.add_parser("train", help="Train a model")
