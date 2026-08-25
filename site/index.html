@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>V-TRACE Documentation</title>
+  <meta name="description" content="V-TRACE turns untrimmed animal-behavior video into continuous ethograms: label recordings in the browser, train a detector, and have it annotate the rest.">
+  <link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="V-TRACE documentation home">
+      <span class="brand-mark">V</span>
+      <span>V-TRACE Docs</span>
+    </a>
+    <nav class="top-nav" aria-label="Documentation navigation">
+      <a href="#quick-start">Quick Start</a>
+      <a href="#demo">Demo</a>
+      <a href="#workflow">Workflow</a>
+      <a href="#cli">CLI</a>
+      <a href="https://github.com/KunmingS/TRACE">GitHub</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow">Video-based Temporal Recognition and Annotation of Continuous Ethograms of Animal Behavior</p>
+        <h1 id="hero-title">V-TRACE</h1>
+        <p class="hero-lede">
+          Label a few recordings in the browser, train a detector on them, and
+          have it annotate the rest. The annotator is one static page that reads
+          and writes files on your own machine; training and prediction run from
+          the command line.
+        </p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#quick-start">Start Here</a>
+          <a class="button button-secondary" href="https://github.com/KunmingS/TRACE">View Source</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="quick-start" class="section section-grid">
+      <div>
+        <p class="section-label">Quick Start</p>
+        <h2>Install, then run it with no arguments.</h2>
+        <p>
+          Create a Python 3.9+ environment with conda, mamba, or uv first.
+          <code>vtrace</code> opens an interactive session and starts the
+          annotator with it, so nothing has to be launched by hand — open the
+          address it prints in Chrome or Edge. Type the rest of the commands at
+          the <code>vtrace &gt;</code> prompt without repeating the program's
+          name. Training, evaluation and prediction need a CUDA-capable PyTorch
+          environment; annotation does not.
+        </p>
+      </div>
+      <div class="code-panel" aria-label="Quick start commands">
+<pre><code># conda
+conda create -n vtrace python=3.11 pip
+conda activate vtrace
+
+# mamba
+mamba create -n vtrace python=3.11 pip
+mamba activate vtrace
+
+# uv
+uv venv --python 3.11 --seed .venv
+source .venv/bin/activate
+
+python -m pip install trace-tad
+vtrace prepare --weights all
+vtrace</code></pre>
+      </div>
+    </section>
+
+    <section id="demo" class="section split-section">
+      <div>
+        <p class="section-label">Demo</p>
+        <h2>The whole CalMS21 benchmark, in one command.</h2>
+        <p>
+          The demo is the complete Task-1 mouse social-behavior benchmark in its
+          official split — 70 training videos and 19 test videos. V-TRACE
+          re-hosts none of it: the annotation CSVs ship with the package, and
+          the videos are read out of the dataset's own record at CaltechDATA one
+          at a time over HTTP range requests, so nothing pulls the 28 GB archive
+          and an interrupted fetch resumes where it stopped. Predicting takes
+          about a minute; training is a real run on the full benchmark.
+        </p>
+      </div>
+      <div class="code-panel compact" aria-label="Demo commands">
+<pre><code>vtrace demo predict
+vtrace demo download
+vtrace demo train</code></pre>
+      </div>
+    </section>
+
+    <section id="workflow" class="section">
+      <div class="section-heading">
+        <p class="section-label">Workflow</p>
+        <h2>From labeled video to predictions.</h2>
+      </div>
+      <div class="step-grid">
+        <article class="step-card">
+          <span class="step-number">01</span>
+          <h3>Annotate</h3>
+          <p>
+            Open the annotator, choose a video folder, and mark behaviors on the
+            timeline. Everything is read and written on the computer running the
+            browser — nothing is uploaded and there is no server-side state.
+          </p>
+        </article>
+        <article class="step-card">
+          <span class="step-number">02</span>
+          <h3>Train</h3>
+          <p>
+            Name the video/annotation pairs for the run. V-TRACE indexes each
+            video whole, splits train and validation by recording rather than by
+            window, and writes a timestamped model directory.
+          </p>
+        </article>
+        <article class="step-card">
+          <span class="step-number">03</span>
+          <h3>Evaluate</h3>
+          <p>
+            Score the trained model on the run's own validation split, or pass a
+            fresh set of video/annotation pairs to score it on held-out
+            recordings.
+          </p>
+        </article>
+        <article class="step-card">
+          <span class="step-number">04</span>
+          <h3>Review</h3>
+          <p>
+            Prediction writes one file per video beside it. Open that folder in
+            the annotator to accept, reject, or correct each predicted bout
+            where the labeling happened.
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section split-section">
+      <div>
+        <p class="section-label">Training Data</p>
+        <h2>Use explicit video and annotation pairs.</h2>
+        <p>
+          The annotation CSV format is time-based: each row maps a behavior
+          label to start and end times in seconds. A single source video can
+          have several CSVs beside it, and each training pair chooses which one
+          to use.
+        </p>
+      </div>
+      <div class="code-panel compact" aria-label="Annotation CSV example">
+<pre><code>labelId,timestamp,endTimestamp
+grooming,12.430,18.970
+rearing,42.100,45.650</code></pre>
+      </div>
+    </section>
+
+    <section class="section split-section">
+      <div>
+        <p class="section-label">Prediction Output</p>
+        <h2>One file per video, replaced on re-run.</h2>
+        <p>
+          A prediction lands as <code>&lt;video&gt;.predict.json</code> next to
+          the video it describes. Re-running replaces it rather than piling up
+          timestamped folders, so a video has exactly one current prediction —
+          and the file is in the shape the annotator imports, so predictions are
+          reviewed where the labeling happened.
+        </p>
+      </div>
+      <div class="code-panel compact" aria-label="Prediction output layout">
+<pre><code>my_video.mp4
+my_video.predict.json</code></pre>
+      </div>
+    </section>
+
+    <section class="section split-section">
+      <div>
+        <p class="section-label">UI + CLI</p>
+        <h2>The app writes the command for you.</h2>
+        <p>
+          Pick the folder and the recipe in the browser and the configuration
+          screen builds the exact command, ready to paste. A browser is never
+          told where a picked folder lives, so the local server passes along the
+          directories it can see and the page resolves the folder by name.
+        </p>
+      </div>
+      <div class="code-panel compact" aria-label="Generated CLI command example">
+<pre><code>vtrace train --model maev2 \
+  --work-dir /data/my_dataset \
+  --pairs video01.mp4=video01.csv</code></pre>
+      </div>
+    </section>
+
+    <section id="cli" class="section">
+      <div class="section-heading">
+        <p class="section-label">CLI Reference</p>
+        <h2>Core commands.</h2>
+        <p>
+          Each also works from a shell, prefixed with <code>vtrace</code>.
+        </p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Command</th>
+              <th>Purpose</th>
+              <th>Example</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>vtrace</code></td>
+              <td>Open the interactive session and start the annotator.</td>
+              <td><code>vtrace</code></td>
+            </tr>
+            <tr>
+              <td><code>vtrace app</code></td>
+              <td>Serve the annotator on its own, without the session.</td>
+              <td><code>vtrace app --port 8765</code></td>
+            </tr>
+            <tr>
+              <td><code>vtrace demo</code></td>
+              <td>Download and run the CalMS21 walkthrough.</td>
+              <td><code>vtrace demo predict</code></td>
+            </tr>
+            <tr>
+              <td><code>vtrace prepare</code></td>
+              <td>Download model weights ahead of time.</td>
+              <td><code>vtrace prepare --weights all</code></td>
+            </tr>
+            <tr>
+              <td><code>vtrace train</code></td>
+              <td>Prepare the named pairs and train a detector.</td>
+              <td><code>vtrace train --model maev2 --work-dir /data --pairs video01.mp4=video01.csv</code></td>
+            </tr>
+            <tr>
+              <td><code>vtrace eval</code></td>
+              <td>Evaluate a trained model, optionally on new paired data.</td>
+              <td><code>vtrace eval --model-dir /data/model_YYYYMMDD_HHMMSS</code></td>
+            </tr>
+            <tr>
+              <td><code>vtrace predict</code></td>
+              <td>Predict on new videos and write a file beside each one.</td>
+              <td><code>vtrace predict --model-dir /data/model_YYYYMMDD_HHMMSS --input /data/video03.mp4</code></td>
+            </tr>
+            <tr>
+              <td><code>vtrace pipeline</code></td>
+              <td>Run prep, train and predict end to end.</td>
+              <td><code>vtrace pipeline --train --infer --model maev2 --work-dir /data --input /data/new</code></td>
+            </tr>
+            <tr>
+              <td><code>vtrace update</code></td>
+              <td>Check PyPI for a newer release and offer to install it.</td>
+              <td><code>vtrace update --check-only</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section split-section">
+      <div>
+        <p class="section-label">Artifacts</p>
+        <h2>Model runs are self-contained.</h2>
+        <p>
+          Training creates <code>model_YYYYMMDD_HHMMSS/</code> under
+          <code>--work-dir</code>. Alongside the checkpoint and class map it
+          writes <code>config_resolved.py</code> — the configuration the run
+          actually used, with its bases merged and every override applied.
+          Prediction loads that, so a later edit of the config it started from
+          cannot change how a finished model is rebuilt.
+        </p>
+      </div>
+      <div class="artifact-list" aria-label="Model artifact files">
+        <span>best.pth</span>
+        <span>classmap.txt</span>
+        <span>config_resolved.py</span>
+        <span>dataset.json</span>
+        <span>eval_YYYYMMDD_HHMMSS/</span>
+      </div>
+    </section>
+
+    <section id="models" class="section split-section">
+      <div>
+        <p class="section-label">Models</p>
+        <h2>Weights download themselves.</h2>
+        <p>
+          Configurations name their backbone by filename. Any registered name is
+          fetched from the project's GitHub release on first use, checked
+          against its SHA256, and cached under <code>~/.vtrace/pretrained</code>
+          so later runs and other configs reuse the same copy. No checkpoint is
+          bundled in the repository or the wheel.
+        </p>
+      </div>
+      <div class="code-panel compact" aria-label="Model presets">
+<pre><code>--model maev2    # VideoMAE V2 ViT-L, frozen + adapters
+--model vjepa2   # V-JEPA 2 ViT-L, upper half fine-tuned</code></pre>
+      </div>
+    </section>
+
+    <section class="section publish-section">
+      <div>
+        <p class="section-label">License</p>
+        <h2>Apache-2.0, on GitHub.</h2>
+        <p>
+          Source, released checkpoints and issue tracker all live in the
+          repository. The CalMS21 demo data belongs to its authors — cite
+          CalMS21 (Sun et al., NeurIPS 2021 Datasets &amp; Benchmarks) if you
+          use it.
+        </p>
+      </div>
+      <a class="button button-primary" href="https://github.com/KunmingS/TRACE">Open on GitHub</a>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span>V-TRACE documentation</span>
+    <a href="https://github.com/KunmingS/TRACE/blob/main/LICENSE">Apache-2.0</a>
+  </footer>
+</body>
+</html>
