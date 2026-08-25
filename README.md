@@ -90,32 +90,46 @@ modern GPU (~23 GB of VRAM).
 If you use the demo data, cite CalMS21: Sun et al., *The Multi-Agent Behavior
 Dataset: Mouse Dyadic Social Interactions*, NeurIPS 2021 Datasets & Benchmarks.
 
-`vtrace demo download` assembles an ordinary model directory in `~/.vtrace/demo`, so
-afterwards the plain commands work against it too:
+Videos already on disk are checked against a shipped manifest of sizes and
+CRC-32s rather than fetched again; `--verify` reads them through to catch a file
+that is the right size but corrupt.
+
+`vtrace demo download` assembles an ordinary model directory in `~/.vtrace/demo`,
+so afterwards the plain commands work against it too:
 
 ```bash
 vtrace predict --model-dir ~/.vtrace/demo/model --input /my/video.mp4
 ```
 
+## Your own data
+
 ```bash
-# Check whether PyPI has a newer V-TRACE release
-vtrace update
-
 # Train from selected video/annotation pairs
-vtrace train --model maev2 --work-dir /my/dataset --pairs video01.mp4=video01_final.csv video02.mp4=video02.csv
+vtrace train --model maev2 --work-dir /my/dataset \
+  --pairs video01.mp4=video01_final.csv video02.mp4=video02.csv
 
-# Evaluate the training artifact, or evaluate on held-out video/annotation pairs
+# Score the training run, or score it on held-out pairs
 vtrace eval --model-dir /my/dataset/model_YYYYMMDD_HHMMSS
-vtrace eval --model-dir /my/dataset/model_YYYYMMDD_HHMMSS --work-dir /my/testset --pairs video03.mp4=video03.csv
+vtrace eval --model-dir /my/dataset/model_YYYYMMDD_HHMMSS \
+  --work-dir /my/testset --pairs video03.mp4=video03.csv
 
-# Predict on new videos and write annotation drafts
-vtrace predict --model-dir /my/dataset/model_YYYYMMDD_HHMMSS --input /path/to/video.mp4 --threshold 0.25
+# Predict on new videos
+vtrace predict --model-dir /my/dataset/model_YYYYMMDD_HHMMSS \
+  --input /path/to/video.mp4 --threshold 0.25
 
 # Run prep -> train -> predict end to end
 vtrace pipeline --train --infer --model maev2 \
   --work-dir /my/dataset --pairs video01.mp4=video01_final.csv \
   --input /path/to/new/videos
+
+# Check PyPI for a newer release, and install it
+vtrace update
 ```
+
+Two model presets ship with the package: `--model maev2` (VideoMAE V2 ViT-L,
+frozen with trained adapters) and `--model vjepa2` (V-JEPA 2 ViT-L, upper half
+fine-tuned — heavier in every direction). Neither names a dataset: prep supplies
+the paths and the class count per run, so the same preset fits any corpus.
 
 `--pairs` is explicit: each item is `VIDEO_PATH=CSV_PATH`. A source video can
 have multiple annotation CSVs beside it, such as `video01_draft.csv`,
@@ -165,11 +179,15 @@ Two pretrained bases complete the distillation chain: `vitB_videomaev2_k400.pth`
 starting encoder, before CalMS21 fine-tuning). To reproduce the distillation
 itself, see `tools/distill_jepa_to_vmae.py` and `tools/bake_distill_adapters.py`.
 
-Example — score the CalMS21 detector on the 19 official test videos:
+These two carry the recipe, not the data: fill in the four dataset paths at the
+top of the file (or override them at launch) to point at your CalMS21 copy —
+`vtrace demo download` fetches exactly those videos. Then score the detector on
+the 19 official test videos:
 
 ```bash
 torchrun --nproc_per_node=1 tools/test.py configs/calms21_distill_vmaeB.py \
-    --checkpoint calms21_vitB_distilled_best.pth
+    --checkpoint calms21_vitB_distilled_best.pth \
+    --cfg-options ann=... vid_train=... vid_test=... class_map=...
 ```
 
 ## License
