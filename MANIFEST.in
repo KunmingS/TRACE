@@ -9,7 +9,7 @@ recursive-include vtrace/static *
 
 # CalMS21 demo annotations (~50 KB). The videos are NOT here: they are
 # fetched from the dataset's own record at CaltechDATA.
-recursive-include vtrace/demo_data *.csv *.txt
+recursive-include vtrace/demo_data *.csv *.txt *.json
 
 # Documentation
 include README.md

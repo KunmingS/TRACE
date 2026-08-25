@@ -67,7 +67,7 @@ mamba activate vtrace
 uv venv --python 3.11 --seed .venv
 source .venv/bin/activate
 
-python -m pip install trace-tad
+python -m pip install v-trace
 vtrace prepare --weights all
 vtrace</code></pre>
       </div>
@@ -81,9 +81,9 @@ vtrace</code></pre>
           The demo is the complete Task-1 mouse social-behavior benchmark in its
           official split — 70 training videos and 19 test videos. V-TRACE
           re-hosts none of it: the annotation CSVs ship with the package, and
-          the videos are read out of the dataset's own record at CaltechDATA one
-          at a time over HTTP range requests, so nothing pulls the 28 GB archive
-          and an interrupted fetch resumes where it stopped. Predicting takes
+          the videos come straight from the official CalMS21 release, one at a
+          time over HTTP range requests, so nothing pulls the 28 GB archive and
+          an interrupted fetch resumes where it stopped. Predicting takes
           about a minute; training is a real run on the full benchmark.
         </p>
       </div>

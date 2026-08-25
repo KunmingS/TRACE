@@ -29,7 +29,7 @@ source .venv/bin/activate
 Then install V-TRACE and download the model weights:
 
 ```bash
-python -m pip install trace-tad
+python -m pip install v-trace
 vtrace prepare --weights all
 ```
 
@@ -68,16 +68,16 @@ benchmark in its official split — 70 training videos (4.7 h, 2287 labelled
 bouts) and 19 test videos (2.4 h, 1521 bouts):
 
 ```bash
-vtrace demo predict     # predict on a held-out video, write an annotation CSV
+vtrace demo predict     # predict on a held-out video, write its predictions
 vtrace demo download    # fetch the videos (train ~19 GB, test ~11 GB)
 vtrace demo train       # prep + train on the 70 official training videos
 ```
 
-V-TRACE does not re-host CalMS21. The annotation CSVs ship with the package, and
-the videos are read out of the dataset's own archive at
-[CaltechDATA](https://data.caltech.edu/records/s0vdx-0k302)
-(doi:10.22002/D1.1991) — one member at a time over HTTP range requests, so
-nothing downloads the full 28 GB ZIP and an interrupted fetch resumes by
+V-TRACE does not re-host CalMS21. The annotation CSVs ship with the package; the
+videos come straight from the
+[official CalMS21 release](https://data.caltech.edu/records/s0vdx-0k302)
+(doi:10.22002/D1.1991), one member at a time over HTTP range requests, so
+nothing downloads the full 28 GB archive and an interrupted fetch resumes by
 skipping what is already on disk. `--split train` / `--split test` limits what
 is pulled, and `--from /path/to/task1_videos_mp4.zip` reads a copy you already
 have.

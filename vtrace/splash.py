@@ -79,7 +79,7 @@ def demo_steps():
     except OSError:
         have_data = False
     return (
-        ("vtrace demo download", "CalMS21 videos from CaltechDATA + the detector", have_data),
+        ("vtrace demo download", "the official CalMS21 videos + the detector", have_data),
         ("vtrace demo predict", "label a held-out video, write predictions", None),
         ("vtrace demo train", "train on the 70 official training videos", None),
     )

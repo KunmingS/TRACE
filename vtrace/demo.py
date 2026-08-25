@@ -8,7 +8,7 @@ Three steps a new user can run in order:
 
 TRACE re-hosts none of CalMS21. The annotation CSVs ship with the package (they
 are small, and they are the part in TRACE's own format); the videos come from the
-dataset's record at CaltechDATA, which stays the single citable source.
+the official CalMS21 release, which stays the single citable source.
 
 That archive is one 28 GB ZIP, and pulling all of it to run a demo would be
 absurd — so the videos are taken out of it a member at a time over HTTP range
@@ -32,8 +32,9 @@ from pathlib import Path
 from vtrace import weights
 
 # ── Where the videos come from ───────────────────────────────────────────────
-# CalMS21, Sun et al. 2021 — Caltech Mouse Social Interactions.
-# Open access, no login and no click-through. `SOURCE_SIZE` is required: a ZIP is
+# The official CalMS21 release (Caltech Mouse Social Interactions, Sun et al.
+# 2021), archived in Caltech's data repository. Open access, no login and no
+# click-through. `SOURCE_SIZE` is required: a ZIP is
 # read back-to-front, so the reader has to know where the end is.
 SOURCE_NAME = "task1_videos_mp4.zip"
 SOURCE_RECORD = "https://data.caltech.edu/records/s0vdx-0k302"

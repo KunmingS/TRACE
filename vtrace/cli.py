@@ -37,7 +37,7 @@ MODEL_CONFIGS = {
     "vjepa2": "configs/vjepa2.py",
 }
 DEFAULT_MODEL = next(iter(MODEL_CONFIGS))
-PYPI_PROJECT_NAME = "trace-tad"
+PYPI_PROJECT_NAME = "v-trace"
 PYPI_JSON_URL = f"https://pypi.org/pypi/{PYPI_PROJECT_NAME}/json"
 
 
@@ -134,6 +134,12 @@ def _fetch_latest_pypi_version(timeout=5.0, url=PYPI_JSON_URL):
         with urllib.request.urlopen(url, timeout=timeout) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            # No such project. Distinct from a failed check: there is nothing to
+            # update to, which is the normal state before the first release.
+            raise RuntimeError(
+                f"{PYPI_PROJECT_NAME} is not published on PyPI yet."
+            ) from exc
         raise RuntimeError(f"PyPI returned HTTP {exc.code}") from exc
     except urllib.error.URLError as exc:
         reason = getattr(exc, "reason", exc)
