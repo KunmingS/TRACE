@@ -37,7 +37,7 @@ MODEL_CONFIGS = {
     "vjepa2": "configs/vjepa2.py",
 }
 DEFAULT_MODEL = next(iter(MODEL_CONFIGS))
-PYPI_PROJECT_NAME = "v-trace"
+PYPI_PROJECT_NAME = "vtrace-behavior"
 PYPI_JSON_URL = f"https://pypi.org/pypi/{PYPI_PROJECT_NAME}/json"
 
 

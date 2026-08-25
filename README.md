@@ -29,7 +29,7 @@ source .venv/bin/activate
 Then install V-TRACE and download the model weights:
 
 ```bash
-python -m pip install v-trace
+python -m pip install vtrace-behavior
 vtrace prepare --weights all
 ```
 
