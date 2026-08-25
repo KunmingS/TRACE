@@ -4,8 +4,12 @@ recursive-include configs *.py
 # Entry-point scripts
 recursive-include tools *.py
 
-# Bundled frontend assets (built by `trace build-frontend`)
-recursive-include trace_tad/static *
+# The V-TRACE GUI (a single static page, shipped as-is)
+recursive-include vtrace/static *
+
+# CalMS21 demo annotations (~50 KB). The videos are NOT here: they are
+# fetched from the dataset's own record at CaltechDATA.
+recursive-include vtrace/demo_data *.csv *.txt
 
 # Documentation
 include README.md
@@ -13,7 +17,6 @@ include LICENSE
 
 # Exclude dev/test files
 exclude .gitignore
-prune trace-annotator
 prune exps
 prune data
 prune pretrained

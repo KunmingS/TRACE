@@ -7,49 +7,11 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from trace_tad.config import Config, DictAction
-from trace_tad.models import build_detector
-from trace_tad.datasets import build_dataset, build_dataloader
-from trace_tad.cores import eval_one_epoch
-from trace_tad.utils import update_workdir, set_seed, create_folder, setup_logger
-
-
-def _resolve_eval_subset(ann_file, preferred="test", fallback="validation"):
-    """Pick the subset to evaluate for a standalone test/eval run.
-
-    Prefers the held-out ``test`` split (unbiased final reporting) when the
-    annotation actually contains test entries; otherwise falls back to
-    ``validation`` so legacy 2-way datasets keep working unchanged.
-    """
-    try:
-        import json
-        with open(ann_file, "r") as f:
-            database = json.load(f).get("database", {})
-    except Exception:
-        return fallback
-    subsets = {v.get("subset") for v in database.values()}
-    return preferred if preferred in subsets else fallback
-
-
-def _load_recommended_global_threshold(*dirs):
-    """Return ``(global_threshold, path)`` from the first
-    ``recommended_thresholds.json`` found among ``dirs`` (val-tuned at training
-    time), or ``(None, None)``."""
-    import json
-    for d in dirs:
-        if not d:
-            continue
-        path = os.path.join(d, "recommended_thresholds.json")
-        if os.path.isfile(path):
-            try:
-                with open(path) as f:
-                    spec = json.load(f)
-                g = spec.get("global")
-                if g is not None:
-                    return float(g), path
-            except Exception:
-                pass
-    return None, None
+from vtrace.config import Config, DictAction, num_classes_cfg
+from vtrace.models import build_detector
+from vtrace.datasets import build_dataset, build_dataloader
+from vtrace.cores import eval_one_epoch
+from vtrace.utils import update_workdir, set_seed, create_folder, setup_logger
 
 
 def parse_args():
@@ -65,31 +27,9 @@ def parse_args():
     return args
 
 
-def _clip_cache_resolution(cfg, fallback=144):
-    try:
-        for step in cfg.dataset.test.pipeline:
-            if step.get("type") != "VideoInit":
-                continue
-            resize = step.get("resize", None)
-            if isinstance(resize, int):
-                return resize
-            if isinstance(resize, (list, tuple)) and resize:
-                return int(resize[0])
-    except Exception:
-        pass
-    return fallback
-
-
-def _cache_workers_from_cfg(cfg, fallback=4):
+def _proxy_workers_from_cfg(cfg, fallback=4):
     try:
         return int(cfg.solver.test.num_workers)
-    except Exception:
-        return fallback
-
-
-def _clip_frames_from_cfg(cfg, fallback=768):
-    try:
-        return int(cfg.dataset.test.window_size)
     except Exception:
         return fallback
 
@@ -128,52 +68,45 @@ def main():
     logger.info(f"Using torch version: {torch.__version__}, CUDA version: {torch.version.cuda}")
     logger.info(f"Config: {args.config}")
 
-    # Evaluation uses cached clips too. This keeps direct `trace eval` on older
+    # Evaluation decodes from proxies too. This keeps direct `vtrace eval` on
     # virtual datasets from repeatedly decoding long raw source videos.
     if getattr(cfg.dataset.test, "ann_file", None):
-        from trace_tad.data_prep import materialize_dataset_cached_videos
+        from vtrace.data_prep import materialize_dataset_proxies
+        from vtrace.proxy_geometry import config_geometry
 
-        cached_annotation = materialize_dataset_cached_videos(
+        proxied_annotation = materialize_dataset_proxies(
             cfg.dataset.test.ann_file,
             cfg.work_dir,
-            clip_frames=_clip_frames_from_cfg(cfg),
-            cache_resolution=_clip_cache_resolution(cfg),
-            cache_workers=_cache_workers_from_cfg(cfg),
+            config_geometry(cfg, splits=("test",)),
+            workers=_proxy_workers_from_cfg(cfg),
             logger=logger,
         )
-        cfg.dataset.test.ann_file = cached_annotation
+        cfg.dataset.test.ann_file = proxied_annotation
         if hasattr(cfg, "evaluation"):
-            cfg.evaluation.ground_truth_filename = cached_annotation
-
-    # Evaluate the held-out 'test' split when the dataset has one (3-way split);
-    # fall back to 'validation' for legacy 2-way datasets. Both the loader's
-    # subset and the evaluator's subset must agree.
-    eval_subset = _resolve_eval_subset(getattr(cfg.dataset.test, "ann_file", None))
-    cfg.dataset.test.subset_name = eval_subset
-    if hasattr(cfg, "evaluation"):
-        cfg.evaluation.subset = eval_subset
-    logger.info(f"Evaluating on '{eval_subset}' subset.")
+            cfg.evaluation.ground_truth_filename = proxied_annotation
 
     # build dataset
     test_dataset = build_dataset(cfg.dataset.test, default_args=dict(logger=logger))
 
     # Auto-detect num_classes from dataset
     num_classes = len(test_dataset.class_map)
-    if cfg.model.rpn_head.num_classes != num_classes:
+    if num_classes_cfg(cfg).num_classes != num_classes:
         logger.info(f"Auto-detected num_classes={num_classes} from dataset "
-                    f"(config had {cfg.model.rpn_head.num_classes}), overriding.")
-        cfg.model.rpn_head.num_classes = num_classes
+                    f"(config had {num_classes_cfg(cfg).num_classes}), overriding.")
+        num_classes_cfg(cfg).num_classes = num_classes
 
     # build model
     model = build_detector(cfg.model)
     model = model.cuda()
 
-    checkpoint_path = None
     if cfg.inference.load_from_raw_predictions:
         logger.info(f"Loading from raw predictions: {cfg.inference.fuse_list}")
     else:
         if args.checkpoint != "none":
-            checkpoint_path = args.checkpoint
+            # Registered basenames (see vtrace/weights.py) auto-download on miss,
+            # so the shipped demo configs work on a fresh machine with no manual step.
+            from vtrace.weights import resolve as _resolve_weights
+            checkpoint_path = _resolve_weights(args.checkpoint)
         elif "test_epoch" in cfg.inference.keys():
             checkpoint_path = os.path.join(cfg.work_dir, f"checkpoint/epoch_{cfg.inference.test_epoch}.pth")
         else:
@@ -200,7 +133,7 @@ def main():
 
     # Auto-tune dataloader parameters
     if args.auto_tune:
-        from trace_tad.utils import auto_tune_inference
+        from vtrace.utils import auto_tune_inference
         auto_tune_inference(model, test_dataset, cfg, logger)
 
     # Build dataloader (after auto-tune so it uses tuned params)
@@ -215,24 +148,6 @@ def main():
     use_amp = getattr(cfg.solver, "amp", False)
     if use_amp:
         logger.info("Using Automatic Mixed Precision...")
-
-    # On the held-out 'test' subset, report precision/recall/F1 at the threshold
-    # tuned on validation (the one `trace predict` deploys), not one re-optimized
-    # on test — otherwise the held-out P/R/F1 would be optimistically biased. mAP
-    # is threshold-free and unaffected. Only when the user didn't pin a threshold.
-    if (hasattr(cfg, "evaluation")
-            and cfg.evaluation.get("subset") == "test"
-            and cfg.evaluation.get("score_threshold") is None):
-        ckpt_dir = os.path.dirname(os.path.abspath(checkpoint_path)) if checkpoint_path else None
-        parent_dir = os.path.dirname(ckpt_dir) if ckpt_dir else None
-        thr, src = _load_recommended_global_threshold(cfg.work_dir, ckpt_dir, parent_dir)
-        if thr is not None:
-            cfg.evaluation.score_threshold = thr
-            logger.info(f"Reporting test precision/recall/F1 at the val-tuned "
-                        f"threshold {thr:.2f} (from {src}).")
-        else:
-            logger.info("No val-tuned threshold found; test precision/recall/F1 "
-                        "uses the F1-optimal threshold on test.")
 
     # test the detector
     logger.info("Testing Starts...\n")

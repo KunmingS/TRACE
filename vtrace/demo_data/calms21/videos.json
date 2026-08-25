@@ -1,0 +1,540 @@
+{
+ "_comment": "Expected size/crc32/sha256 for each CalMS21 Task-1 video. size and crc32 are the values the official archive's own index carries (task1_videos_mp4.zip at doi:10.22002/D1.1991); sha256 was computed from files verified against it. Used to skip videos already on disk and to detect a truncated or corrupt one.",
+ "source": "https://data.caltech.edu/records/s0vdx-0k302",
+ "videos": {
+  "mouse001_task1_annotator1": {
+   "split": "train",
+   "size": 857242702,
+   "crc32": "f752ca1c",
+   "sha256": "66578f17b47f2ee85f2df5678131966ec5ecc789f1f54dc60ff5fff5a1b91951"
+  },
+  "mouse002_task1_annotator1": {
+   "split": "train",
+   "size": 897247625,
+   "crc32": "e328e6ea",
+   "sha256": "34c269481314446a230cfbbb90aae2d4e9e276a20f4380c5f9e7b69e9df200f7"
+  },
+  "mouse003_task1_annotator1": {
+   "split": "train",
+   "size": 521503499,
+   "crc32": "1810dfe9",
+   "sha256": "f83a26f9c94cd59bba4fa204d0bc252601115aa0898c04064ea4ce73818467d1"
+  },
+  "mouse004_task1_annotator1": {
+   "split": "train",
+   "size": 295157493,
+   "crc32": "93d37922",
+   "sha256": "f3099e677a5b21ab635684a620e52bb3d27ee6458161d8b53e6d9c136d31b872"
+  },
+  "mouse005_task1_annotator1": {
+   "split": "train",
+   "size": 227838832,
+   "crc32": "37332d82",
+   "sha256": "99ac993c35708d6e4fe6c5ab5c1b4c871f0f9a2dfb9d934a52cc37aa7b22f0ef"
+  },
+  "mouse006_task1_annotator1": {
+   "split": "train",
+   "size": 130664917,
+   "crc32": "8cdbddbc",
+   "sha256": "72b7b3b3aedd1abd3a0bf02f525f9acab855bd4681a259625e1df04443695cf9"
+  },
+  "mouse007_task1_annotator1": {
+   "split": "train",
+   "size": 410127332,
+   "crc32": "f496217a",
+   "sha256": "92075c160471e5dd083b884bd7d800ede35859577cc96bac80a864ac41d959fe"
+  },
+  "mouse008_task1_annotator1": {
+   "split": "train",
+   "size": 469646741,
+   "crc32": "02480048",
+   "sha256": "9a3a5cda992463bb54cfa2e112d980970d7aa8e0169c8b5ef7e9c9f49e03edd3"
+  },
+  "mouse009_task1_annotator1": {
+   "split": "train",
+   "size": 330148097,
+   "crc32": "7f24ffc8",
+   "sha256": "70566c20485c5b9b796798bde05877f11ac35e2f8106b291d3ac98687eb83caf"
+  },
+  "mouse010_task1_annotator1": {
+   "split": "train",
+   "size": 342410081,
+   "crc32": "4a937002",
+   "sha256": "b006dc8d9ba0ac4cb1f901b142bd14026997cc9a7583ce2bbc6e26fae233ea4c"
+  },
+  "mouse011_task1_annotator1": {
+   "split": "train",
+   "size": 169500745,
+   "crc32": "dc7e1534",
+   "sha256": "ff0a7ff04af5cd3f761a46d94f8f23facc6ff04d7b0a6972fa6b8457a23bad76"
+  },
+  "mouse012_task1_annotator1": {
+   "split": "train",
+   "size": 287549431,
+   "crc32": "b3a5dbe0",
+   "sha256": "648613f24701fc53681d4d8b5c0357ea163783215b0cd0023b7fa4ebe56ec431"
+  },
+  "mouse013_task1_annotator1": {
+   "split": "train",
+   "size": 87891592,
+   "crc32": "404b3536",
+   "sha256": "82dfd8d48201e64676828c47084608f248be65b0d44b5d8211c590c64a7df4c7"
+  },
+  "mouse014_task1_annotator1": {
+   "split": "train",
+   "size": 349576580,
+   "crc32": "c424db0b",
+   "sha256": "66341170f6a3b8a38433de3114e09d841d638766317f16e4665c995ccef9a2e5"
+  },
+  "mouse015_task1_annotator1": {
+   "split": "train",
+   "size": 287763066,
+   "crc32": "12191372",
+   "sha256": "b34651ac857a40942c8c787ea6e6e000e1ed479f95fb2fdbcca840b90f16de9e"
+  },
+  "mouse016_task1_annotator1": {
+   "split": "train",
+   "size": 148795727,
+   "crc32": "8dff1a58",
+   "sha256": "720288ed897c234e1f9ed57aba15c1b406067090b8f63da2839930b87a7ab96f"
+  },
+  "mouse017_task1_annotator1": {
+   "split": "train",
+   "size": 249318623,
+   "crc32": "21d2b1a9",
+   "sha256": "8522bfd903aecb3f6e0867e52f9d4ae5f346d6748f7da26156a54ec1f640f53e"
+  },
+  "mouse018_task1_annotator1": {
+   "split": "train",
+   "size": 248428820,
+   "crc32": "f70b28e9",
+   "sha256": "85844eaad1112d94fcef736dbe20bcdbed9c5b9df5966b9b103b47b14524e39c"
+  },
+  "mouse019_task1_annotator1": {
+   "split": "train",
+   "size": 168545801,
+   "crc32": "460031a4",
+   "sha256": "6c994e1145c3199a88c9457e0b82c888f4c886c7667316620cbc15049825960e"
+  },
+  "mouse020_task1_annotator1": {
+   "split": "train",
+   "size": 147369858,
+   "crc32": "00412a5a",
+   "sha256": "c483ccba10b9e02680a114eb66447f90fb36e61950b999a958ab1a0facbce2c2"
+  },
+  "mouse021_task1_annotator1": {
+   "split": "train",
+   "size": 443916274,
+   "crc32": "b94f5667",
+   "sha256": "41bd94ec9918e7d46df78b933c95cb4bc1a6501397e59f5369b985ffb1923d7e"
+  },
+  "mouse022_task1_annotator1": {
+   "split": "train",
+   "size": 385871800,
+   "crc32": "a5ec846a",
+   "sha256": "bec78c2f99980cbdfbd3ce0fdbb3756ecf6e7c78fad682c5a7bf923fd8299fe8"
+  },
+  "mouse023_task1_annotator1": {
+   "split": "train",
+   "size": 74345432,
+   "crc32": "8de07c4f",
+   "sha256": "7f1b02be86f8d380e40512e1ee77f8754a0c1b18fcf1d89384ba335b81adc1e6"
+  },
+  "mouse024_task1_annotator1": {
+   "split": "train",
+   "size": 351882715,
+   "crc32": "065e6a43",
+   "sha256": "ad3bdb16ac1c89dde00e885ba2a96fb672e9596964f0e1d5ed4505c624dccb35"
+  },
+  "mouse025_task1_annotator1": {
+   "split": "train",
+   "size": 166063727,
+   "crc32": "082b1e87",
+   "sha256": "18a896a9f2f45bb517dcadd40652a10121d7e9b98c39f1ab5895a0f4da4f3e60"
+  },
+  "mouse026_task1_annotator1": {
+   "split": "train",
+   "size": 159702077,
+   "crc32": "a41467a1",
+   "sha256": "fa091f2dbb786caae9788d8b39bec8aedc444366a39090e9ddcd0a020c10c819"
+  },
+  "mouse027_task1_annotator1": {
+   "split": "train",
+   "size": 87661469,
+   "crc32": "3ed16872",
+   "sha256": "40d3617e2a2e85bf3025c4d581c91ea0e7943a00aef3e2cd2d8c2d6d82fb0e41"
+  },
+  "mouse028_task1_annotator1": {
+   "split": "train",
+   "size": 48440000,
+   "crc32": "82df48ea",
+   "sha256": "98a999d0787db1d6b998facbad915a8154e95438acd9c709c15659663009bc43"
+  },
+  "mouse029_task1_annotator1": {
+   "split": "train",
+   "size": 134373144,
+   "crc32": "13c3c29a",
+   "sha256": "7189de6e29142172d87d3980690dc46587f49929b3f21abd1d4b432bc69e639d"
+  },
+  "mouse030_task1_annotator1": {
+   "split": "train",
+   "size": 78207878,
+   "crc32": "07a6fab2",
+   "sha256": "213362d70fb6e8a672b7cdcbc9cef9a5fbcbad2349dd037f6e7c228643bfb19b"
+  },
+  "mouse031_task1_annotator1": {
+   "split": "train",
+   "size": 228072035,
+   "crc32": "e69f5d09",
+   "sha256": "7f9fc0995d86ebd625b21f9abfaf7e6adef9f92963f8711b08bdf15529cd6a9d"
+  },
+  "mouse032_task1_annotator1": {
+   "split": "train",
+   "size": 254339613,
+   "crc32": "be2dc2e7",
+   "sha256": "09f6ba7f035a442518aad0973be65f8eb8ba7094764eadd4b2169098034cce51"
+  },
+  "mouse033_task1_annotator1": {
+   "split": "train",
+   "size": 112756865,
+   "crc32": "a3d5ce73",
+   "sha256": "43771a5ce7c189110f6a28248b2ff7d1afe945cc2116d52feff70767618b18a2"
+  },
+  "mouse034_task1_annotator1": {
+   "split": "train",
+   "size": 60224113,
+   "crc32": "adc9eaf0",
+   "sha256": "c0098354581ebb925c5130e7e8002ff56ac0bef8d4672a3d1560f1bfef1d9304"
+  },
+  "mouse035_task1_annotator1": {
+   "split": "train",
+   "size": 216011364,
+   "crc32": "d34c5b87",
+   "sha256": "2c16b8a4307d9e5db7e174154e320df8b51e40cd46c7f8a0c1dbb34e7f013fa9"
+  },
+  "mouse036_task1_annotator1": {
+   "split": "train",
+   "size": 5345768,
+   "crc32": "4bb51faa",
+   "sha256": "b340a75a785ea45187457c04eadd542f2efd6d95108f97898852712f1675106b"
+  },
+  "mouse037_task1_annotator1": {
+   "split": "train",
+   "size": 221550820,
+   "crc32": "a4d48eb6",
+   "sha256": "279f08eadf4e98107e0f37c9c6ab78c7686634ae52ed9962b6e5a6ecaa23ae55"
+  },
+  "mouse038_task1_annotator1": {
+   "split": "train",
+   "size": 129755366,
+   "crc32": "4f454d26",
+   "sha256": "8ca94ec1c3ce8e79de5b1a5da360d01111b3aeb8ff60c88fafdc7552273ff131"
+  },
+  "mouse039_task1_annotator1": {
+   "split": "train",
+   "size": 136939747,
+   "crc32": "69d923b3",
+   "sha256": "316cf7c0c6d44df7d35a636368e53f6dd4ba4e6cd1ecab2e1c3cd35ecc639762"
+  },
+  "mouse040_task1_annotator1": {
+   "split": "train",
+   "size": 109366575,
+   "crc32": "e1dde195",
+   "sha256": "e8708302e203dc78eedddbd80bfa7b1eed76a2ae1b3775f82a3757a55c05d080"
+  },
+  "mouse041_task1_annotator1": {
+   "split": "train",
+   "size": 60993655,
+   "crc32": "79457625",
+   "sha256": "7783f34a28848a4a1986f0bc7b91605382a219aa0312c4b50d89f4fcd29565c3"
+  },
+  "mouse042_task1_annotator1": {
+   "split": "train",
+   "size": 138933378,
+   "crc32": "3dff742e",
+   "sha256": "d7fc34abf7837052d145521caaaa56c084c709aa95a4810894f4bf971bef1b2c"
+  },
+  "mouse043_task1_annotator1": {
+   "split": "train",
+   "size": 41539211,
+   "crc32": "8ebe90a8",
+   "sha256": "02f9fb94d336bca12e3818eebd8fdf7e60764d6a2012de4d005a88780cf69837"
+  },
+  "mouse044_task1_annotator1": {
+   "split": "train",
+   "size": 143977233,
+   "crc32": "dc5bf808",
+   "sha256": "67b2b0c0b37025a86eb956353f94ddddc6ad5b5d06a2d818ca6d5c11f02ff428"
+  },
+  "mouse045_task1_annotator1": {
+   "split": "train",
+   "size": 129612935,
+   "crc32": "9e2a5dac",
+   "sha256": "28eb7377679fa78b834c84c91be5546572a927c6e68f76e30be0b11c01a63394"
+  },
+  "mouse046_task1_annotator1": {
+   "split": "train",
+   "size": 221864607,
+   "crc32": "835a89c7",
+   "sha256": "13be7be4624535412ea787b6573bc8f64eedfdd3af96348194e10fdd18ed5e1d"
+  },
+  "mouse047_task1_annotator1": {
+   "split": "train",
+   "size": 122770035,
+   "crc32": "f87b032d",
+   "sha256": "d9cc5329ace484069f7127c36b33033cd1139036a8508c38d8315e045f18391d"
+  },
+  "mouse048_task1_annotator1": {
+   "split": "train",
+   "size": 57650279,
+   "crc32": "136ea704",
+   "sha256": "a689b2e0becb3da5536759ff3f47fe801101c23c376666626fe944b5c53967fa"
+  },
+  "mouse049_task1_annotator1": {
+   "split": "train",
+   "size": 127665765,
+   "crc32": "a3259379",
+   "sha256": "e393394549e6b31f25cfcf49a8675dcb3fe6fc3ba393209d32c3b2d6fe89b624"
+  },
+  "mouse050_task1_annotator1": {
+   "split": "train",
+   "size": 59608425,
+   "crc32": "dba487cd",
+   "sha256": "ef9e40503e0564ac8a89a527b615bf6d800548226e1b0913987f6070e0e07880"
+  },
+  "mouse051_task1_annotator1": {
+   "split": "train",
+   "size": 563306091,
+   "crc32": "f004f918",
+   "sha256": "7fc52e5fa75efe816d715363eb46c15d26acab9259d0033a311253bd8a99b6e9"
+  },
+  "mouse052_task1_annotator1": {
+   "split": "train",
+   "size": 595680566,
+   "crc32": "584bd55c",
+   "sha256": "33f857d9d49b5b99b472767543499a0232daf010b0aee8dba16b40c6488e4b86"
+  },
+  "mouse053_task1_annotator1": {
+   "split": "train",
+   "size": 561653540,
+   "crc32": "059aadba",
+   "sha256": "9afe3e3b0cbb7261ddc1a18bbb8d33a59c45b38ffe6a425bbb6210571d8ef005"
+  },
+  "mouse054_task1_annotator1": {
+   "split": "train",
+   "size": 567881700,
+   "crc32": "82ed7d54",
+   "sha256": "9f3e9d79acd6be4bb13f0f9bbaa77e1033b28db3213d820b29bda92054387975"
+  },
+  "mouse055_task1_annotator1": {
+   "split": "train",
+   "size": 588027063,
+   "crc32": "9f4a6fef",
+   "sha256": "71a6db9d18fd4a9493e37bb63330585bd81c46d15549e310150690f387f0eb8c"
+  },
+  "mouse056_task1_annotator1": {
+   "split": "train",
+   "size": 534364324,
+   "crc32": "d2e048f1",
+   "sha256": "2324e2d6525cc98df8625180cb5790a783eb9c90efae1b3134ff58aea3d4f4d7"
+  },
+  "mouse057_task1_annotator1": {
+   "split": "train",
+   "size": 623135213,
+   "crc32": "70a88589",
+   "sha256": "8ca7a9b2e044f25d937db3ca8cfd0e5b3f2e46c534292d40fdd2205ee4c4b9ee"
+  },
+  "mouse058_task1_annotator1": {
+   "split": "train",
+   "size": 624555536,
+   "crc32": "5b606f6a",
+   "sha256": "e8f87434b5c07719d213508cfe2bcf466da17136ddd33bc65ec7c8c3e039e5f8"
+  },
+  "mouse059_task1_annotator1": {
+   "split": "train",
+   "size": 139440484,
+   "crc32": "55fafe2f",
+   "sha256": "b8aa5c214716e123954b74ae99969d12ab9c13a49b410b1bfa278f1ff36c805f"
+  },
+  "mouse060_task1_annotator1": {
+   "split": "train",
+   "size": 122912134,
+   "crc32": "8e480072",
+   "sha256": "e169c1dbe2c2bf77145a8d75bb0c055c889904e48fc74f18ef6e68f7cb6d8734"
+  },
+  "mouse061_task1_annotator1": {
+   "split": "train",
+   "size": 102994238,
+   "crc32": "4654920e",
+   "sha256": "9133750d0d2d3b6504edd261ba85b82c4b80001c214668fd36c22313c54eb656"
+  },
+  "mouse062_task1_annotator1": {
+   "split": "train",
+   "size": 199266756,
+   "crc32": "7f07c37e",
+   "sha256": "e290503ac2be30ae5a37cbd33603bdc85ea9bcba76ad208c3051e2919f278233"
+  },
+  "mouse063_task1_annotator1": {
+   "split": "train",
+   "size": 327339206,
+   "crc32": "a47e2f83",
+   "sha256": "b8fccb7c11ecb8bdab0f4740bb8843bd4ef680696e9696ef444a2d00bd9a7c0e"
+  },
+  "mouse064_task1_annotator1": {
+   "split": "train",
+   "size": 199971913,
+   "crc32": "845272e1",
+   "sha256": "04bf5861b9d9afb300ed4fcb2678173a92d7082f69e786520925c27cf411ec13"
+  },
+  "mouse065_task1_annotator1": {
+   "split": "train",
+   "size": 206757577,
+   "crc32": "a40292c8",
+   "sha256": "ab52b111ba0b4bb466e14eace26b19db5ebbb54032ce5cbff9057441275ebcfd"
+  },
+  "mouse066_task1_annotator1": {
+   "split": "train",
+   "size": 188795545,
+   "crc32": "64d63b4b",
+   "sha256": "2ef7df4523f57829f2b5b82ee3efd5e96944a3ffcd1a9fe8fa840f57202646c7"
+  },
+  "mouse067_task1_annotator1": {
+   "split": "train",
+   "size": 186886768,
+   "crc32": "9eed0774",
+   "sha256": "d14541338020b1ceb8d793b3b7bdfe326ecdbb6f6aba3315480339554fd8ca91"
+  },
+  "mouse068_task1_annotator1": {
+   "split": "train",
+   "size": 253141627,
+   "crc32": "d3dc342e",
+   "sha256": "3ff3097cb9915fb20984aa16241f02fe3fd31e51679e4087be66b7148c418261"
+  },
+  "mouse069_task1_annotator1": {
+   "split": "train",
+   "size": 507515397,
+   "crc32": "d33556f6",
+   "sha256": "ee58f5e50719473169d49c1dd7fddf27b64a9eb697ca3c9a53f0ee36e5ad828b"
+  },
+  "mouse070_task1_annotator1": {
+   "split": "train",
+   "size": 598742419,
+   "crc32": "6ad11cff",
+   "sha256": "6f36c913ce496c4e58d29919016c5883d5bc153964bf1ea227a355f0c9fdb49c"
+  },
+  "mouse071_task1_annotator1": {
+   "split": "test",
+   "size": 964451532,
+   "crc32": "365042f1",
+   "sha256": "65014454a7d99045711ba19520eb7a8b8dd03b41cdf9931c425087dd820a3c3e"
+  },
+  "mouse072_task1_annotator1": {
+   "split": "test",
+   "size": 717505512,
+   "crc32": "5f08ac08",
+   "sha256": "0aa2cd01c7b1a4209d74aed2b122138c720548ecdb5142c0358b61f041e78ef1"
+  },
+  "mouse073_task1_annotator1": {
+   "split": "test",
+   "size": 783580633,
+   "crc32": "5088f907",
+   "sha256": "fdb21e4b533b4a51a172a541a061884cc81d5aa90fb5cc731dd392aa9827512a"
+  },
+  "mouse074_task1_annotator1": {
+   "split": "test",
+   "size": 795588466,
+   "crc32": "f84b972f",
+   "sha256": "21fc5c9ef45b86afe57428ed4c4e1b4825a354913366242faa4ba7182c5aa8fb"
+  },
+  "mouse075_task1_annotator1": {
+   "split": "test",
+   "size": 761501315,
+   "crc32": "f7f4033a",
+   "sha256": "0acb10e3ba0ad8d98ae1c44a4232def173ddbdad355399e2c0824773851cd8fe"
+  },
+  "mouse076_task1_annotator1": {
+   "split": "test",
+   "size": 871643959,
+   "crc32": "22783525",
+   "sha256": "16450b57886c9966bd64f4aa7cd6484ddfae66fe3efc3dc2ebd02984e1115581"
+  },
+  "mouse077_task1_annotator1": {
+   "split": "test",
+   "size": 802577556,
+   "crc32": "dba649ee",
+   "sha256": "6d4b9c1f6bd5c03b7748371dc46f2340b36388d146cbd884171525ea513fe188"
+  },
+  "mouse078_task1_annotator1": {
+   "split": "test",
+   "size": 902217713,
+   "crc32": "3a0f11fd",
+   "sha256": "cf9e162a9550ad50d96bf3f4f22a63c54301323201510d01507fdb6a9807f501"
+  },
+  "mouse079_task1_annotator1": {
+   "split": "test",
+   "size": 593910578,
+   "crc32": "43c00f85",
+   "sha256": "ae5987f6614ef59fad5eeeaa672de605dddb6da8c309e988ce3e029a06848c47"
+  },
+  "mouse080_task1_annotator1": {
+   "split": "test",
+   "size": 210209080,
+   "crc32": "c4041651",
+   "sha256": "b6fb8219b4c425aeade5e8ccbbe06e8933c2d619f95a161bd144c51ed0d8959e"
+  },
+  "mouse081_task1_annotator1": {
+   "split": "test",
+   "size": 219440372,
+   "crc32": "de080721",
+   "sha256": "378abd9f2d5a15e92c241794bcd5e76d1b350fd94828839de6e0c65d967baece"
+  },
+  "mouse082_task1_annotator1": {
+   "split": "test",
+   "size": 292663851,
+   "crc32": "4111ae68",
+   "sha256": "894bfc8b89e40e54f79cdddc354caa2193a5dc47482d2a080b7ee23a85d0bd3e"
+  },
+  "mouse083_task1_annotator1": {
+   "split": "test",
+   "size": 199973541,
+   "crc32": "6a6da4d7",
+   "sha256": "a935c87b30a066a0fafb22dc7860013adcec1ea9fab83f9c59245d687d483fa9"
+  },
+  "mouse084_task1_annotator1": {
+   "split": "test",
+   "size": 223986721,
+   "crc32": "f277f35c",
+   "sha256": "f49dc2d4da8493a33d21564aeff186c0a1fbc4499e1c4bb96c19dbffcb89797c"
+  },
+  "mouse085_task1_annotator1": {
+   "split": "test",
+   "size": 808100878,
+   "crc32": "e8e82c7d",
+   "sha256": "fcda0d993618d14848df3b770a1c39b137291ea30ceaf7db316aa8bd97b83c66"
+  },
+  "mouse086_task1_annotator1": {
+   "split": "test",
+   "size": 361671155,
+   "crc32": "01e30df5",
+   "sha256": "963eb7cae84f61ab2eeded188e1554a82a1a14d19dbb25c2a9135aafdde6284f"
+  },
+  "mouse087_task1_annotator1": {
+   "split": "test",
+   "size": 485621612,
+   "crc32": "b6926e36",
+   "sha256": "4f2644bdbec04a8ae5205618688e5bf6c793353dbc9151b8a476f27f080670dc"
+  },
+  "mouse088_task1_annotator1": {
+   "split": "test",
+   "size": 366772087,
+   "crc32": "f6c381f6",
+   "sha256": "4b7bac540a05656ca1276b45da2d4e1a2643c0c492f95c8001eaf8892e749677"
+  },
+  "mouse089_task1_annotator1": {
+   "split": "test",
+   "size": 463125184,
+   "crc32": "5ba96283",
+   "sha256": "d5b0f2b540f26e0cde5f5de5b2bd12098007a0480086aee4a8a35ae28aadae1f"
+  }
+ }
+}

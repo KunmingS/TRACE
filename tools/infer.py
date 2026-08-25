@@ -3,18 +3,18 @@
 Runs temporal action detection on video files without requiring annotation JSONs.
 Automatically probes videos for frame count, duration, and a per-frame PTS
 table (cached as ``<video>.pts.npy`` next to the source — see
-``docs/pts-based-frame-mapping.md``). Before running the model, source videos
+``pts-based-frame-mapping.md (archived)``). Before running the model, source videos
 are split into small cached clips under the prediction work directory so
 inference workers do not keep decoding long raw files.
 
 Usage:
-    python tools/infer.py configs/small.py \
-        --checkpoint exps/small/checkpoint_best.pth \
+    python tools/infer.py configs/maev2.py \
+        --checkpoint runs/maev2/checkpoint_best.pth \
         --input /path/to/videos \
         --class-map data/CALMS21/category_idx.txt
 
-    python tools/infer.py configs/small.py \
-        --checkpoint exps/small/checkpoint_best.pth \
+    python tools/infer.py configs/maev2.py \
+        --checkpoint runs/maev2/checkpoint_best.pth \
         --input /path/to/single_video.mp4 \
         --class-map data/CALMS21/category_idx.txt \
         --output predictions.json
@@ -32,13 +32,11 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from trace_tad.config import Config, DictAction
-from trace_tad.models import build_detector
-from trace_tad.datasets import build_dataset, build_dataloader
-from trace_tad.cores import eval_one_epoch
-from trace_tad.model_artifacts import create_predict_dir_for_input
-from trace_tad.utils import set_seed, update_workdir, create_folder, setup_logger
-from trace_tad.video_annotation import filter_predictions, render_annotated_videos
+from vtrace.config import Config, DictAction, num_classes_cfg
+from vtrace.models import build_detector
+from vtrace.datasets import build_dataset, build_dataloader
+from vtrace.cores import eval_one_epoch
+from vtrace.utils import set_seed, update_workdir, create_folder, setup_logger
 
 
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
@@ -72,7 +70,7 @@ def probe_video(filepath):
 
     - ``num_frames`` — encoded frame count read from the container index.
     - ``duration`` — PTS-derived: ``pts[-1] - pts[0] + 1/avg_fps``. Matches
-      the convention used by ``trace_tad.data_prep`` so train, eval, and
+      the convention used by ``vtrace.data_prep`` so train, eval, and
       inference all agree on clip length.
     - ``fps`` — average fps from decord (display-only; no time ↔ frame
       math goes through it once the PTS table is available). Falls back
@@ -80,11 +78,11 @@ def probe_video(filepath):
     - ``pts_path`` — absolute path of the cached ``<video>.pts.npy`` if
       it was successfully written, else ``None``.
 
-    See ``docs/pts-based-frame-mapping.md`` for the design and why this
+    See ``pts-based-frame-mapping.md (archived)`` for the design and why this
     matters for VFR webcam recordings.
     """
     from decord import VideoReader
-    from trace_tad.data_prep import _load_or_build_pts, _pts_cache_path
+    from vtrace.data_prep import _load_or_build_pts, _pts_cache_path
 
     pts = _load_or_build_pts(filepath)
     num_frames = len(pts)
@@ -143,22 +141,7 @@ def discover_videos(input_path):
     return videos
 
 
-def _clip_cache_resolution(cfg, fallback=144):
-    try:
-        for step in cfg.dataset.test.pipeline:
-            if step.get("type") != "VideoInit":
-                continue
-            resize = step.get("resize", None)
-            if isinstance(resize, int):
-                return resize
-            if isinstance(resize, (list, tuple)) and resize:
-                return int(resize[0])
-    except Exception:
-        pass
-    return fallback
-
-
-def _cache_workers_from_cfg(cfg, fallback=4):
+def _proxy_workers_from_cfg(cfg, fallback=4):
     try:
         return int(cfg.solver.test.num_workers)
     except Exception:
@@ -170,23 +153,30 @@ def generate_pseudo_annotations(
     logger,
     cache_dir=None,
     clip_frames=768,
-    cache_resolution=144,
-    cache_crf=23,
-    cache_workers=None,
+    proxy_geometry=None,
+    proxy_crf=None,
+    proxy_workers=None,
 ):
     """Probe videos and create a temporary annotation JSON for inference.
 
-    Each source video is materialized into cached clips. The dataset decodes
-    from those smaller files while preserving ``source_video`` /
-    ``source_frame_offset`` / ``source_pts_table`` metadata for PTS-aware
-    clip-local second conversion.
+    Windows are virtual: each entry records ``source_video`` /
+    ``source_frame_offset`` / ``source_pts_table`` so predictions map back onto
+    the source timeline exactly. When ``proxy_geometry`` is given, a downscaled
+    full-length proxy of each video is built once and decoded from instead of
+    the original.
     """
-    from trace_tad.data_prep import materialize_video_clips
+    from vtrace.data_prep import (
+        PROXY_CRF,
+        enumerate_virtual_clips,
+        ensure_video_proxies,
+    )
 
     if cache_dir is None:
         cache_dir = tempfile.mkdtemp(prefix="trace_infer_cache_")
+    if proxy_crf is None:
+        proxy_crf = PROXY_CRF
 
-    database = {}
+    probed = []
     for vpath in video_paths:
         video_name = _video_stem(vpath)
         logger.info(f"Probing video: {video_name}")
@@ -200,26 +190,35 @@ def generate_pseudo_annotations(
             f"  {num_frames} frames, {duration:.2f}s, {fps:.1f} fps"
             + (f", PTS cached" if pts_path else f", PTS cache unavailable (read-only dir?)")
         )
+        probed.append((vpath, video_name))
+
+    proxies = {}
+    if proxy_geometry is not None and probed:
+        proxies = ensure_video_proxies(
+            [vpath for vpath, _ in probed],
+            proxy_geometry,
+            crf=proxy_crf,
+            workers=proxy_workers,
+            logger=logger,
+        )
+
+    database = {}
+    for vpath, video_name in probed:
         try:
-            clips = materialize_video_clips(
-                vpath,
-                cache_dir,
-                clip_frames=clip_frames,
-                cache_resolution=cache_resolution,
-                cache_crf=cache_crf,
-                cache_workers=cache_workers,
-                clip_stem=video_name,
-                logger=logger,
+            clips = enumerate_virtual_clips(
+                vpath, clip_frames=clip_frames, clip_stem=video_name
             )
         except Exception as e:
-            logger.warning(f"Skipping {video_name}: could not cache clips: {e}")
+            logger.warning(f"Skipping {video_name}: could not enumerate clips: {e}")
             continue
 
-        cached_count = sum(1 for clip in clips if "cached_video" in clip)
-        logger.info(f"  Wrote {cached_count}/{len(clips)} cached inference clip(s)")
+        proxy_path = proxies.get(os.path.abspath(vpath))
+        logger.info(
+            f"  {len(clips)} virtual clip(s)"
+            + (" decoding from proxy" if proxy_path else " decoding from source")
+        )
         for clip in clips:
-            clip_idx = int(clip["clip_idx"])
-            clip_key = f"{video_name}_clip_{clip_idx}"
+            clip_key = clip["clip_name"]
             entry = {
                 "subset": "validation",
                 "frame": clip["frame"],
@@ -232,8 +231,8 @@ def generate_pseudo_annotations(
             }
             if "source_pts_table" in clip:
                 entry["source_pts_table"] = clip["source_pts_table"]
-            if "cached_video" in clip:
-                entry["cached_video"] = clip["cached_video"]
+            if proxy_path:
+                entry["proxy_video"] = proxy_path
             database[clip_key] = entry
 
     if not database:
@@ -269,64 +268,106 @@ def aggregate_clip_predictions(raw_predictions, annotation_database):
     return predictions
 
 
-def _write_prediction_csv(csv_path, detections):
-    with open(csv_path, "w") as f:
-        f.write("labelId,timestamp,endTimestamp\n")
-        for det in sorted(detections, key=lambda d: d["segment"][0]):
-            f.write(f"{det['label']},{det['segment'][0]:.3f},{det['segment'][1]:.3f}\n")
+# A dense head scores every frame, so its raw output is one detection per frame
+# (~0.033 s at 30 fps). A reviewer wants bouts, so consecutive same-label frames
+# are run-length merged first. The gap tolerance bridges a dropped frame or two
+# inside one behaviour without joining genuinely separate bouts. Raw per-frame
+# scores stay in result_detection.json for anyone scoring frame-level metrics.
+_BOUT_GAP_SECONDS = 0.2
 
 
-def _adjacent_prediction_csv_path(video_path, video_name):
-    video_dir = os.path.dirname(os.path.abspath(video_path))
-    canonical = os.path.join(video_dir, f"{video_name}.csv")
-    if not os.path.exists(canonical):
-        return canonical
-    return os.path.join(video_dir, f"{video_name}_predicted.csv")
+def _merge_detections(detections, max_gap=_BOUT_GAP_SECONDS):
+    """Run-length merge same-label detections that touch into single bouts.
 
-
-def write_prediction_csvs(video_paths, predictions, output_dir, logger=None):
-    """Write one prediction CSV per source video and copy it next to the video.
-
-    The prediction work directory always gets ``{video_stem}.csv``. Next to
-    the source video we use the same name when it is free, so the annotator can
-    pair video + CSV directly. If a manual ``{video_stem}.csv`` already exists,
-    copy to ``{video_stem}_predicted.csv`` instead; that still appears as a CSV
-    variant for the video without overwriting user annotations.
+    Returns (label, start, end, score) with the bout's score being the highest
+    of the frames it covers — the merged span is at least that confident
+    somewhere, which is what a reviewer sorting by confidence wants.
     """
-    os.makedirs(output_dir, exist_ok=True)
-    prediction_csvs = {}
-    adjacent_csvs = {}
+    bouts = []
+    for label in sorted({det["label"] for det in detections}):
+        spans = sorted(
+            ((det["segment"][0], det["segment"][1], float(det.get("score", 0.0)))
+             for det in detections if det["label"] == label),
+            key=lambda span: span[0],
+        )
+        if not spans:
+            continue
+        start, end, score = spans[0]
+        for seg_start, seg_end, seg_score in spans[1:]:
+            if seg_start <= end + max_gap:
+                end = max(end, seg_end)
+                score = max(score, seg_score)
+            else:
+                bouts.append((label, start, end, score))
+                start, end, score = seg_start, seg_end, seg_score
+        bouts.append((label, start, end, score))
+    return sorted(bouts, key=lambda bout: (bout[1], bout[0]))
 
+
+def filter_predictions(predictions, threshold):
+    """Drop detections scoring below ``threshold``."""
+    threshold = max(0.0, min(1.0, float(threshold)))
+    return {
+        video_name: [dict(det) for det in detections
+                     if float(det.get("score", 0.0)) >= threshold]
+        for video_name, detections in predictions.items()
+    }
+
+
+# One video has exactly one prediction file, named after the video, sitting next
+# to it: `<video stem>.predict.json`. Re-running prediction replaces it rather
+# than piling up timestamped copies, and the V-TRACE GUI reads this shape
+# directly — its importer looks for a `results` map keyed by video stem.
+PREDICTION_SUFFIX = ".predict.json"
+
+
+def prediction_json_path(video_path, output_dir=None):
+    """Where `video_path`'s prediction file goes.
+
+    Beside the video by default, so opening that folder in the annotator shows
+    the video and its predictions together; `output_dir` overrides the folder
+    while keeping the name.
+    """
+    stem = _video_stem(video_path)
+    folder = output_dir or os.path.dirname(os.path.abspath(video_path))
+    return os.path.join(folder, stem + PREDICTION_SUFFIX)
+
+
+def write_prediction_jsons(
+    video_paths, predictions, class_map, threshold, output_dir=None, logger=None
+):
+    """Write one `<video stem>.predict.json` per video; return name -> path."""
+    written = {}
     for video_path in video_paths:
-        video_name = _video_stem(video_path)
-        detections = predictions.get(video_name, [])
-        preferred_csv_path = os.path.join(output_dir, f"{video_name}.csv")
-        adjacent_path = _adjacent_prediction_csv_path(video_path, video_name)
-        csv_path = preferred_csv_path
-        preferred_dir = os.path.dirname(os.path.abspath(preferred_csv_path))
-        adjacent_dir = os.path.dirname(os.path.abspath(adjacent_path))
-        if (
-            os.path.abspath(preferred_csv_path) != os.path.abspath(adjacent_path)
-            and preferred_dir == adjacent_dir
-        ):
-            csv_path = adjacent_path
-        _write_prediction_csv(csv_path, detections)
-        prediction_csvs[video_name] = csv_path
+        stem = _video_stem(video_path)
+        bouts = [
+            {
+                "label": label,
+                "segment": [round(start, 3), round(end, 3)],
+                "score": round(score, 4),
+            }
+            for label, start, end, score in _merge_detections(
+                predictions.get(stem, [])
+            )
+        ] if predictions.get(stem) else []
 
-        if os.path.abspath(adjacent_path) != os.path.abspath(csv_path):
-            if logger and os.path.basename(adjacent_path) != f"{video_name}.csv":
-                logger.info(
-                    f"Existing annotation CSV found for {video_name}; "
-                    f"copying predictions as {os.path.basename(adjacent_path)}"
-                )
-            shutil.copyfile(csv_path, adjacent_path)
-        adjacent_csvs[video_name] = adjacent_path
-
+        payload = {
+            "trace_prediction_version": 1,
+            "video": os.path.basename(video_path),
+            "class_map": list(class_map),
+            "threshold": threshold,
+            # Keyed by video stem: what the GUI's prediction import matches on.
+            "results": {stem: bouts},
+        }
+        path = prediction_json_path(video_path, output_dir)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+            f.write("\n")
+        written[stem] = path
         if logger:
-            logger.info(f"Prediction CSV saved to: {csv_path}")
-            logger.info(f"Prediction CSV copied to: {adjacent_path}")
-
-    return prediction_csvs, adjacent_csvs
+            logger.info(f"Prediction JSON: {path} ({len(bouts)} bouts)")
+    return written
 
 
 def _shutdown_dataloader_workers(loader, logger):
@@ -354,15 +395,10 @@ def parse_args():
     parser.add_argument("--class-map", type=str, required=True,
                         help="Class map file (one class name per line)")
     parser.add_argument("--output", type=str, default=None,
-                        help="Output JSON path (default: predictions.json in work_dir)")
-    parser.add_argument("--threshold", type=float, default=None,
-                        help="Minimum score for predictions.json, CSV, and annotated "
-                             "videos. If omitted, TRACE auto-applies the per-class "
-                             "F1-optimal thresholds recommended during training "
-                             "(recommended_thresholds.json next to the checkpoint), "
-                             "falling back to 0.0 when none are available.")
-    parser.add_argument("--annotated-video", action="store_true",
-                        help="Render predictions onto annotated MP4 videos in work_dir")
+                        help="Directory for the prediction files "
+                             "(default: beside each source video)")
+    parser.add_argument("--threshold", type=float, default=0.0,
+                        help="Minimum score for a detection to reach the prediction file")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--profile", action="store_true",
                         help="Enable inference profiling (CPU + GPU timing)")
@@ -377,47 +413,9 @@ def parse_args():
     parser.add_argument("--cfg-options", nargs="+", action=DictAction,
                         help="Override config settings (key=value pairs)")
     args = parser.parse_args()
-    if args.threshold is not None and (args.threshold < 0.0 or args.threshold > 1.0):
+    if args.threshold < 0.0 or args.threshold > 1.0:
         parser.error("--threshold must be between 0 and 1")
     return args
-
-
-def _resolve_inference_threshold(args, logger):
-    """Resolve the score threshold(s) used to filter predictions.
-
-    An explicit ``--threshold`` always wins (scalar, applied to every class).
-    Otherwise TRACE looks for ``recommended_thresholds.json`` (written next to
-    the best checkpoint during training, tuned on validation) and applies its
-    per-class thresholds, falling back to 0.0 when no such file exists.
-    """
-    if args.threshold is not None:
-        logger.info(f"Using explicit --threshold {args.threshold:.2f} for all classes.")
-        return float(args.threshold)
-
-    ckpt = getattr(args, "checkpoint", None)
-    candidates = []
-    if ckpt and ckpt != "none":
-        ckpt_dir = os.path.dirname(os.path.abspath(ckpt))
-        candidates = [
-            os.path.join(ckpt_dir, "recommended_thresholds.json"),
-            os.path.join(os.path.dirname(ckpt_dir), "recommended_thresholds.json"),
-        ]
-    for path in candidates:
-        if os.path.isfile(path):
-            try:
-                with open(path) as f:
-                    spec = json.load(f)
-            except Exception as exc:
-                logger.warning(f"Could not read {path}: {exc}; using threshold 0.0.")
-                return 0.0
-            logger.info(
-                f"Auto-applying recommended thresholds from {path}: "
-                f"global={spec.get('global')}, per_class={spec.get('per_class')}"
-            )
-            return spec
-
-    logger.info("No recommended_thresholds.json found; using threshold 0.0 (no score filtering).")
-    return 0.0
 
 
 def _video_stem(video_path: str) -> str:
@@ -435,8 +433,15 @@ def main():
     cfg = Config.fromfile(args.config)
     if args.cfg_options is not None:
         cfg.merge_from_dict(args.cfg_options)
+    # Scratch, not output: the results are the `<video>.predict.json` files
+    # written beside each video, so the engine's log and its raw per-frame
+    # `result_detection.json` go somewhere disposable. Removed at the end of a
+    # clean run; kept, with its path printed, when something failed. The CLI
+    # passes its own `work_dir` and manages the same lifetime itself.
+    scratch_dir = None
     if args.cfg_options is None or "work_dir" not in args.cfg_options:
-        cfg.work_dir = create_predict_dir_for_input(args.input)
+        scratch_dir = tempfile.mkdtemp(prefix="trace-predict-")
+        cfg.work_dir = scratch_dir
 
     set_seed(args.seed)
     cfg = update_workdir(cfg)
@@ -466,16 +471,17 @@ def main():
     else:
         data_path = input_path
 
-    # Generate pseudo-annotations backed by cached clips.
+    # Generate virtual-clip pseudo-annotations backed by decode proxies.
+    from vtrace.proxy_geometry import config_geometry
+
     clip_frames = int(getattr(cfg.dataset.test, "window_size", 768))
-    cache_resolution = _clip_cache_resolution(cfg)
     pseudo_anno = generate_pseudo_annotations(
         video_paths,
         logger,
         cache_dir=cfg.work_dir,
         clip_frames=clip_frames,
-        cache_resolution=cache_resolution,
-        cache_workers=_cache_workers_from_cfg(cfg),
+        proxy_geometry=config_geometry(cfg, splits=("test",)),
+        proxy_workers=_proxy_workers_from_cfg(cfg),
     )
 
     # Write to a temp file
@@ -499,10 +505,10 @@ def main():
 
         # Auto-detect num_classes from class_map
         num_classes = len(test_dataset.class_map)
-        if cfg.model.rpn_head.num_classes != num_classes:
+        if num_classes_cfg(cfg).num_classes != num_classes:
             logger.info(f"Auto-detected num_classes={num_classes} from class_map "
-                        f"(config had {cfg.model.rpn_head.num_classes}), overriding.")
-            cfg.model.rpn_head.num_classes = num_classes
+                        f"(config had {num_classes_cfg(cfg).num_classes}), overriding.")
+            num_classes_cfg(cfg).num_classes = num_classes
 
         # Build model
         model = build_detector(cfg.model)
@@ -530,7 +536,7 @@ def main():
 
         # Auto-tune dataloader parameters
         if args.auto_tune:
-            from trace_tad.utils import auto_tune_inference
+            from vtrace.utils import auto_tune_inference
             auto_tune_inference(model, test_dataset, cfg, logger)
 
         # Build dataloader (after auto-tune so it uses tuned params)
@@ -570,72 +576,45 @@ def main():
             with open(result_path, "r") as f:
                 result_data = json.load(f)
 
-            # Determine output path
-            output_path = args.output
-            if output_path is None:
-                output_path = os.path.join(cfg.work_dir, "predictions.json")
-
-            # Reformat for user-friendly output
             raw_predictions = aggregate_clip_predictions(
                 result_data.get("results", {}),
                 pseudo_anno["database"],
             )
-            threshold_spec = _resolve_inference_threshold(args, logger)
-            predictions = filter_predictions(raw_predictions, threshold_spec)
-            output = {
-                "num_videos": len(predictions),
-                "class_map": test_dataset.class_map,
-                "threshold": threshold_spec,
-                "predictions": predictions,
-            }
+            predictions = filter_predictions(raw_predictions, args.threshold)
 
-            prediction_csvs, adjacent_csvs = write_prediction_csvs(
+            # One file per video, named after it. `--output` moves the folder;
+            # the names stay tied to the videos either way.
+            written = write_prediction_jsons(
                 video_paths,
                 predictions,
-                cfg.work_dir,
+                test_dataset.class_map,
+                args.threshold,
+                output_dir=args.output,
                 logger=logger,
             )
-            output["prediction_csvs"] = {
-                name: os.path.basename(path)
-                for name, path in prediction_csvs.items()
-            }
-            output["adjacent_prediction_csvs"] = adjacent_csvs
 
-            with open(output_path, "w") as f:
-                json.dump(output, f, indent=2)
-            logger.info(f"Predictions saved to: {output_path}")
-
-            if args.annotated_video:
-                annotated_paths = render_annotated_videos(
-                    video_paths,
-                    predictions,
-                    cfg.work_dir,
-                    threshold=threshold_spec,
-                    logger=logger,
-                )
-                output["annotated_videos"] = {
-                    name: os.path.basename(path)
-                    for name, path in annotated_paths.items()
-                }
-                with open(output_path, "w") as f:
-                    json.dump(output, f, indent=2)
-                logger.info(f"Predictions updated with annotated video paths: {output_path}")
-
-            # Print summary
-            total_detections = sum(len(dets) for dets in predictions.values())
-            logger.info(f"Total: {len(predictions)} videos, {total_detections} detections")
-            for video_name, dets in predictions.items():
-                logger.info(f"  {video_name}: {len(dets)} detections")
-                for det in dets[:5]:  # Show first 5
-                    logger.info(
-                        f"    [{det['segment'][0]:.2f}s - {det['segment'][1]:.2f}s] "
-                        f"{det['label']} (score={det['score']:.3f})"
-                    )
-                if len(dets) > 5:
-                    logger.info(f"    ... and {len(dets) - 5} more")
+            # Summarise what was written: bouts, since that is what the files
+            # contain — the raw per-frame count means nothing to a reviewer.
+            logger.info(f"Wrote {len(written)} prediction file(s)")
+            for video_name, path in written.items():
+                bouts = _merge_detections(predictions.get(video_name, [])) \
+                    if predictions.get(video_name) else []
+                logger.info(f"  {os.path.basename(path)}: {len(bouts)} bouts")
+                for label, start, end, score in bouts[:5]:
+                    logger.info(f"    [{start:.2f}s - {end:.2f}s] {label} (score={score:.3f})")
+                if len(bouts) > 5:
+                    logger.info(f"    ... and {len(bouts) - 5} more")
         else:
             logger.warning("No result file found. Check if post_processing.save_dict is enabled.")
 
+        if scratch_dir:
+            # Only reached when nothing above raised.
+            shutil.rmtree(scratch_dir, ignore_errors=True)
+
+    except BaseException:
+        if scratch_dir and os.path.isdir(scratch_dir):
+            print(f"Run scratch kept for inspection: {scratch_dir}", file=sys.stderr)
+        raise
     finally:
         # Clean up temp file
         if os.path.exists(tmp_anno_path):

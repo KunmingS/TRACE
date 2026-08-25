@@ -1,0 +1,11 @@
+labelId,timestamp,endTimestamp
+attack,0.033,22.333
+investigation,23.300,23.367
+attack,24.367,29.633
+investigation,30.067,30.400
+attack,30.400,30.900
+attack,31.833,32.233
+investigation,32.767,33.233
+attack,33.233,37.067
+investigation,38.900,39.833
+attack,39.833,41.867

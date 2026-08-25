@@ -23,7 +23,7 @@ def main():
 
     profiles = json.loads(args.profiles_json) if args.profiles_json else None
 
-    from trace_tad.utils.train_tune import tune_train_resources
+    from vtrace.utils.train_tune import tune_train_resources
 
     result = tune_train_resources(
         args.config,

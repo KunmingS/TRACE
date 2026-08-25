@@ -7,7 +7,7 @@ window_size = 256
 
 dataset = dict(
     train=dict(
-        type="ThumosPaddingDataset",
+        type="PlainSlidingDataset",
         ann_file=annotation_path,
         subset_name="training",
         block_list=block_list,
@@ -16,17 +16,12 @@ dataset = dict(
         filter_gt=False,
         feature_stride=1,
         sample_stride=1,
+        window_size=window_size,
+        window_overlap_ratio=0.5,
         pipeline=[
             dict(type="PrepareVideoInfo", format="mp4"),
             dict(type="VideoInit", num_threads=4),
-            dict(
-                type="LoadFrames",
-                num_clips=1,
-                method="random_trunc",
-                trunc_len=window_size,
-                trunc_thresh=0.5,
-                crop_ratio=[0.9, 1.0],
-            ),
+            dict(type="LoadFrames", num_clips=1, method="sliding_window"),
             dict(type="VideoDecode"),
             dict(type="VideoResize", scale=(-1, 256)),
             dict(type="VideoRandomResizedCrop"),
@@ -38,7 +33,7 @@ dataset = dict(
         ],
     ),
     val=dict(
-        type="ThumosSlidingDataset",
+        type="PlainSlidingDataset",
         ann_file=annotation_path,
         subset_name="validation",
         block_list=block_list,
@@ -62,7 +57,7 @@ dataset = dict(
         ],
     ),
     test=dict(
-        type="ThumosSlidingDataset",
+        type="PlainSlidingDataset",
         ann_file=annotation_path,
         subset_name="validation",
         block_list=block_list,

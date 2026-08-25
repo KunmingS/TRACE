@@ -1,7 +1,10 @@
 model = dict(
-    type="TriDet",
+    type="DenseLocalizer",
+    # DFC-only per-frame classifier; num_classes is auto-detected from the dataset
+    # class_map by tools/train.py (overrides this placeholder).
+    num_classes=3,
     projection=dict(
-        type="TriDetProj",
+        type="SGPPyramidProj",
         in_channels=2048,
         out_channels=512,
         sgp_mlp_dim=768,
@@ -22,31 +25,5 @@ model = dict(
         in_channels=512,
         out_channels=512,
         num_levels=6,
-    ),
-    rpn_head=dict(
-        type="TriDetHead",
-        num_classes=3,
-        in_channels=512,
-        feat_channels=512,
-        num_convs=2,
-        cls_prior_prob=0.01,
-        prior_generator=dict(
-            type="PointGenerator",
-            strides=[1, 2, 4, 8, 16, 32],
-            regression_range=[(0, 4), (4, 8), (8, 16), (16, 32), (32, 64), (64, 10000)],
-        ),
-        loss_normalizer=100,
-        loss_normalizer_momentum=0.9,
-        center_sample="radius",
-        center_sample_radius=1.5,
-        label_smoothing=0.0,
-        boundary_kernel_size=3,
-        iou_weight_power=0.2,
-        num_bins=16,
-        loss=dict(
-            cls_loss=dict(type="ClassBalancedFocalLoss", beta=0.999),
-            reg_loss=dict(type="DIOULoss"),
-            iou_rate=dict(type="GIOULoss"),
-        ),
     ),
 )

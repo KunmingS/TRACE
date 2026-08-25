@@ -1,7 +1,7 @@
 """Prepare a raw dataset (videos + CSVs) into training metadata + annotations.
 
-Wraps trace_tad.data_prep.prepare_dataset() as a standalone script
-so it can be submitted as a background job via the job queue.
+Wraps vtrace.data_prep.prepare_dataset() as a standalone script
+so the CLI can run it as a subprocess.
 
 Writes prep_result.json to the current working directory on success.
 """
@@ -19,28 +19,18 @@ if PROJECT_ROOT not in sys.path:
 def main():
     parser = argparse.ArgumentParser(description="Prepare dataset for training")
     parser.add_argument("work_dir", type=str, help="Directory containing video/CSV files")
-    parser.add_argument("--clip-frames", type=int, default=768, help="Frames per clip")
-    parser.add_argument("--train-ratio", type=float, default=0.7, help="Train split ratio")
-    parser.add_argument("--val-ratio", type=float, default=None,
-                        help="Validation split ratio (best-epoch + threshold tuning). "
-                             "Default: half the remainder after --train-ratio.")
-    parser.add_argument("--test-ratio", type=float, default=None,
-                        help="Held-out test split ratio (unbiased reporting only). "
-                             "Default: the other half of the remainder; pass 0 for 2-way. "
-                             "Split is stratified by behavior category.")
-    parser.add_argument("--reencode-clips", action="store_true",
-                        help="Physically extract each clip with ffmpeg (CRF-18 re-encode). "
-                             "Default is virtual clips: dataset.json records source_video + "
-                             "frame offsets, no clip files written, zero quality loss.")
-    parser.add_argument("--cache-mode", choices=["virtual", "cached_video"], default="virtual",
-                        help="Dataset cache mode. 'cached_video' writes resized annotated "
-                             "windows to model_dir/cache/videos and trains from those clips.")
-    parser.add_argument("--cache-resolution", type=int, default=144,
-                        help="Square resolution for cached_video clips")
-    parser.add_argument("--cache-crf", type=int, default=23,
-                        help="H.264 CRF quality for cached_video clips")
-    parser.add_argument("--cache-workers", type=int, default=None,
-                        help="Parallel workers for cached_video clip writing")
+    parser.add_argument("--train-ratio", type=float, default=0.8, help="Train split ratio")
+    parser.add_argument("--proxy-resolution", type=int, default=144,
+                        help="Short side of the downscaled decode proxy built next to each "
+                             "source video. 0 disables proxies and decodes from the originals.")
+    parser.add_argument("--proxy-aspect", action="store_true",
+                        help="Preserve the source aspect ratio in the proxy (scale=-2:R) "
+                             "instead of squashing to a square. Required for pipelines that "
+                             "crop after an aspect-preserving resize.")
+    parser.add_argument("--proxy-crf", type=int, default=23,
+                        help="H.264 CRF quality for the decode proxy")
+    parser.add_argument("--proxy-workers", type=int, default=None,
+                        help="Parallel workers for proxy encoding")
     parser.add_argument("--pairs", dest="explicit_pairs", nargs="*", default=None,
                         help="Restrict prep to explicit video+CSV pairs. Each item "
                              "must be VIDEO_PATH=CSV_PATH. Relative paths are resolved "
@@ -56,22 +46,22 @@ def main():
                         help="Output JSON path for results")
     args = parser.parse_args()
 
-    from trace_tad.data_prep import prepare_dataset
-    from trace_tad.model_artifacts import create_model_dir
+    from vtrace.data_prep import prepare_dataset
+    from vtrace.model_artifacts import create_model_dir
+    from vtrace.proxy_geometry import ProxyGeometry, align_up
 
     model_dir = args.output_dir or create_model_dir(args.work_dir)
-    cache_mode = "physical" if args.reencode_clips else args.cache_mode
+    proxy_geometry = (
+        ProxyGeometry(align_up(args.proxy_resolution), not args.proxy_aspect)
+        if args.proxy_resolution > 0
+        else None
+    )
     model_dir, json_path, classmap_path = prepare_dataset(
         args.work_dir,
-        clip_frames=args.clip_frames,
         train_ratio=args.train_ratio,
-        val_ratio=args.val_ratio,
-        test_ratio=args.test_ratio,
-        virtual_clips=cache_mode == "virtual",
-        cache_mode=cache_mode,
-        cache_resolution=args.cache_resolution,
-        cache_crf=args.cache_crf,
-        cache_workers=args.cache_workers,
+        proxy_geometry=proxy_geometry,
+        proxy_crf=args.proxy_crf,
+        proxy_workers=args.proxy_workers,
         included_stems=args.include_stems,
         explicit_pairs=args.explicit_pairs,
         output_dir=model_dir,

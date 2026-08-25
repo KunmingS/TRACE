@@ -1,0 +1,10 @@
+labelId,timestamp,endTimestamp
+mount,0.033,0.767
+attack,0.767,5.467
+attack,5.767,7.700
+mount,7.700,8.500
+attack,8.500,9.000
+attack,9.233,14.833
+attack,17.900,26.767
+investigation,26.767,28.033
+attack,28.033,35.400

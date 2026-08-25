@@ -33,10 +33,10 @@ dependencies = [
     "tqdm>=4.64.0",
     "numpy>=1.23.5",
     "opencv-python-headless>=4.6.0",
-    "fastapi",
-    "uvicorn",
-    "python-multipart",
     "static-ffmpeg>=2.5",
+    # Terminal UI for the `trace` session; both degrade gracefully if absent.
+    "rich>=13.0",
+    "prompt_toolkit>=3.0",
 ]
 
 [project.optional-dependencies]
@@ -52,14 +52,14 @@ Repository = "https://github.com/KunmingS/TRACE"
 Issues = "https://github.com/KunmingS/TRACE/issues"
 
 [project.scripts]
-trace = "trace_tad.cli:main"
+vtrace = "vtrace.cli:main"
 
 [tool.setuptools.dynamic]
-version = {attr = "trace_tad.version.__version__"}
+version = {attr = "vtrace.version.__version__"}
 
 [tool.setuptools.packages.find]
-include = ["trace_tad*", "tools*", "configs*"]
+include = ["vtrace*", "tools*", "configs*"]
 
 [tool.setuptools.package-data]
 "configs" = ["**/*.py"]
-"trace_tad" = ["static/annotator/**/*"]
+"vtrace" = ["static/gui/*.html", "demo_data/**/*.csv", "demo_data/**/*.txt"]
