@@ -423,7 +423,7 @@ def predict(args=None) -> int:
     ))
     if result.ok:
         print(
-            f"\nWrote {video.with_suffix('').name}.predict.json next to the video, in\n"
+            f"\nWrote {video.with_suffix('').name}.predict.csv next to the video, in\n"
             f"    {video.parent}\n"
             f"Open that folder in `vtrace app` to review the predictions."
         )
@@ -452,7 +452,7 @@ def train(args=None) -> int:
     print(
         "Running the equivalent of:\n"
         f"    vtrace train --config {config_path} \\\n"
-        f"        --work-dir {train_dir} \\\n"
+        f"        --video-path {train_dir} \\\n"
         f"        --pairs {' '.join(Path(p.split('=')[0]).name + '=' + Path(p.split('=')[1]).name for p in pairs)}\n"
     )
 

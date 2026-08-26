@@ -8,11 +8,12 @@ video — and `vtrace train` passes them as `annotation_path=` / `class_map=` /
 geometry and the training schedule.
 
 Weights come from HuggingFace (`facebook/vjepa2-vitl-fpc32-256-diving48`), not from
-the GitHub release used by `maev2` — `VJEPA2Model.from_pretrained` fetches them into
+the GitHub release used by `maev2b` — `VJEPA2Model.from_pretrained` fetches them into
 the HF cache on first use. Set `model.backbone.local_files_only=True` to forbid that
 download once the cache is warm.
 
-Heavier than `maev2` in every direction: ~300M encoder params, 256x256 input, and
+Heavier than `maev2b` in every direction: a ViT-L against ViT-B — ~300M encoder
+params, 256x256 input, and
 the top 12 of 24 blocks are trained. Expect roughly 3-4x the step time and VRAM.
 
 INPUT SIZE IS NOT FREE HERE. The encoder derives its token grid from
@@ -124,7 +125,8 @@ solver = dict(
     compile=False,
 )
 
-# Unlike maev2 the encoder itself trains, at a lower LR than the head.
+# Unlike maev2b, where only the adapters move, the encoder itself trains here —
+# at a lower LR than the head.
 optimizer = dict(
     type="AdamW",
     lr=1e-4,

@@ -254,7 +254,7 @@ def spec_from_cli_args(args: Any) -> PipelineSpec:
         infer=bool(getattr(args, "infer", False)),
     )
     pairs = list(getattr(args, "explicit_pairs", None) or [])
-    work_dir = getattr(args, "work_dir", None) or ""
+    work_dir = getattr(args, "video_path", None) or ""
     train_selection = PipelineSelection(folder=work_dir, pairs=pairs if steps.train else [])
     test_selection = PipelineSelection(folder=work_dir, pairs=[] if steps.train else pairs)
     input_selection = PipelineSelection(

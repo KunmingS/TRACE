@@ -1,7 +1,7 @@
 """Auto-download for pretrained backbone weights.
 
 Configs in `configs/*.py` reference backbone weights as a relative path
-like `pretrained/vit-large-p16_videomaev2-k400.pth`. When the file is missing,
+like `pretrained/vitB_videomaev2_k400.pth`. When the file is missing,
 we resolve the basename against the registry below and pull it from the
 project's GitHub Release into a user-level cache (`~/.vtrace/pretrained/`).
 
@@ -64,9 +64,12 @@ _REGISTRY: dict[str, tuple[str, str, int]] = {
     ),
 }
 
+# `vtrace prepare --weights <key>`. Keyed by model preset, so the download list and
+# `--model` name the same things: each entry is the base that preset starts from.
 MODEL_WEIGHT_FILES: dict[str, str] = {
-    "small": "vit-small-p16_videomae-k400-pre_16x4x1_kinetics-400_my.pth",
-    "large": "vit-large-p16_videomaev2-k400.pth",
+    "maev2b": "vitB_videomaev2_k400.pth",
+    "maev2b-distilled": "calms21_vitB_distilled_best.pth",
+    "vjepa2": "vjepa2_vitl_encoder.pth",
 }
 
 

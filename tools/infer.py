@@ -8,18 +8,19 @@ are split into small cached clips under the prediction work directory so
 inference workers do not keep decoding long raw files.
 
 Usage:
-    python tools/infer.py configs/maev2.py \
-        --checkpoint runs/maev2/checkpoint_best.pth \
+    python tools/infer.py configs/maev2b.py \
+        --checkpoint runs/maev2b/checkpoint_best.pth \
         --input /path/to/videos \
-        --class-map data/CALMS21/category_idx.txt
+        --class-map data/CALMS21/classmap.txt
 
-    python tools/infer.py configs/maev2.py \
-        --checkpoint runs/maev2/checkpoint_best.pth \
+    python tools/infer.py configs/maev2b.py \
+        --checkpoint runs/maev2b/checkpoint_best.pth \
         --input /path/to/single_video.mp4 \
-        --class-map data/CALMS21/category_idx.txt \
-        --output predictions.json
+        --class-map data/CALMS21/classmap.txt \
+        --output /path/to/prediction/folder
 """
 import argparse
+import csv
 import json
 import os
 import shutil
@@ -314,14 +315,14 @@ def filter_predictions(predictions, threshold):
     }
 
 
-# One video has exactly one prediction file, named after the video, sitting next
-# to it: `<video stem>.predict.json`. Re-running prediction replaces it rather
-# than piling up timestamped copies, and the V-TRACE GUI reads this shape
-# directly — its importer looks for a `results` map keyed by video stem.
-PREDICTION_SUFFIX = ".predict.json"
+# One prediction file per video, beside it, replaced on re-run. Same three columns
+# training reads plus a score, so a corrected prediction is already an annotation
+# file rather than something to convert.
+PREDICTION_SUFFIX = ".predict.csv"
+PREDICTION_COLUMNS = ("labelId", "timestamp", "endTimestamp", "score", "predictionId")
 
 
-def prediction_json_path(video_path, output_dir=None):
+def prediction_path(video_path, output_dir=None):
     """Where `video_path`'s prediction file goes.
 
     Beside the video by default, so opening that folder in the annotator shows
@@ -333,10 +334,10 @@ def prediction_json_path(video_path, output_dir=None):
     return os.path.join(folder, stem + PREDICTION_SUFFIX)
 
 
-def write_prediction_jsons(
+def write_prediction_files(
     video_paths, predictions, class_map, threshold, output_dir=None, logger=None
 ):
-    """Write one `<video stem>.predict.json` per video; return name -> path."""
+    """Write one `<video stem>.predict.csv` per video; return name -> path."""
     written = {}
     for video_path in video_paths:
         stem = _video_stem(video_path)
@@ -351,22 +352,28 @@ def write_prediction_jsons(
             )
         ] if predictions.get(stem) else []
 
-        payload = {
+        path = prediction_path(video_path, output_dir)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        meta = {
             "trace_prediction_version": 1,
             "video": os.path.basename(video_path),
             "class_map": list(class_map),
             "threshold": threshold,
-            # Keyed by video stem: what the GUI's prediction import matches on.
-            "results": {stem: bouts},
         }
-        path = prediction_json_path(video_path, output_dir)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2)
-            f.write("\n")
+        with open(path, "w", encoding="utf-8", newline="") as f:
+            # `#` lines are skipped by prep's reader and by the annotator's, so the
+            # run's provenance rides along without becoming a column.
+            f.write(f"# trace-meta: {json.dumps(meta)}\n")
+            writer = csv.writer(f)
+            writer.writerow(PREDICTION_COLUMNS)
+            for index, bout in enumerate(bouts):
+                writer.writerow([
+                    bout["label"], bout["segment"][0], bout["segment"][1],
+                    bout["score"], f"{stem}::{index}",
+                ])
         written[stem] = path
         if logger:
-            logger.info(f"Prediction JSON: {path} ({len(bouts)} bouts)")
+            logger.info(f"Prediction CSV: {path} ({len(bouts)} bouts)")
     return written
 
 
@@ -433,7 +440,7 @@ def main():
     cfg = Config.fromfile(args.config)
     if args.cfg_options is not None:
         cfg.merge_from_dict(args.cfg_options)
-    # Scratch, not output: the results are the `<video>.predict.json` files
+    # Scratch, not output: the results are the `<video>.predict.csv` files
     # written beside each video, so the engine's log and its raw per-frame
     # `result_detection.json` go somewhere disposable. Removed at the end of a
     # clean run; kept, with its path printed, when something failed. The CLI
@@ -584,7 +591,7 @@ def main():
 
             # One file per video, named after it. `--output` moves the folder;
             # the names stay tied to the videos either way.
-            written = write_prediction_jsons(
+            written = write_prediction_files(
                 video_paths,
                 predictions,
                 test_dataset.class_map,

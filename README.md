@@ -105,40 +105,46 @@ vtrace predict --model-dir ~/.vtrace/demo/model --input /my/video.mp4
 
 ```bash
 # Train from selected video/annotation pairs
-vtrace train --model maev2 --work-dir /my/dataset \
+vtrace train --model maev2b --video-path /my/dataset \
   --pairs video01.mp4=video01_final.csv video02.mp4=video02.csv
 
 # Score the training run, or score it on held-out pairs
 vtrace eval --model-dir /my/dataset/model_YYYYMMDD_HHMMSS
 vtrace eval --model-dir /my/dataset/model_YYYYMMDD_HHMMSS \
-  --work-dir /my/testset --pairs video03.mp4=video03.csv
+  --video-path /my/testset --pairs video03.mp4=video03.csv
 
 # Predict on new videos
 vtrace predict --model-dir /my/dataset/model_YYYYMMDD_HHMMSS \
   --input /path/to/video.mp4 --threshold 0.25
 
 # Run prep -> train -> predict end to end
-vtrace pipeline --train --infer --model maev2 \
-  --work-dir /my/dataset --pairs video01.mp4=video01_final.csv \
+vtrace pipeline --train --infer --model maev2b \
+  --video-path /my/dataset --pairs video01.mp4=video01_final.csv \
   --input /path/to/new/videos
 
 # Check PyPI for a newer release, and install it
 vtrace update
 ```
 
-Two model presets ship with the package: `--model maev2` (VideoMAE V2 ViT-L,
-frozen with trained adapters) and `--model vjepa2` (V-JEPA 2 ViT-L, upper half
-fine-tuned — heavier in every direction). Neither names a dataset: prep supplies
-the paths and the class count per run, so the same preset fits any corpus.
+Three model presets ship with the package:
+
+| `--model` | Backbone | Training |
+|---|---|---|
+| `maev2b` (default) | VideoMAE V2 ViT-B/16 | ViT frozen, per-block adapters trained |
+| `maev2b-distilled` | the same ViT-B | as above, but the adapters start from a V-JEPA 2 distillation instead of random init |
+| `vjepa2` | V-JEPA 2 ViT-L | upper half of the encoder fine-tuned — heavier in every direction |
+
+None of them names a dataset: prep supplies the paths and the class count per
+run, so the same preset fits any corpus.
 
 `--pairs` is explicit: each item is `VIDEO_PATH=CSV_PATH`. A source video can
 have multiple annotation CSVs beside it, such as `video01_draft.csv`,
 `video01_final.csv`, or a reviewed prediction exported from the annotator; each
 training or evaluation pair chooses the annotation file to use for that video.
-Relative paths are resolved against `--work-dir`, so
+Relative paths are resolved against `--video-path`, so
 `video01.mp4=video01_final.csv` means both files are inside the work directory.
 Training creates a self-contained `model_YYYYMMDD_HHMMSS/` folder under
-`--work-dir`.
+`--video-path`.
 
 V-TRACE annotation CSVs are time-based:
 
@@ -152,7 +158,7 @@ Prediction writes **one file per video**, named after it and placed beside it:
 
 ```
 my_video.mp4
-my_video.predict.json
+my_video.predict.csv
 ```
 
 Re-running prediction replaces that file rather than accumulating copies — a

@@ -587,6 +587,16 @@ def _csv_dict_reader(file_obj):
     return csv.DictReader(line for line in file_obj if not line.lstrip().startswith("#"))
 
 
+def _is_rejected(row):
+    """True for a row the reviewer threw out in the annotator.
+
+    A rejected prediction is a false positive. It stays in the CSV so the decision
+    travels with the dataset, but training must never see it. Rows without the
+    column are never rejected.
+    """
+    return (row.get("review") or "").strip().lower() == "rejected"
+
+
 def _extract_classes_from_csvs(csv_paths):
     """Collect all unique labels from CSV files, return sorted list."""
     labels = set()
@@ -594,6 +604,8 @@ def _extract_classes_from_csvs(csv_paths):
         with open(csv_path, "r", encoding="utf-8") as f:
             reader = _csv_dict_reader(f)
             for row in reader:
+                if _is_rejected(row):
+                    continue
                 label = row["labelId"].strip()
                 if label:
                     labels.add(label)
@@ -687,15 +699,22 @@ def _process_video(
 
     # Load CSV annotations
     annotations = []
+    rejected = 0
     with open(csv_path, "r", encoding="utf-8") as f:
         reader = _csv_dict_reader(f)
         for row in reader:
+            if _is_rejected(row):
+                rejected += 1
+                continue
             annotations.append({
                 "labelId": row["labelId"].strip(),
                 "timestamp": float(row["timestamp"]),
                 "endTimestamp": float(row["endTimestamp"]),
             })
-    print(f"    {len(annotations)} annotations")
+    if rejected:
+        print(f"    {len(annotations)} annotations ({rejected} rejected, skipped)")
+    else:
+        print(f"    {len(annotations)} annotations")
 
     # Build / load the PTS table — one canonical timestamp per encoded frame.
     # Replaces the previous cv2 CAP_PROP_POS_MSEC per-frame loop and is correct

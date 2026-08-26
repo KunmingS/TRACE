@@ -220,7 +220,7 @@ def run_test(request: TestRequest) -> StepResult:
 def run_infer(request: InferRequest) -> StepResult:
     """Predict behavior segments on new videos.
 
-    The results are the `<video>.predict.json` files the run writes beside each
+    The results are the `<video>.predict.csv` files the run writes beside each
     video, so nothing else needs to survive it: the engine's scratch (its log and
     the raw per-frame `result_detection.json`) goes to a temporary directory that
     is removed on success. A failed run keeps it, and `StepResult.log_file` then

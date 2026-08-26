@@ -802,13 +802,18 @@ class BackboneWrapper(nn.Module):
         else:
             state_dict = ckpt
 
-        # Strip common prefixes
-        for prefix in ("backbone.", "model.backbone.", "module.backbone.", "module."):
-            stripped = {
-                k[len(prefix):]: v for k, v in state_dict.items() if k.startswith(prefix)
-            }
-            if len(stripped) > 0 and len(stripped) >= len(state_dict) // 2:
-                state_dict = stripped
+        # Strip common prefixes, repeatedly. A full-model checkpoint nests the ViT
+        # two levels down (`backbone.model.backbone.blocks...`); peeling once leaves
+        # `model.backbone.*`, which matches nothing and loads zero keys.
+        while True:
+            for prefix in ("backbone.", "model.backbone.", "module.backbone.", "module."):
+                stripped = {
+                    k[len(prefix):]: v for k, v in state_dict.items() if k.startswith(prefix)
+                }
+                if len(stripped) > 0 and len(stripped) >= len(state_dict) // 2:
+                    state_dict = stripped
+                    break
+            else:
                 break
 
         # Remap old-style pretrained keys to match model naming

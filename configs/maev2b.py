@@ -1,31 +1,30 @@
-"""`--model maev2` — VideoMAE V2 ViT-L backbone with trainable adapters.
+"""`--model maev2b` — VideoMAE V2 ViT-B/16 backbone with trainable adapters.
 
-Dataset-agnostic on purpose. `_dataset.py` supplies placeholder paths that the CLI
-rewrites per run: prep writes `dataset.json` / `classmap.txt` — one entry per whole
-video — and `vtrace train` passes them as `annotation_path=` / `class_map=` /
-`data_path=` overrides. `tools/train.py` propagates those onto every split and auto-detects
-`num_classes` from the class map. So this file fixes only the model, the input
-geometry and the training schedule.
+The default preset. The ViT blocks stay frozen and only the per-block temporal
+adapters, the projection and the head train (see `optimizer.backbone`: backbone
+lr=0 plus a custom `adapter` group at 1e-4). The frozen base
+(`pretrained/vitB_videomaev2_k400.pth`, 173 MB) auto-downloads through
+`vtrace/weights.py` on first use.
 
-The ViT is frozen; only the per-block adapters, the projection and the head train
-(see `optimizer.backbone`). The backbone weights are pulled from the project's
-GitHub release on first use — `pretrained/vit-large-p16_videomaev2-k400.pth` is
-resolved by basename against the registry in `vtrace/weights.py`, so the path
-need not exist locally.
+Dataset-agnostic on purpose. `_dataset.py` supplies placeholder paths that
+`vtrace train` overrides per run (`data_path=` / `annotation_path=` /
+`class_map=`), and `tools/train.py` auto-detects `num_classes` from the class
+map. So this file fixes the model, the input geometry and the schedule — never a
+corpus.
 
-Input is 144x144, not the ViT's native 224: a 768-frame window is the expensive
-axis here, and the positional embedding is interpolated to whatever comes in.
-Raise `crop` (or pass `--input-resolution`) to trade throughput for detail.
+`configs/maev2b_distilled.py` is this same network started from V-JEPA 2
+distilled adapters instead of random ones; `configs/calms21_demo.py` is this
+same network pinned to the released CalMS21 demo checkpoint.
 """
 _base_ = [
     "_dataset.py",
     "_model.py",
 ]
 
-window_size = 768  # frames per sliding window
+window_size = 768
 scale_factor = 1
 chunk_num = window_size * scale_factor // 16
-crop = 144  # decode/compute size; the ViT interpolates its pos-embed to match
+crop = 224  # VideoMAE-B native input
 
 _train_pipe = [
     dict(type="PrepareVideoInfo", format="mp4"),
@@ -35,6 +34,7 @@ _train_pipe = [
     dict(type="VideoDecode"),
     dict(type="VideoBatchResize", scale=(crop, crop)),
     dict(type="VideoFlip", flip_ratio=0.5),
+    dict(type="VideoRotate", max_angle=180.0, p=0.8),
     dict(type="VideoTrivialAugment"),
     dict(type="VideoFormatShape", input_format="NCTHW"),
     dict(type="ConvertToTensor", keys=["imgs", "gt_segments", "gt_labels"]),
@@ -61,11 +61,6 @@ _test_pipe = [
     dict(type="Collect", inputs="imgs", keys=["masks"]),
 ]
 
-# Only window geometry and pipelines are overridden here; the split names, paths and
-# dataset type come from `_dataset.py` and the CLI. `BehaviorTargetedSlidingDataset`
-# adds anchor windows for classes that are rare *relative to this corpus's own mean*
-# — on a balanced corpus it detects none and degenerates to plain sparse sampling,
-# so it is a safe default. Use `dataset.train.type=PlainSlidingDataset` to opt out.
 dataset = dict(
     train=dict(
         type="BehaviorTargetedSlidingDataset",
@@ -75,26 +70,20 @@ dataset = dict(
         base_jitter=0.125,
         pipeline=_train_pipe,
     ),
-    val=dict(
-        window_size=window_size,
-        window_overlap_ratio=0.5,
-        pipeline=_val_pipe,
-    ),
-    test=dict(
-        window_size=window_size,
-        window_overlap_ratio=0.5,
-        pipeline=_test_pipe,
-    ),
+    val=dict(window_size=window_size, window_overlap_ratio=0.5, pipeline=_val_pipe),
+    test=dict(window_size=window_size, window_overlap_ratio=0.5, pipeline=_test_pipe),
 )
 
 model = dict(
+    type="DenseLocalizer",
+    crop_stream_reduce="max",
     backbone=dict(
         type="VisionTransformerAdapter",
         img_size=224,
         patch_size=16,
-        embed_dims=1024,
-        depth=24,
-        num_heads=16,
+        embed_dims=768,
+        depth=12,
+        num_heads=12,
         mlp_ratio=4,
         qkv_bias=True,
         drop_path_rate=0.3,
@@ -102,9 +91,9 @@ model = dict(
         return_feat_map=True,
         with_cp=True,
         total_frames=window_size * scale_factor,
-        adapter_index=list(range(24)),
+        adapter_index=list(range(12)),
         custom=dict(
-            pretrain="pretrained/vit-large-p16_videomaev2-k400.pth",
+            pretrain="pretrained/vitB_videomaev2_k400.pth",
             mean=[123.675, 116.28, 103.53],
             std=[58.395, 57.12, 57.375],
             pre_processing_pipeline=[
@@ -116,36 +105,34 @@ model = dict(
                 dict(type="Interpolate", keys=["feats"], size=window_size),
             ],
             norm_eval=False,
-            freeze_backbone=False,  # the ViT is frozen through the optimizer, not here
+            freeze_backbone=False,  # the ViT is frozen through the optimizer
         ),
     ),
-    projection=dict(in_channels=1024, input_noise=0.0005),
+    projection=dict(in_channels=768, input_noise=0.0005),
+    aux_frame_cls=dict(
+        enabled=True, in_channels=512, feat_channels=512, num_layers=2,
+        use_background=True, multilabel=False, target_mode="all",
+        label_smoothing=0.1, class_weight_mode="inv_freq_sqrt", loss_weight=2.0,
+        dropout=0.5,
+        inference_enabled=True, score_fusion_enabled=False, proposal_enabled=True,
+        proposal_mode="dense", proposal_prior="softmax", proposal_min_score=1e-8,
+        proposal_topk=0, proposal_smoothing=9, multiscale=True, mixup_alpha=0.8,
+        head_type="routed", routing=dict(default="dyfadet", conv=[0]),
+    ),
 )
 
 solver = dict(
-    train=dict(batch_size=1, num_workers=6, persistent_workers=False, prefetch_factor=2),
+    train=dict(batch_size=4, num_workers=6, persistent_workers=False, prefetch_factor=2),
     val=dict(batch_size=1, num_workers=4, persistent_workers=False, prefetch_factor=2),
     test=dict(batch_size=1, num_workers=4, persistent_workers=False, prefetch_factor=2),
-    clip_grad_norm=1,
-    ema=True,
-    amp=True,
-    amp_dtype="bfloat16",
-    accumulation_steps=2,  # effective train batch 2
-    compile=False,
+    clip_grad_norm=1, ema=True, amp=True, amp_dtype="bfloat16",
+    accumulation_steps=1, compile=False,
 )
-
-# Frozen ViT + trained adapters: backbone lr=0 except the adapter parameter group.
 optimizer = dict(
-    type="AdamW",
-    lr=7e-5,
-    weight_decay=0.025,
-    paramwise=True,
-    backbone=dict(
-        lr=0,
-        weight_decay=0,
-        custom=[dict(name="adapter", lr=1e-4, weight_decay=0.05)],
-        exclude=["backbone"],
-    ),
+    type="AdamW", lr=7e-5, weight_decay=0.025, paramwise=True,
+    backbone=dict(lr=0, weight_decay=0,
+                  custom=[dict(name="adapter", lr=1e-4, weight_decay=0.05)],
+                  exclude=["backbone"]),
 )
 scheduler = dict(type="LinearWarmupCosineAnnealingLR", warmup_epoch=2, max_epoch=10)
 
@@ -165,15 +152,12 @@ post_processing = dict(
     ),
     save_dict=True,
 )
-
-# `vtrace pipeline --epochs N` rewrites scheduler.max_epoch / workflow.end_epoch;
-# `vtrace train` takes them from here unless --cfg-options overrides them.
-workflow = dict(
-    logging_interval=50,
-    checkpoint_interval=1,
-    val_eval_interval=1,
-    val_start_epoch=2,
-    end_epoch=10,
+workflow = dict(logging_interval=50, checkpoint_interval=1, val_eval_interval=1,
+                val_start_epoch=2, end_epoch=10)
+evaluation = dict(
+    type="Precision", subset="validation", tiou_thresholds=[0.3, 0.4, 0.5, 0.6, 0.7],
+    gt_fps=30.0, eval_fps=30.0, prediction_min_score=0.0,
+    map_frame_filter="all", ap_mode="sklearn",
 )
 
-work_dir = "runs/maev2"
+work_dir = "runs/maev2b"

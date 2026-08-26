@@ -3,10 +3,10 @@
 Usage:
     vtrace app
     vtrace prepare
-    vtrace train --model maev2 --work-dir /my/data --pairs video.mp4=video.csv
+    vtrace train --model maev2b --video-path /my/data --pairs video.mp4=video.csv
     vtrace eval --model-dir /my/data/model_20260507_143012
     vtrace predict --model-dir /my/data/model_20260507_143012 --input /my/video.mp4
-    vtrace pipeline --train --infer --work-dir /my/data --pairs video.mp4=video.csv --input /my/new
+    vtrace pipeline --train --infer --video-path /my/data --pairs video.mp4=video.csv --input /my/new
     vtrace update
 """
 import argparse
@@ -33,7 +33,8 @@ from vtrace.weights import model_weight_choices
 # `--model NAME` -> config file. Adding a preset is one entry here plus the config;
 # the argparse choices and the pipeline spec both read this dict.
 MODEL_CONFIGS = {
-    "maev2": "configs/maev2.py",
+    "maev2b": "configs/maev2b.py",
+    "maev2b-distilled": "configs/maev2b_distilled.py",
     "vjepa2": "configs/vjepa2.py",
 }
 DEFAULT_MODEL = next(iter(MODEL_CONFIGS))
@@ -198,13 +199,44 @@ _SCAN_LIMIT = 4000
 _SCAN_SKIP = {".git", "__pycache__", "node_modules", "venv", ".venv", "site-packages"}
 
 
-def _local_directories(root: Path, limit: int = _SCAN_LIMIT) -> dict:
-    """basename -> [absolute paths], for directories at or under `root`."""
+def _scan_roots() -> list[Path]:
+    """Where to look for the folder the user picks in the page.
+
+    A data folder beside the checkout is as common as one inside it, and neither is
+    reachable from the other by walking down, so the parent and home are searched
+    too. Ordered by relevance: the entry budget is spent in order.
+    """
+    cwd = Path.cwd()
+    roots: list[Path] = []
+    for candidate in (cwd, cwd.parent, Path.home()):
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            continue
+        if resolved.is_dir() and resolved not in roots:
+            roots.append(resolved)
+    return roots
+
+
+def _local_directories(root, limit: int = _SCAN_LIMIT) -> dict:
+    """basename -> [absolute paths], for directories at or under `root`.
+
+    `root` may be one path or several; the walk is breadth-ordered across them so
+    a shallow match in a later root is not crowded out by a deep one in an earlier.
+    """
     index: dict[str, list[str]] = {}
     seen = 0
-    stack = [(root, 0)]
+    roots = [root] if isinstance(root, (str, Path)) else list(root)
+    stack = [(Path(r), 0) for r in reversed(roots)]
+    walked: set[str] = set()
     while stack and seen < limit:
         current, depth = stack.pop()
+        # Roots overlap by construction (cwd sits under its own parent), so the same
+        # directory would otherwise be walked, and indexed, more than once.
+        key = str(current)
+        if key in walked:
+            continue
+        walked.add(key)
         try:
             entries = list(os.scandir(current))
         except OSError:
@@ -216,7 +248,9 @@ def _local_directories(root: Path, limit: int = _SCAN_LIMIT) -> dict:
                 continue
             if entry.name.startswith(".") or entry.name in _SCAN_SKIP:
                 continue
-            index.setdefault(entry.name, []).append(entry.path)
+            paths = index.setdefault(entry.name, [])
+            if entry.path not in paths:
+                paths.append(entry.path)
             seen += 1
             if depth + 1 < _SCAN_DEPTH:
                 stack.append((Path(entry.path), depth + 1))
@@ -228,7 +262,7 @@ def _local_context() -> str:
     from vtrace.demo import demo_dir
 
     cwd = Path.cwd()
-    index = _local_directories(cwd)
+    index = _local_directories(_scan_roots())
     demo = demo_dir()
     if demo.is_dir():
         for extra in (demo, demo / "videos" / "train", demo / "videos" / "test"):
@@ -547,8 +581,8 @@ def train(args):
     _require_cuda()
     from vtrace.steps import TrainRequest, run_train
 
-    model_dir = create_model_dir(args.work_dir)
-    model_dir, dataset_json, classmap_path = _prepare_pairs_into(args.work_dir, model_dir, args)
+    model_dir = create_model_dir(args.output or args.video_path)
+    model_dir, dataset_json, classmap_path = _prepare_pairs_into(args.video_path, model_dir, args)
 
     request = TrainRequest(
         config_path=_resolve_config(args),
@@ -583,18 +617,18 @@ def test(args):
     model_info = _model_info_or_exit(args.model_dir)
     dataset_dir = model_info["model_dir"]
     annotation_path = model_info["dataset_json"]
-    if args.explicit_pairs and not args.work_dir:
-        print("Error: --pairs requires --work-dir for evaluation data.")
+    if args.explicit_pairs and not args.video_path:
+        print("Error: --pairs requires --video-path for evaluation data.")
         sys.exit(1)
     output_dir = create_eval_dir(model_info["model_dir"])
-    if args.work_dir:
+    if args.video_path:
         dataset_dir, annotation_path, _ = _prepare_pairs_into(
-            args.work_dir,
+            args.video_path,
             output_dir,
             args,
         )
     elif not annotation_path:
-        print("Error: model_dir has no dataset.json. Pass --work-dir and --pairs for evaluation data.")
+        print("Error: model_dir has no dataset.json. Pass --video-path and --pairs for evaluation data.")
         sys.exit(1)
 
     request = TestRequest(
@@ -832,9 +866,10 @@ def _add_model_config_args(parser):
         help="Custom config file path (overrides --model)")
 
 
-def _add_work_dir_arg(parser, *, required=True):
-    parser.add_argument("--work-dir", type=str, required=required,
-        help="Directory containing video/CSV files. Relative --pairs are resolved against this path.")
+def _add_video_path_arg(parser, *, required=True):
+    parser.add_argument("--video-path", type=str, required=required,
+        help="Folder holding the videos and their annotation CSVs. Relative --pairs "
+             "are resolved against this path.")
 
 
 def _add_model_dir_arg(parser):
@@ -845,9 +880,9 @@ def _add_model_dir_arg(parser):
 def _add_pair_args(parser, *, required=True):
     parser.add_argument("--pairs", dest="explicit_pairs",
         nargs="+", required=required, metavar="VIDEO=CSV",
-        help="Explicit video/annotation pairs to use from --work-dir. Each item "
+        help="Explicit video/annotation pairs to use from --video-path. Each item "
              "must be VIDEO_PATH=CSV_PATH. Relative paths are resolved against "
-             "--work-dir; absolute paths are accepted.")
+             "--video-path; absolute paths are accepted.")
 
 
 def _add_common_job_args(parser, *, include_nproc=False, include_profile=False, include_auto_tune=False):
@@ -866,8 +901,12 @@ def _add_common_job_args(parser, *, include_nproc=False, include_profile=False, 
 
 def _add_train_args(parser):
     _add_model_config_args(parser)
-    _add_work_dir_arg(parser)
+    _add_video_path_arg(parser)
     _add_pair_args(parser)
+    parser.add_argument("--output", type=str, default=None,
+        help="Directory to create the run folder in (default: --video-path). The "
+             "dataset folder is an input; keeping checkpoints out of it lets the "
+             "same corpus feed many runs without collecting their outputs.")
     parser.add_argument("--pretrained", type=str, default=None,
         help="Pretrained backbone weights path (overrides config's pretrain)")
     _add_common_job_args(parser, include_nproc=True)
@@ -880,7 +919,7 @@ def _add_train_args(parser):
 
 def _add_eval_args(parser):
     _add_model_dir_arg(parser)
-    _add_work_dir_arg(parser, required=False)
+    _add_video_path_arg(parser, required=False)
     _add_pair_args(parser, required=False)
     parser.add_argument("--cache-workers", type=int, default=None,
         help="Parallel workers for cached evaluation clip writing")
@@ -914,8 +953,8 @@ def _add_pipeline_args(parser):
         help="Run inference")
     parser.add_argument("--model-dir", type=str, default=None,
         help="Model artifact directory when not training")
-    parser.add_argument("--work-dir", type=str, default=None,
-        help="Dataset folder for train or extra-test prep")
+    parser.add_argument("--video-path", type=str, default=None,
+        help="Folder of videos and their annotation CSVs, for train or extra-test prep")
     parser.add_argument("--pairs", dest="explicit_pairs", nargs="+", metavar="VIDEO=CSV",
         help="Explicit video/annotation pairs for train or extra-test prep")
     parser.add_argument("--input-resolution", type=int, choices=[112, 144, 160, 192, 224, 256], default=None,

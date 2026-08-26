@@ -162,7 +162,7 @@ rearing,42.100,45.650</code></pre>
         <p class="section-label">Prediction Output</p>
         <h2>One file per video, replaced on re-run.</h2>
         <p>
-          A prediction lands as <code>&lt;video&gt;.predict.json</code> next to
+          A prediction lands as <code>&lt;video&gt;.predict.csv</code> next to
           the video it describes. Re-running replaces it rather than piling up
           timestamped folders, so a video has exactly one current prediction —
           and the file is in the shape the annotator imports, so predictions are
@@ -171,7 +171,7 @@ rearing,42.100,45.650</code></pre>
       </div>
       <div class="code-panel compact" aria-label="Prediction output layout">
 <pre><code>my_video.mp4
-my_video.predict.json</code></pre>
+my_video.predict.csv</code></pre>
       </div>
     </section>
 
@@ -187,8 +187,8 @@ my_video.predict.json</code></pre>
         </p>
       </div>
       <div class="code-panel compact" aria-label="Generated CLI command example">
-<pre><code>vtrace train --model maev2 \
-  --work-dir /data/my_dataset \
+<pre><code>vtrace train --model maev2b \
+  --video-path /data/my_dataset \
   --pairs video01.mp4=video01.csv</code></pre>
       </div>
     </section>
@@ -234,7 +234,7 @@ my_video.predict.json</code></pre>
             <tr>
               <td><code>vtrace train</code></td>
               <td>Prepare the named pairs and train a detector.</td>
-              <td><code>vtrace train --model maev2 --work-dir /data --pairs video01.mp4=video01.csv</code></td>
+              <td><code>vtrace train --model maev2b --video-path /data --pairs video01.mp4=video01.csv</code></td>
             </tr>
             <tr>
               <td><code>vtrace eval</code></td>
@@ -249,7 +249,7 @@ my_video.predict.json</code></pre>
             <tr>
               <td><code>vtrace pipeline</code></td>
               <td>Run prep, train and predict end to end.</td>
-              <td><code>vtrace pipeline --train --infer --model maev2 --work-dir /data --input /data/new</code></td>
+              <td><code>vtrace pipeline --train --infer --model maev2b --video-path /data --input /data/new</code></td>
             </tr>
             <tr>
               <td><code>vtrace update</code></td>
@@ -267,7 +267,7 @@ my_video.predict.json</code></pre>
         <h2>Model runs are self-contained.</h2>
         <p>
           Training creates <code>model_YYYYMMDD_HHMMSS/</code> under
-          <code>--work-dir</code>. Alongside the checkpoint and class map it
+          <code>--output</code>. Alongside the checkpoint and class map it
           writes <code>config_resolved.py</code> — the configuration the run
           actually used, with its bases merged and every override applied.
           Prediction loads that, so a later edit of the config it started from
@@ -296,8 +296,9 @@ my_video.predict.json</code></pre>
         </p>
       </div>
       <div class="code-panel compact" aria-label="Model presets">
-<pre><code>--model maev2    # VideoMAE V2 ViT-L, frozen + adapters
---model vjepa2   # V-JEPA 2 ViT-L, upper half fine-tuned</code></pre>
+<pre><code>--model maev2b             # VideoMAE V2 ViT-B, frozen + adapters (default)
+--model maev2b-distilled   # same ViT-B, adapters distilled from V-JEPA 2
+--model vjepa2             # V-JEPA 2 ViT-L, upper half fine-tuned</code></pre>
       </div>
     </section>
 
