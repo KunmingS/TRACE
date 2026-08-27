@@ -1,5 +1,7 @@
 # V-TRACE — Video-based Temporal Recognition and Annotation of Continuous Ethograms of Animal Behavior
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22119863.svg)](https://doi.org/10.5281/zenodo.22119863)
+
 V-TRACE turns untrimmed animal-behavior video into continuous ethograms: label a few
 recordings in the browser, train a detector on them, and have it annotate the rest.
 
