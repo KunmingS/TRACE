@@ -14,6 +14,7 @@ recursive-include vtrace/demo_data *.csv *.txt *.json
 # Documentation
 include README.md
 include LICENSE
+include CITATION.cff
 
 # Exclude dev/test files
 exclude .gitignore

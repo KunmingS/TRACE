@@ -1,0 +1,66 @@
+cff-version: 1.2.0
+message: "If you use V-TRACE, please cite it using the metadata below."
+title: "V-TRACE: End-to-end temporal inference and annotation of animal behaviors from video"
+abstract: >-
+  V-TRACE turns untrimmed animal-behavior video into continuous ethograms:
+  label a few recordings in the browser, train a detector on them, and have it
+  annotate the rest.
+type: software
+version: 1.0.0
+license: Apache-2.0
+repository-code: "https://github.com/KunmingS/TRACE"
+url: "https://kunmings.github.io/TRACE/"
+keywords:
+  - ethogram
+  - animal behavior
+  - behavior annotation
+  - temporal action detection
+  - video analysis
+  - deep learning
+# Kunming Shi and Guang-Wei Zhang contributed equally to this work.
+# Affiliations below give each author's primary affiliation; several authors
+# hold more than one (Shi: 1,2 — G.-W. Zhang: 1,3 — S. K. Zhang: 1,4 —
+# H. W. Tao: 1,5 — L. I. Zhang: 1,5), numbered as in the manuscript:
+#   1 Center for Neural Circuits and Sensory Processing Disorders, Zilkha
+#     Neurogenetic Institute, Keck School of Medicine, University of Southern
+#     California, Los Angeles, CA 90033, USA
+#   2 Graduate Program in Biomedical and Biological Sciences, Keck School of
+#     Medicine, University of Southern California, Los Angeles, CA 90033, USA
+#   3 Department of Neuroscience and Anatomy, School of Medicine, Virginia
+#     Commonwealth University, Richmond, VA 23298, USA
+#   4 Viterbi School of Engineering, University of Southern California,
+#     Los Angeles, CA 90089, USA
+#   5 Department of Physiology and Neuroscience, Keck School of Medicine,
+#     University of Southern California, Los Angeles, CA 90033, USA
+authors:
+  - family-names: Shi
+    given-names: Kunming
+    email: kunmings@usc.edu
+    affiliation: "Center for Neural Circuits and Sensory Processing Disorders, Zilkha Neurogenetic Institute, Keck School of Medicine, University of Southern California, Los Angeles, CA 90033, USA"
+  - family-names: Zhang
+    given-names: Guang-Wei
+    email: guangwei.zhang@vcuhealth.org
+    affiliation: "Department of Neuroscience and Anatomy, School of Medicine, Virginia Commonwealth University, Richmond, VA 23298, USA"
+  - family-names: Tao
+    given-names: Can
+    affiliation: "Department of Neuroscience and Anatomy, School of Medicine, Virginia Commonwealth University, Richmond, VA 23298, USA"
+  - family-names: Wang
+    given-names: Zike
+    affiliation: "Center for Neural Circuits and Sensory Processing Disorders, Zilkha Neurogenetic Institute, Keck School of Medicine, University of Southern California, Los Angeles, CA 90033, USA"
+  - family-names: Zhang
+    given-names: Sonia K.
+    affiliation: "Center for Neural Circuits and Sensory Processing Disorders, Zilkha Neurogenetic Institute, Keck School of Medicine, University of Southern California, Los Angeles, CA 90033, USA"
+  - family-names: Tao
+    given-names: Huizhong W.
+    affiliation: "Center for Neural Circuits and Sensory Processing Disorders, Zilkha Neurogenetic Institute, Keck School of Medicine, University of Southern California, Los Angeles, CA 90033, USA"
+  - family-names: Zhang
+    given-names: Li I.
+    email: liizhang@usc.edu
+    affiliation: "Center for Neural Circuits and Sensory Processing Disorders, Zilkha Neurogenetic Institute, Keck School of Medicine, University of Southern California, Los Angeles, CA 90033, USA"
+contact:
+  - family-names: Zhang
+    given-names: Guang-Wei
+    email: guangwei.zhang@vcuhealth.org
+  - family-names: Zhang
+    given-names: Li I.
+    email: liizhang@usc.edu

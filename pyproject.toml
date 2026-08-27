@@ -8,6 +8,19 @@ dynamic = ["version"]
 description = "V-TRACE: continuous ethograms of animal behavior from untrimmed video"
 readme = "README.md"
 license = {text = "Apache-2.0"}
+authors = [
+    {name = "Kunming Shi", email = "kunmings@usc.edu"},
+    {name = "Guang-Wei Zhang", email = "guangwei.zhang@vcuhealth.org"},
+    {name = "Can Tao"},
+    {name = "Zike Wang"},
+    {name = "Sonia K. Zhang"},
+    {name = "Huizhong W. Tao"},
+    {name = "Li I. Zhang", email = "liizhang@usc.edu"},
+]
+maintainers = [
+    {name = "Guang-Wei Zhang", email = "guangwei.zhang@vcuhealth.org"},
+    {name = "Li I. Zhang", email = "liizhang@usc.edu"},
+]
 requires-python = ">=3.9"
 keywords = ["ethogram", "animal-behavior", "behavior-annotation", "video-analysis", "deep-learning", "pytorch"]
 classifiers = [
