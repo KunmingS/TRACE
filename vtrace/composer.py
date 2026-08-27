@@ -146,10 +146,10 @@ def compose(initial: str = "") -> str | None:
             title=TITLE,
             style="class:composer.frame",
         ),
-        # The key is printed on the button rather than in a legend beside it.
-        # Focus never leaves the text area now that tab completes instead of
-        # moving it, so a button is a mouse target — and the thing a reader needs
-        # to know about it is which key does the same job.
+        # The key is printed on the button rather than in a legend beside it: a
+        # button reached by tab or by mouse still leaves the question of what
+        # does the same job without leaving the text, and that answer belongs on
+        # the button itself.
         VSplit([
             Window(width=2, char=" "),
             Button("Submit  ctrl-s", handler=submit, width=18),
