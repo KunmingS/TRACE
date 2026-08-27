@@ -50,8 +50,9 @@
           annotator with it, so nothing has to be launched by hand — open the
           address it prints in Chrome or Edge. Type the rest of the commands at
           the <code>vtrace &gt;</code> prompt without repeating the program's
-          name. Training, evaluation and prediction need a CUDA-capable PyTorch
-          environment; annotation does not.
+          name, or type <code>run</code> to compose a whole chain of steps in a
+          bordered box. Training, evaluation and prediction need a CUDA-capable
+          PyTorch environment; annotation does not.
         </p>
       </div>
       <div class="code-panel" aria-label="Quick start commands">
@@ -113,18 +114,19 @@ vtrace demo train</code></pre>
           <span class="step-number">02</span>
           <h3>Train</h3>
           <p>
-            Name the video/annotation pairs for the run. V-TRACE indexes each
-            video whole, splits train and validation by recording rather than by
-            window, and writes a timestamped model directory.
+            Name the video/annotation pairs for the run and where the run folder
+            goes. Every video is indexed whole; nothing is held back from the
+            training set, and every epoch is checkpointed.
           </p>
         </article>
         <article class="step-card">
           <span class="step-number">03</span>
           <h3>Evaluate</h3>
           <p>
-            Score the trained model on the run's own validation split, or pass a
-            fresh set of video/annotation pairs to score it on held-out
-            recordings.
+            Name evaluation recordings and the training loop scores each epoch
+            against them, which is what writes <code>best.pth</code>. They are a
+            corpus of their own, chosen deliberately — which videos judge a model
+            is a question about the recordings.
           </p>
         </article>
         <article class="step-card">
@@ -188,8 +190,8 @@ my_video.predict.csv</code></pre>
       </div>
       <div class="code-panel compact" aria-label="Generated CLI command example">
 <pre><code>vtrace train --model maev2b \
-  --video-path /data/my_dataset \
-  --pairs video01.mp4=video01.csv</code></pre>
+  --output /data/runs \
+  --pairs /data/my_dataset/video01.mp4=/data/my_dataset/video01.csv</code></pre>
       </div>
     </section>
 
@@ -234,7 +236,7 @@ my_video.predict.csv</code></pre>
             <tr>
               <td><code>vtrace train</code></td>
               <td>Prepare the named pairs and train a detector.</td>
-              <td><code>vtrace train --model maev2b --video-path /data --pairs video01.mp4=video01.csv</code></td>
+              <td><code>vtrace train --model maev2b --pairs /data/video01.mp4=/data/video01.csv --output /data/runs</code></td>
             </tr>
             <tr>
               <td><code>vtrace eval</code></td>
@@ -247,9 +249,9 @@ my_video.predict.csv</code></pre>
               <td><code>vtrace predict --model-dir /data/model_YYYYMMDD_HHMMSS --input /data/video03.mp4</code></td>
             </tr>
             <tr>
-              <td><code>vtrace pipeline</code></td>
-              <td>Run prep, train and predict end to end.</td>
-              <td><code>vtrace pipeline --train --infer --model maev2b --video-path /data --input /data/new</code></td>
+              <td><code>then</code></td>
+              <td>Chain steps. A later step reuses the model an earlier one produced.</td>
+              <td><code>vtrace train --pairs /data/a.mp4=/data/a.csv --output /data/runs then eval --pairs /data/b.mp4=/data/b.csv then predict --input /data/new</code></td>
             </tr>
             <tr>
               <td><code>vtrace update</code></td>
@@ -273,9 +275,15 @@ my_video.predict.csv</code></pre>
           Prediction loads that, so a later edit of the config it started from
           cannot change how a finished model is rebuilt.
         </p>
+        <p>
+          The checkpoint is <code>best.pth</code> when the run had evaluation
+          videos to score its epochs against, and <code>last.pth</code> when it
+          did not — no epoch was measured, so none is called best. Evaluation and
+          prediction read whichever is there.
+        </p>
       </div>
       <div class="artifact-list" aria-label="Model artifact files">
-        <span>best.pth</span>
+        <span>best.pth / last.pth</span>
         <span>classmap.txt</span>
         <span>config_resolved.py</span>
         <span>dataset.json</span>

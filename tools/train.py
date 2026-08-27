@@ -38,6 +38,29 @@ def parse_args():
     return args
 
 
+def _latest_epoch_checkpoint(work_dir):
+    """The highest-numbered `checkpoint/epoch_N.pth`, or None if there is none.
+
+    By epoch number rather than mtime: a resumed run rewrites earlier epochs
+    later, and the newest file is then not the furthest-trained one.
+    """
+    import re
+
+    checkpoint_dir = os.path.join(work_dir, "checkpoint")
+    best = (None, None)
+    try:
+        names = os.listdir(checkpoint_dir)
+    except OSError:
+        return None
+    for name in names:
+        match = re.fullmatch(r"epoch_(\d+)\.pth", name)
+        if match:
+            epoch = int(match.group(1))
+            if best[0] is None or epoch > best[0]:
+                best = (epoch, os.path.join(checkpoint_dir, name))
+    return best[1]
+
+
 def main():
     args = parse_args()
 
@@ -46,21 +69,34 @@ def main():
     if args.cfg_options is not None:
         cfg.merge_from_dict(args.cfg_options)
 
-    # propagate top-level path overrides into nested dataset/evaluation configs
+    # Propagate top-level path overrides into the nested dataset/evaluation
+    # configs. Training data and evaluation data are separate corpora, each with
+    # its own dataset.json, so the train split and the val/test splits are
+    # pointed at different files. `eval_annotation_path` unset means no
+    # evaluation data was given, and there is nothing to validate against.
+    eval_annotation_path = getattr(cfg, "eval_annotation_path", None)
+    eval_data_path = getattr(cfg, "eval_data_path", None) or getattr(cfg, "data_path", None)
+    EVAL_SPLITS = ("val", "test")
+
     if hasattr(cfg, "annotation_path"):
-        for split in ("train", "val", "test"):
+        if hasattr(cfg.dataset, "train"):
+            cfg.dataset.train.ann_file = cfg.annotation_path
+    if eval_annotation_path:
+        for split in EVAL_SPLITS:
             if hasattr(cfg.dataset, split):
-                cfg.dataset[split].ann_file = cfg.annotation_path
+                cfg.dataset[split].ann_file = eval_annotation_path
         if hasattr(cfg, "evaluation"):
-            cfg.evaluation.ground_truth_filename = cfg.annotation_path
+            cfg.evaluation.ground_truth_filename = eval_annotation_path
     if hasattr(cfg, "class_map"):
-        for split in ("train", "val", "test"):
+        for split in ("train", *EVAL_SPLITS):
             if hasattr(cfg.dataset, split):
                 cfg.dataset[split].class_map = cfg.class_map
-    if hasattr(cfg, "data_path"):
-        for split in ("train", "val", "test"):
+    if hasattr(cfg, "data_path") and hasattr(cfg.dataset, "train"):
+        cfg.dataset.train.data_path = cfg.data_path
+    if eval_data_path:
+        for split in EVAL_SPLITS:
             if hasattr(cfg.dataset, split):
-                cfg.dataset[split].data_path = cfg.data_path
+                cfg.dataset[split].data_path = eval_data_path
 
     # set random seed, create work_dir, and save config
     set_seed(args.seed, args.disable_deterministic)
@@ -83,13 +119,25 @@ def main():
         **cfg.solver.train,
     )
 
-    test_dataset = build_dataset(cfg.dataset.test, default_args=dict(logger=logger))
-    test_loader = build_dataloader(
-        test_dataset,
-        shuffle=False,
-        drop_last=False,
-        **cfg.solver.test,
-    )
+    if eval_annotation_path:
+        test_dataset = build_dataset(cfg.dataset.test, default_args=dict(logger=logger))
+        test_loader = build_dataloader(
+            test_dataset,
+            shuffle=False,
+            drop_last=False,
+            **cfg.solver.test,
+        )
+    else:
+        # Training on its own: every epoch is checkpointed and none is called
+        # best, because nothing measured them. Said once, here, rather than
+        # left for the reader to infer from a missing file at the end.
+        test_dataset = test_loader = None
+        logger.info(
+            "No evaluation data — training only. Every epoch is checkpointed and "
+            "no best.pth is written. To pick a best epoch, give evaluation videos: "
+            "`vtrace train ... --eval-pairs VIDEO=CSV`, or `train ... then eval "
+            "--pairs VIDEO=CSV` at the prompt."
+        )
 
     # Auto-detect num_classes from dataset (DFC-only model: lives at model.num_classes)
     num_classes = len(train_dataset.class_map)
@@ -229,7 +277,7 @@ def main():
             save_checkpoint(model, model_ema, optimizer, scheduler, epoch, work_dir=cfg.work_dir)
 
         # eval for one epoch
-        if epoch >= val_start_epoch:
+        if test_loader is not None and epoch >= val_start_epoch:
             if (cfg.workflow.val_eval_interval > 0) and ((epoch + 1) % cfg.workflow.val_eval_interval == 0):
                 primary_metric = eval_one_epoch(
                     test_loader,
@@ -246,14 +294,25 @@ def main():
                     best_metric = primary_metric
                     logger.info(f"New best metric: {best_metric:.4f}, saving best checkpoint...")
                     save_best_checkpoint(model, model_ema, epoch, work_dir=cfg.work_dir)
-    # Make the work_dir itself a self-contained model folder.
+    # Make the work_dir itself a self-contained model folder. A run with no
+    # evaluation data still produces a usable model — it just has no epoch that
+    # was measured to be better than the others, so the weights it publishes are
+    # the last ones, under a name that says so.
+    import shutil
+
+    model_dir = os.path.abspath(cfg.work_dir)
     best_pth = os.path.join(cfg.work_dir, "checkpoint", "best.pth")
     if os.path.isfile(best_pth):
-        model_dir = os.path.abspath(cfg.work_dir)
-        root_best = os.path.join(model_dir, "best.pth")
-        if os.path.abspath(best_pth) != os.path.abspath(root_best):
-            import shutil
-            shutil.copy2(best_pth, root_best)
+        published, label = best_pth, "best.pth"
+    else:
+        published, label = _latest_epoch_checkpoint(cfg.work_dir), "last.pth"
+
+    if published is None:
+        logger.warning("No checkpoint was written — model folder not created.")
+    else:
+        destination = os.path.join(model_dir, label)
+        if os.path.abspath(published) != os.path.abspath(destination):
+            shutil.copy2(published, destination)
 
         # Generate classmap from the training dataset's class_map list.
         with open(os.path.join(model_dir, "classmap.txt"), "w") as f:
@@ -272,10 +331,9 @@ def main():
             f.write(args.config + "\n")
 
         logger.info(f"Model folder saved to: {model_dir}")
-        logger.info(f"  best.pth + classmap.txt + {RESOLVED_CONFIG_NAME} are ready")
-    else:
-        logger.warning("No best.pth found — evaluation may not have run. "
-                       "Model folder not created.")
+        logger.info(f"  {label} + classmap.txt + {RESOLVED_CONFIG_NAME} are ready")
+        if label == "last.pth":
+            logger.info("  (last.pth, not best.pth: no evaluation data, so no epoch was scored)")
 
 
     logger.info("Training Over...\n")

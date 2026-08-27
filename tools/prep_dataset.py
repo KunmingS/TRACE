@@ -19,7 +19,10 @@ if PROJECT_ROOT not in sys.path:
 def main():
     parser = argparse.ArgumentParser(description="Prepare dataset for training")
     parser.add_argument("work_dir", type=str, help="Directory containing video/CSV files")
-    parser.add_argument("--train-ratio", type=float, default=0.8, help="Train split ratio")
+    parser.add_argument("--subset", choices=("train", "validation"), default="train",
+                        help="Which subset every prepared video belongs to. Nothing is "
+                             "split here: training data and evaluation data are separate "
+                             "corpora, each prepared on its own.")
     parser.add_argument("--proxy-resolution", type=int, default=144,
                         help="Short side of the downscaled decode proxy built next to each "
                              "source video. 0 disables proxies and decodes from the originals.")
@@ -58,7 +61,7 @@ def main():
     )
     model_dir, json_path, classmap_path = prepare_dataset(
         args.work_dir,
-        train_ratio=args.train_ratio,
+        subset=args.subset,
         proxy_geometry=proxy_geometry,
         proxy_crf=args.proxy_crf,
         proxy_workers=args.proxy_workers,

@@ -448,13 +448,30 @@ def train(args=None) -> int:
     if not pairs:
         raise SystemExit(f"No video/CSV pairs found in {train_dir}.")
 
+    # The official test split, when it is on disk, is what scores each epoch —
+    # so the demo ends with a best.pth chosen on held-out videos rather than a
+    # last.pth nobody measured. Downloading only `--split train` is allowed, and
+    # then the walkthrough trains without a score.
+    test_dir = root / "videos" / "test"
+    eval_pairs = [] if missing_videos(root, "test") else _pairs_in(test_dir)
+
+    def names(specs):
+        return ' '.join(
+            Path(spec.split('=')[0]).name + '=' + Path(spec.split('=')[1]).name
+            for spec in specs
+        )
+
     config_path = _package_config_path()
-    print(
-        "Running the equivalent of:\n"
-        f"    vtrace train --config {config_path} \\\n"
-        f"        --video-path {train_dir} \\\n"
-        f"        --pairs {' '.join(Path(p.split('=')[0]).name + '=' + Path(p.split('=')[1]).name for p in pairs)}\n"
-    )
+    equivalent = [
+        "Running the equivalent of:",
+        f"    vtrace train --config {config_path} \\",
+        f"        --output {root} \\",
+        f"        --pairs {names(pairs)}"
+        + (" \\" if eval_pairs else ""),
+    ]
+    if eval_pairs:
+        equivalent.append(f"        --eval-pairs {names(eval_pairs)}")
+    print("\n".join(equivalent) + "\n")
 
     # Derive the decode-proxy geometry from the config the run will actually use,
     # exactly as `vtrace train` does. Left to its default, prep would build 144px
@@ -479,12 +496,34 @@ def train(args=None) -> int:
     with open(Path(prep.work_dir) / "prep_result.json", encoding="utf-8") as f:
         prep_result = json.load(f)
 
+    eval_annotation = eval_data_dir = None
+    if eval_pairs:
+        ensure_videos(root, "test")
+        eval_prep = run_prep(PrepRequest(
+            work_dir=str(test_dir),
+            model_dir=str(Path(prep_result["model_dir"]) / "eval_data"),
+            subset="validation",
+            proxy_resolution=geometry.short_side,
+            proxy_aspect=not geometry.square,
+            explicit_pairs=eval_pairs,
+        ))
+        if not eval_prep.ok:
+            print(f"\nEvaluation prep failed (exit code {eval_prep.returncode}); "
+                  f"see {eval_prep.log_file}")
+            return eval_prep.returncode
+        with open(Path(eval_prep.work_dir) / "prep_result.json", encoding="utf-8") as f:
+            eval_result = json.load(f)
+        eval_annotation = eval_result["dataset_json"]
+        eval_data_dir = eval_result["model_dir"]
+
     result = run_train(TrainRequest(
         config_path=config_path,
         model_dir=prep_result["model_dir"],
         dataset_dir=prep_result["model_dir"],
         annotation_path=prep_result["dataset_json"],
         class_map=prep_result["classmap_path"],
+        eval_annotation_path=eval_annotation,
+        eval_data_dir=eval_data_dir,
     ))
     if result.ok:
         print(f"\nTraining finished. Model directory: {prep_result['model_dir']}")

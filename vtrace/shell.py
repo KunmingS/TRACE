@@ -9,6 +9,12 @@ mycli and IPython make — which brings a completion menu, reverse history searc
 and a status bar for free. Without it the loop falls back to `input()` plus
 readline, which still gives history and arrow keys on any normal Unix box.
 
+The prompt itself is one line. A chain is longer than that, and the answer is
+`run`, which opens a bordered box to compose one in — so the prompt does not
+also need a hidden multi-line mode, nor a permanent toolbar advertising one.
+Pasting a chain still works, on one line or with the backslash continuations a
+copied shell command carries.
+
 The loop's job is to survive. Commands fail by calling `sys.exit()` (argparse
 does it for a bad flag, the step runners for a non-zero exit code) and that has
 to land back at the prompt instead of ending the session.
@@ -21,34 +27,47 @@ import sys
 import traceback
 from pathlib import Path
 
-from vtrace import splash
+from vtrace import composer, splash
+
+# The documentation, kept in one place. Also `Documentation` in pyproject.toml.
+DOCS_URL = "https://kunmings.github.io/TRACE/"
 
 _HISTORY_LIMIT = 1000
+BACKSLASH = chr(92)
+# `\` at the end of a line, with the newline: a pasted shell continuation.
+_CONTINUATION = __import__("re").compile(BACKSLASH + BACKSLASH + r"\s*\n")
 
 # Command tree, used for completion and for the in-session `help`.
 COMMANDS = {
     "app": "Serve the annotator UI (already running in this session)",
     "demo": "Download and run the CalMS21 walkthrough",
+    "run": "Open a box to compose a run of chained steps",
     "train": "Train a model on video/CSV pairs",
     "eval": "Evaluate a trained model",
     "predict": "Run prediction on videos",
-    "pipeline": "prep -> train -> test -> predict in one go",
+    "then": "Chain steps: train ... then eval ... then predict ...",
     "prepare": "Download model weights and local assets",
     "update": "Check PyPI for a newer release",
-    "help": "This list (`help COMMAND` for flags)",
+    "help": "Where the documentation lives",
     "exit": "Leave the session",
 }
 
 _COMPLETION_TREE = {
-    "app": {"--host", "--port", "--dev"},
+    "app": {"--port", "--no-browser", "--verbose"},
+    # No flags of its own: `run` opens the box, and the flags are typed in there.
+    "run": None,
     "demo": {"download": {"--from"}, "predict": None, "train": None},
-    "train": {"--model", "--config", "--video-path", "--output", "--pairs", "--nproc", "--cfg-options"},
-    "eval": {"--model-dir", "--video-path", "--pairs", "--cfg-options"},
-    "predict": {"--model-dir", "--input", "--output", "--threshold"},
-    "pipeline": {"--train", "--extra-test", "--infer", "--model", "--config",
-                 "--video-path", "--pairs", "--input", "--epochs", "--resource-profile"},
+    "train": {"--model", "--config", "--pairs", "--output", "--eval-pairs",
+              "--epochs", "--val-start-epoch", "--val-interval",
+              "--input-resolution", "--resource-profile", "--pretrained",
+              "--nproc", "--seed", "--resume", "--cfg-options"},
+    "eval": {"--model-dir", "--pairs", "--resource-profile",
+             "--nproc", "--seed", "--profile", "--auto-tune", "--cfg-options"},
+    "predict": {"--model-dir", "--input", "--output", "--include-stems",
+                "--threshold", "--resource-profile", "--profile", "--auto-tune"},
     "prepare": {"--weights"},
     "update": {"-y", "--yes", "--check-only", "--timeout"},
+    "then": None,
     "help": {c: None for c in COMMANDS},
     "exit": None,
 }
@@ -59,11 +78,14 @@ def history_file() -> Path:
 
 
 def _to_argv(line: str):
-    """Split a typed line into argv, or None when there is nothing to run.
+    """Split typed text into argv, or None when there is nothing to run.
 
     Accepts the commands exactly as the start screen prints them, the executable's
-    own name and all, since that is what people paste.
+    own name and all, since that is what people paste. Newlines are plain
+    whitespace to shlex, but a backslash before one is an escape that would
+    survive as a token, so the continuations of a pasted command come off first.
     """
+    line = _CONTINUATION.sub(" ", line)
     try:
         argv = shlex.split(line)
     except ValueError as exc:  # unbalanced quote
@@ -74,33 +96,69 @@ def _to_argv(line: str):
     return argv or None
 
 
-def _print_help(console) -> None:
-    """The in-session command list.
+# Only what the website cannot say, because it is about being in here.
+_HELP_NOTES = (
+    "Every command, flag and file format.",
+    "",
+    "`run` opens a box to compose a run.",
+    "`COMMAND --help` prints one command's flags.",
+    "Tab lists what can be typed here.",
+)
+_HELP_INDENT = " " * 19
 
-    Deliberately not argparse's `--help`: that one is a wall of usage strings
-    built for a shell prompt, while in here the reader already knows they are in
-    `trace` and wants to see what verbs exist.
+
+def _print_help(console) -> None:
+    """Point at the documentation rather than reprinting it.
+
+    This used to be a table of every verb, which is a second copy of the website
+    and of argparse's own help — two places to forget when a flag changes. The
+    site is the one that can hold the whole story, so the session's job is to
+    name it and to name the three things that only exist in here.
     """
     if console is None:
-        width = max(len(name) for name in COMMANDS)
         print()
-        for name, note in COMMANDS.items():
-            print(f"   {name:<{width}}   {note}")
-        print("\n   Add --help to any command for its flags.\n")
+        print(f"   Documentation   {DOCS_URL}")
+        for note in _HELP_NOTES:
+            print(f"{_HELP_INDENT}{note}" if note else "")
+        print()
         return
 
-    from rich.table import Table
     from rich.text import Text
 
-    table = Table.grid(padding=(0, 3))
-    table.add_column(style="bold", no_wrap=True)
-    table.add_column(style="dim")
-    for name, note in COMMANDS.items():
-        table.add_row(f"   {name}", note)
     console.print()
-    console.print(table)
-    console.print(Text("   Add --help to any command for its flags.", style="dim"))
+    console.print(Text.assemble(("   Documentation   ", "bold"),
+                                (DOCS_URL, "bold " + splash.ACCENT)))
+    for note in _HELP_NOTES:
+        # no_wrap: these are aligned under the URL, and a wrap would drop the
+        # continuation back to column zero and break the column.
+        console.print(Text(f"{_HELP_INDENT}{note}" if note else "", style="dim"),
+                      no_wrap=True, crop=True)
     console.print()
+
+
+def _print_chain_help() -> None:
+    """`help then`. There is no parser behind a separator, so this is written out."""
+    print("""
+   then — run steps one after another, stopping at the first failure.
+
+     train --pairs VIDEO=CSV ... --output DIR then eval --pairs VIDEO=CSV
+        One run. The eval videos score the model each epoch, and that is
+        what writes best.pth. Without them, training keeps every epoch's
+        checkpoint and calls none of them best.
+
+     ... then predict --input DIR
+        Reuses the model the training step just produced, so its timestamped
+        run folder never has to be typed. Pass --model-dir to override.
+
+     eval --model-dir DIR --pairs V=C then predict --input DIR
+        An eval that does not follow a train keeps its ordinary meaning:
+        score a model that already exists.
+
+   `run` opens a bordered box for exactly this, drawn below the prompt so
+   the screen above it stays: a step per line, ctrl-s to submit, esc or the
+   Cancel button to leave. A chain can be laid out and read back before any
+   of it starts.
+""")
 
 
 # ── prompt_toolkit front end ─────────────────────────────────────────────────
@@ -122,10 +180,7 @@ def _make_session():
     except OSError:
         history = None
 
-    style = Style.from_dict({
-        "prompt": "bold cyan",
-        "bottom-toolbar": "fg:#888888 bg:#202020",
-    })
+    style = Style.from_dict({"prompt": "bold cyan"})
     return PromptSession(
         completer=NestedCompleter.from_nested_dict(_COMPLETION_TREE),
         history=history,
@@ -178,10 +233,27 @@ def run(dispatch, version: str = "") -> int:
             continue
         if argv[0] in ("exit", "quit", "q"):
             break
+        # Interactive-only, so it never reaches the argument parser: `run` is a
+        # way of typing a command, not a command of its own.
+        if argv[0] == "run" and len(argv) == 1:
+            composed = composer.compose()
+            if composed is None:
+                continue
+            argv = _to_argv(composed)
+            if argv is None:
+                continue
+        elif argv[0] == "run":
+            # `run train ...` reads as "run this", and refusing it outright would
+            # be pedantry — the rest of the line is already the command.
+            argv = argv[1:]
         if argv[0] in ("help", "?") and len(argv) == 1:
             _print_help(console)
             continue
         if argv[0] in ("help", "?"):
+            # `then` is a separator, so it has no parser to ask for --help.
+            if argv[1:2] == ["then"]:
+                _print_chain_help()
+                continue
             argv = argv[1:] + ["--help"]
 
         # `vtrace app` installs its own SIGINT handler and never puts the old one

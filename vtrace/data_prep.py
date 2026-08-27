@@ -794,86 +794,6 @@ def _process_video(
     return entry
 
 
-def _slice_entry(entry, pts_array, first, stop):
-    """A copy of `entry` covering source frames [first, stop), times rebased.
-
-    Returns None when the slice contains no annotation.
-    """
-    last = stop - 1
-    if last < first:
-        return None
-    origin = float(pts_array[first])
-    annotations = []
-    for anno in entry["annotations"]:
-        begin, finish = anno["frame_segment"]
-        begin, finish = max(begin, first), min(finish, last)
-        if begin > finish:
-            continue
-        seg = [float(pts_array[begin]) - origin, float(pts_array[finish]) - origin]
-        annotations.append({
-            "frame_segment": [begin - first, finish - first],
-            "segment": seg,
-            "timestamp_sec": list(seg),
-            "label": anno["label"],
-        })
-    if not annotations:
-        return None
-    sliced = dict(entry)
-    sliced["annotations"] = annotations
-    sliced["frame"] = stop - first
-    frame_seconds = entry["duration"] / max(entry["frame"], 1)
-    sliced["duration"] = float(pts_array[last]) - origin + frame_seconds
-    sliced["source_frame_offset"] = entry.get("source_frame_offset", 0) + first
-    return sliced
-
-
-def _split_one_video(name, entry, train_ratio):
-    """Train/validation for a corpus of exactly one video: hold out its tail.
-
-    Splitting whole videos is the rule, but with a single video that would leave
-    one side empty. Cutting its timeline is the next best thing — the two halves
-    are at least disjoint in time, which a window-level split of the same video
-    would not be.
-    """
-    pts_array = _load_or_build_pts(entry["source_video"])
-    cut = max(1, min(len(pts_array) - 1, int(len(pts_array) * train_ratio)))
-    head = _slice_entry(entry, pts_array, 0, cut)
-    tail = _slice_entry(entry, pts_array, cut, len(pts_array))
-    if head is None or tail is None:
-        # Every bout sits on one side of the cut; a validation half with no
-        # annotation is worse than no split at all.
-        return {name: {**entry, "subset": "train"}}
-    return {
-        f"{name}_head": {**head, "subset": "train"},
-        f"{name}_tail": {**tail, "subset": "validation"},
-    }
-
-
-def _assign_subsets(entries, train_ratio):
-    """Label every entry `train` or `validation`, splitting WHOLE videos.
-
-    Never within a video. Adjacent windows of one recording show the same
-    animals in the same cage seconds apart, so a window-level split puts near
-    copies on both sides and reports a validation score the model has already
-    effectively seen. Whole-video splitting is also what the published
-    benchmarks do, which is what makes a number comparable.
-
-    The shuffle is seeded, so the same corpus always splits the same way.
-    """
-    if len(entries) == 1:
-        name, entry = next(iter(entries.items()))
-        return _split_one_video(name, entry, train_ratio)
-
-    order = sorted(entries)
-    np.random.RandomState(42).shuffle(order)
-    # Both sides get at least one video, whatever the ratio rounds to.
-    n_train = min(len(order) - 1, max(1, round(len(order) * train_ratio)))
-    return {
-        name: {**entries[name], "subset": "train" if i < n_train else "validation"}
-        for i, name in enumerate(order)
-    }
-
-
 def _generate_classmap_from_json(json_path, classmap_path):
     """Extract sorted unique labels from a dataset JSON and write classmap.txt."""
     with open(json_path, "r", encoding="utf-8") as f:
@@ -955,7 +875,11 @@ def materialize_dataset_proxies(
     return proxy_json
 
 
-def prepare_dataset(dataset_path, train_ratio=0.8,
+TRAIN_SUBSET = "train"
+VALIDATION_SUBSET = "validation"
+
+
+def prepare_dataset(dataset_path, subset=TRAIN_SUBSET,
                     included_stems=None, explicit_pairs=None, output_dir=None,
                     proxy_geometry=DEFAULT_PROXY_GEOMETRY, proxy_crf=PROXY_CRF,
                     proxy_workers=None, logger=None):
@@ -970,8 +894,11 @@ def prepare_dataset(dataset_path, train_ratio=0.8,
 
     Args:
         dataset_path: Directory containing videos and CSV annotations.
-        train_ratio: Fraction of *videos* for training (default: 0.8). The
-            split is whole-video; see `_assign_subsets`.
+        subset: Which subset every entry belongs to — `train` or `validation`.
+            Nothing is split here: a corpus is training data or it is evaluation
+            data, and which one it is was decided by the picker that chose the
+            folder. Holding a slice of the training videos back would only be
+            the same decision made worse, since it is made without seeing them.
         proxy_geometry: `ProxyGeometry` for the downscaled decode proxy built
             alongside each source video, or None to decode from the originals.
             Derive it from the training config with
@@ -1058,11 +985,8 @@ def prepare_dataset(dataset_path, train_ratio=0.8,
     if not entries:
         raise ValueError(f"None of the CSVs in {dataset_path} held a usable annotation.")
 
-    database = _assign_subsets(entries, train_ratio)
-    n_train = sum(1 for e in database.values() if e["subset"] == "train")
-    print(f"Split: {n_train} train / {len(database) - n_train} validation "
-          f"(whole videos)" if len(entries) > 1 else
-          f"Split: 1 video, held out its last {1 - train_ratio:.0%} for validation")
+    database = {name: {**entry, "subset": subset} for name, entry in entries.items()}
+    print(f"Prepared {len(database)} video(s) as `{subset}`")
 
     os.makedirs(output_dir, exist_ok=True)
     with open(json_path, "w", encoding="utf-8") as f:

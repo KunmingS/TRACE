@@ -52,6 +52,13 @@ type the rest of the commands at the `vtrace >` prompt, without repeating the
 program's name (`demo predict`, not `vtrace demo predict`). Tab completes,
 ctrl-r searches history, `exit` leaves.
 
+A run is usually several steps long, so `run` opens a bordered box to compose
+one in: type a step per line, chain them with `then`, and Submit when it reads
+right (ctrl-s, or tab to the button). Cancel with esc. `run` exists only at the
+prompt — from a shell the same chain is one command line. The same text works typed
+straight at the prompt — the box exists because a chain is too long to be
+comfortable on one line, not because it is the only way in.
+
 The annotator is a single static page. It reads videos and writes annotations
 **on the computer running the browser**, through the File System Access API:
 nothing is uploaded and there is no server-side state. Use it to open
@@ -106,23 +113,33 @@ vtrace predict --model-dir ~/.vtrace/demo/model --input /my/video.mp4
 ## Your own data
 
 ```bash
-# Train from selected video/annotation pairs
-vtrace train --model maev2b --video-path /my/dataset \
-  --pairs video01.mp4=video01_final.csv video02.mp4=video02.csv
+# Train from selected video/annotation pairs. Every epoch is checkpointed;
+# with no evaluation videos, none of them is called best.
+vtrace train --model maev2b --output /my/runs \
+  --pairs /my/dataset/video01.mp4=/my/dataset/video01_final.csv \
+          /my/dataset/video02.mp4=/my/dataset/video02.csv
 
-# Score the training run, or score it on held-out pairs
-vtrace eval --model-dir /my/dataset/model_YYYYMMDD_HHMMSS
-vtrace eval --model-dir /my/dataset/model_YYYYMMDD_HHMMSS \
-  --video-path /my/testset --pairs video03.mp4=video03.csv
+# Name evaluation videos and the training loop scores each epoch against
+# them, which is what writes best.pth
+vtrace train --model maev2b --output /my/runs \
+  --pairs /my/dataset/video01.mp4=/my/dataset/video01_final.csv \
+  --eval-pairs /my/testset/video03.mp4=/my/testset/video03.csv
+
+# Score a model that already exists
+vtrace eval --model-dir /my/runs/model_YYYYMMDD_HHMMSS \
+  --pairs /my/testset/video03.mp4=/my/testset/video03.csv
 
 # Predict on new videos
-vtrace predict --model-dir /my/dataset/model_YYYYMMDD_HHMMSS \
+vtrace predict --model-dir /my/runs/model_YYYYMMDD_HHMMSS \
   --input /path/to/video.mp4 --threshold 0.25
 
-# Run prep -> train -> predict end to end
-vtrace pipeline --train --infer --model maev2b \
-  --video-path /my/dataset --pairs video01.mp4=video01_final.csv \
-  --input /path/to/new/videos
+# Chain the steps with `then`. A later step reuses the model the training
+# step produced, so its timestamped folder never has to be typed. At the
+# `vtrace >` prompt this can be typed over several lines, no backslashes.
+vtrace train --model maev2b --output /my/runs \
+    --pairs /my/dataset/video01.mp4=/my/dataset/video01_final.csv \
+  then eval --pairs /my/testset/video03.mp4=/my/testset/video03.csv \
+  then predict --input /path/to/new/videos
 
 # Check PyPI for a newer release, and install it
 vtrace update
@@ -143,10 +160,20 @@ run, so the same preset fits any corpus.
 have multiple annotation CSVs beside it, such as `video01_draft.csv`,
 `video01_final.csv`, or a reviewed prediction exported from the annotator; each
 training or evaluation pair chooses the annotation file to use for that video.
-Relative paths are resolved against `--video-path`, so
-`video01.mp4=video01_final.csv` means both files are inside the work directory.
-Training creates a self-contained `model_YYYYMMDD_HHMMSS/` folder under
-`--video-path`.
+A pair names its own files, so there is no folder to set first; relative paths
+resolve against the working directory. Where the run itself goes is a separate
+question and is asked separately: `--output` is required, and the run writes a
+self-contained `model_YYYYMMDD_HHMMSS/` folder there. Evaluation videos are
+named the same way with `--eval-pairs`, and they are a corpus of their own —
+nothing is held back from the training videos.
+
+That choice decides what the run publishes. With evaluation videos, the loop
+scores every epoch against them and the folder holds **`best.pth`**, the epoch
+that scored highest. Without them nothing measured any epoch, so the folder
+holds **`last.pth`** instead and every epoch's checkpoint stays under
+`checkpoint/`. `vtrace eval` and `vtrace predict` read whichever is there, and
+`vtrace eval --model-dir DIR` with no `--pairs` re-scores the run on the same
+videos it validated against.
 
 V-TRACE annotation CSVs are time-based:
 

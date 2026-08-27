@@ -3,11 +3,19 @@
 Usage:
     vtrace app
     vtrace prepare
-    vtrace train --model maev2b --video-path /my/data --pairs video.mp4=video.csv
-    vtrace eval --model-dir /my/data/model_20260507_143012
-    vtrace predict --model-dir /my/data/model_20260507_143012 --input /my/video.mp4
-    vtrace pipeline --train --infer --video-path /my/data --pairs video.mp4=video.csv --input /my/new
+    vtrace train --model maev2b --pairs /my/data/video.mp4=/my/data/video.csv --output /my/runs
+    vtrace eval --model-dir /my/runs/model_20260507_143012 --pairs /my/test/v.mp4=/my/test/v.csv
+    vtrace predict --model-dir /my/runs/model_20260507_143012 --input /my/video.mp4
     vtrace update
+
+A pair names its own files, so no folder has to be set first. Steps chain with
+`then`, which replaces the old `vtrace pipeline`:
+
+    vtrace > train --pairs /my/data/a.mp4=/my/data/a.csv --output /my/runs
+             then eval --pairs /my/test/b.mp4=/my/test/b.csv
+             then predict --input /my/new
+
+See `vtrace.shell` for the prompt that makes a chain like that easy to type.
 """
 import argparse
 import json
@@ -26,12 +34,13 @@ from vtrace.model_artifacts import (
     create_model_dir,
     resolve_model_dir,
 )
+from vtrace.resources import INPUT_RESOLUTIONS, RESOURCE_PROFILE_IDS
 from vtrace.version import __version__
 from vtrace.weights import model_weight_choices
 
 
 # `--model NAME` -> config file. Adding a preset is one entry here plus the config;
-# the argparse choices and the pipeline spec both read this dict.
+# the argparse choices and the GUI's command builder both read this dict.
 MODEL_CONFIGS = {
     "maev2b": "configs/maev2b.py",
     "maev2b-distilled": "configs/maev2b_distilled.py",
@@ -90,32 +99,79 @@ def _write_prep_result(model_dir, dataset_json, classmap_path):
     return result
 
 
-def _prepare_pairs_into(work_dir, output_dir, args, proxy_geometry=None):
-    """Prepare explicit video/CSV pairs into ``output_dir``."""
+def _prepare_pairs_into(output_dir, pairs, *, subset,
+                        proxy_geometry=None, flag="--pairs"):
+    """Prepare explicit video/CSV pairs into ``output_dir`` as one subset.
+
+    ``subset`` is `train` or `validation`, and it is the caller's decision:
+    training data and evaluation data are different corpora chosen separately,
+    so there is nothing here to split.
+
+    A pair names its own files, so there is no folder argument. Relative paths
+    resolve against the working directory, which is where the reader is standing
+    and what every other command-line tool would do with them.
+    """
     from vtrace.data_prep import DEFAULT_PROXY_GEOMETRY, prepare_dataset
 
-    work_dir = os.path.abspath(work_dir)
-    explicit_pairs = getattr(args, "explicit_pairs", None)
-    if not explicit_pairs:
-        print("Error: --pairs is required. Pass each video/CSV as VIDEO_PATH=CSV_PATH.")
+    if not pairs:
+        print(f"Error: {flag} is required. Pass each video/CSV as VIDEO_PATH=CSV_PATH.")
         sys.exit(1)
 
-    print(f"Preparing pairs from: {work_dir}")
-    print(f"Selected pairs: {', '.join(explicit_pairs)}")
+    print(f"Preparing {len(pairs)} pair(s) as `{subset}`:")
+    for spec in pairs:
+        print(f"  {spec}")
     if proxy_geometry is None:
         proxy_geometry = DEFAULT_PROXY_GEOMETRY
-    output_dir, dataset_json, classmap_path = prepare_dataset(
-        work_dir,
-        train_ratio=getattr(args, "train_ratio", 0.8),
-        proxy_geometry=proxy_geometry,
-        proxy_crf=getattr(args, "proxy_crf", 23),
-        proxy_workers=getattr(args, "proxy_workers", None),
-        explicit_pairs=explicit_pairs,
-        output_dir=output_dir,
-    )
+    try:
+        output_dir, dataset_json, classmap_path = prepare_dataset(
+            os.getcwd(),
+            subset=subset,
+            proxy_geometry=proxy_geometry,
+            explicit_pairs=pairs,
+            output_dir=output_dir,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        # A mistyped path is the likeliest first error anyone makes, and every
+        # one of these already says exactly what is wrong. A traceback on top of
+        # that only buries it.
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
     _write_prep_result(output_dir, dataset_json, classmap_path)
     print()
     return output_dir, dataset_json, classmap_path
+
+
+def _merged_config(config_path, resolution=None):
+    """The config a run will really use, with `--input-resolution` folded in.
+
+    Read here rather than left to the training subprocess because prep needs it
+    first: the decode proxies are built to this config's geometry, and a proxy
+    built at another resolution would have training decode upsampled frames.
+    """
+    from vtrace.config import Config
+    from vtrace.proxy_geometry import input_resize_cfg_options
+
+    cfg = Config.fromfile(config_path)
+    if resolution:
+        cfg.merge_from_dict(input_resize_cfg_options(cfg, resolution))
+    return cfg
+
+
+def _resource_cfg_options(profile_id, cfg, *, training, resolution=None):
+    """Dataloader overrides for the chosen profile, or none when unset.
+
+    Unset means the config decides. A profile is a deliberate override of what
+    the config author picked, so silently applying one by default would make
+    every run ignore its own solver block.
+    """
+    if not profile_id:
+        return {}
+    from vtrace.resources import eval_cfg_options, profile_by_id, train_cfg_options
+
+    profile = profile_by_id(profile_id)
+    if training:
+        return train_cfg_options(profile, cfg, resolution)
+    return eval_cfg_options(profile, cfg)
 
 
 def _model_info_or_exit(model_dir):
@@ -154,30 +210,6 @@ def _fetch_latest_pypi_version(timeout=5.0, url=PYPI_JSON_URL):
     if not latest:
         raise RuntimeError("PyPI response did not include a version")
     return str(latest)
-
-
-def _get_access_urls(host, port):
-    """Return a list of URLs where the server can be reached."""
-    import socket
-    urls = []
-    urls.append(f"Local:   http://localhost:{port}")
-    if host == "0.0.0.0" or host == "::":
-        # Listening on all interfaces — discover LAN IPs
-        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
-            ip = info[4][0]
-            if not ip.startswith("127."):
-                urls.append(f"Network: http://{ip}:{port}")
-        # Fallback: connect to an external address to find the default route IP
-        if len(urls) == 1:
-            try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                s.connect(("8.8.8.8", 80))
-                ip = s.getsockname()[0]
-                s.close()
-                urls.append(f"Network: http://{ip}:{port}")
-            except OSError:
-                pass
-    return urls
 
 
 def gui_path():
@@ -221,16 +253,22 @@ def _scan_roots() -> list[Path]:
 def _local_directories(root, limit: int = _SCAN_LIMIT) -> dict:
     """basename -> [absolute paths], for directories at or under `root`.
 
-    `root` may be one path or several; the walk is breadth-ordered across them so
-    a shallow match in a later root is not crowded out by a deep one in an earlier.
+    `root` may be one path or several; the walk is breadth-first across all of
+    them, so every root's immediate children are indexed before anything deeper
+    anywhere. That is what the entry budget needs to be spent on: a data folder
+    sitting directly beside the checkout is a likelier pick than the fifth level
+    of a tree inside it, and depth-first ordering would spend the whole budget
+    on the latter before ever reaching the former.
     """
+    from collections import deque
+
     index: dict[str, list[str]] = {}
     seen = 0
     roots = [root] if isinstance(root, (str, Path)) else list(root)
-    stack = [(Path(r), 0) for r in reversed(roots)]
+    queue = deque((Path(r), 0) for r in roots)
     walked: set[str] = set()
-    while stack and seen < limit:
-        current, depth = stack.pop()
+    while queue and seen < limit:
+        current, depth = queue.popleft()
         # Roots overlap by construction (cwd sits under its own parent), so the same
         # directory would otherwise be walked, and indexed, more than once.
         key = str(current)
@@ -253,7 +291,7 @@ def _local_directories(root, limit: int = _SCAN_LIMIT) -> dict:
                 paths.append(entry.path)
             seen += 1
             if depth + 1 < _SCAN_DEPTH:
-                stack.append((Path(entry.path), depth + 1))
+                queue.append((Path(entry.path), depth + 1))
     return index
 
 
@@ -276,10 +314,6 @@ def _local_context() -> str:
     return f"<script>window.__VTRACE__ = {encoded};</script>"
 
 
-def _is_loopback(host: str) -> bool:
-    return host in ("127.0.0.1", "::1", "localhost", "")
-
-
 class _GuiHandler(SimpleHTTPRequestHandler):
     """Serves the single GUI file, and nothing else on disk.
 
@@ -290,8 +324,8 @@ class _GuiHandler(SimpleHTTPRequestHandler):
 
     gui_file = None
     quiet = True
-    # Filled in by `start_gui_server` when the server is loopback-only. Left None
-    # for any other interface: the paths on this machine are nobody else's business.
+    # Filled in by `start_gui_server`. The server is loopback-only, so these
+    # paths never leave the machine they describe.
     local_context = None
 
     def do_GET(self):
@@ -325,23 +359,26 @@ class _GuiHandler(SimpleHTTPRequestHandler):
             super().log_message(fmt, *args)
 
 
+# The only interface worth binding — see `serve` for why a LAN bind would serve
+# strictly less than double-clicking the file.
+LOOPBACK = "127.0.0.1"
 DEFAULT_GUI_PORT = 8765
 # Ports past the default to try before giving up. A stale server from an earlier
 # session should not turn `vtrace app` into a puzzle.
 _PORT_SEARCH_SPAN = 20
 
 
-def _bind_first_free(host, handler):
+def _bind_first_free(handler):
     """Bind the first free port at or after `DEFAULT_GUI_PORT`; (None, None) if none."""
     for port in range(DEFAULT_GUI_PORT, DEFAULT_GUI_PORT + _PORT_SEARCH_SPAN):
         try:
-            return ThreadingHTTPServer((host, port), handler), port
+            return ThreadingHTTPServer((LOOPBACK, port), handler), port
         except OSError:
             continue
     return None, None
 
 
-def start_gui_server(host="127.0.0.1", port=None, verbose=False):
+def start_gui_server(port=None, verbose=False):
     """Bind the annotator server and return (httpd, port), or (None, None).
 
     Returns rather than serves, so the caller decides whether to block on it or
@@ -353,17 +390,17 @@ def start_gui_server(host="127.0.0.1", port=None, verbose=False):
     handler = type("GuiHandler", (_GuiHandler,), {
         "gui_file": gui,
         "quiet": not verbose,
-        "local_context": _local_context() if _is_loopback(host) else None,
+        "local_context": _local_context(),
     })
     if port is not None:
         try:
-            return ThreadingHTTPServer((host, port), handler), port
+            return ThreadingHTTPServer((LOOPBACK, port), handler), port
         except OSError:
             return None, None
-    return _bind_first_free(host, handler)
+    return _bind_first_free(handler)
 
 
-def serve_in_background(host="127.0.0.1"):
+def serve_in_background():
     """Start the annotator on a daemon thread; return its URL, or None.
 
     The interactive session brings the annotator up by itself: it is the one thing
@@ -371,7 +408,7 @@ def serve_in_background(host="127.0.0.1"):
     `vtrace app` first is a step that only exists to be skipped. A daemon thread dies
     with the process, so leaving the session needs no teardown.
     """
-    httpd, port = start_gui_server(host)
+    httpd, port = start_gui_server()
     if httpd is None:
         return None
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
@@ -381,21 +418,30 @@ def serve_in_background(host="127.0.0.1"):
 def serve(args):
     """Serve the V-TRACE GUI over http://localhost.
 
-    Served rather than opened as a `file://` URL because the annotator uses the
-    File System Access API and IndexedDB: `http://localhost` is a secure context
-    with a stable origin, so folder permissions and the remembered last-folder
-    survive a reload. A `file://` page gets neither.
+    Not for the browser APIs: a `file://` page is a secure context in current
+    Chrome, and gets IndexedDB and the File System Access API just the same.
+    Two things it does not get. It has no `window.__VTRACE__`, the local
+    directory index that turns a folder picked through a capability-only API
+    back into the absolute path the copyable command needs. And every `file://`
+    page on the machine shares one origin, so a second copy of this file — or
+    any other local page — reads the same IndexedDB, down to the stored
+    directory handles. `http://localhost:PORT` supplies the index and an origin
+    of its own.
+
+    Loopback only. Serving to a LAN would hand out neither: the directory index
+    names paths on the server's disk, which is not where a remote viewer's
+    videos are, so a remote page is the bare file with extra steps.
     """
     if gui_path() is None:
         print("Error: the GUI file is missing from this installation "
               "(vtrace/static/gui/index.html).", file=sys.stderr)
         sys.exit(1)
 
-    httpd, port = start_gui_server(args.host, args.port, args.verbose)
+    httpd, port = start_gui_server(args.port, args.verbose)
     if httpd is None:
         if args.port is not None:
             # Explicitly asked for: fail loudly rather than quietly using another port.
-            print(f"\n  Cannot serve on {args.host}:{args.port} — port unavailable.\n",
+            print(f"\n  Cannot serve on {LOOPBACK}:{args.port} — port unavailable.\n",
                   file=sys.stderr)
         else:
             print(f"\n  Every port from {DEFAULT_GUI_PORT} to "
@@ -407,8 +453,7 @@ def serve(args):
     print()
     print("  V-TRACE annotator")
     print()
-    for line in _get_access_urls(args.host, port):
-        print(f"  {line}")
+    print(f"  {url}")
     print()
     print("  Videos are read straight from this computer — nothing is uploaded.")
     print("  Press Ctrl+C to stop.")
@@ -576,16 +621,81 @@ def update(args):
     return return_code
 
 
+def _tuned_profile_or_exit(config_path, model_dir, annotation_path, class_map):
+    """Benchmark the training dataloader and return the profile it recommends."""
+    from vtrace.resources import profile_by_name
+    from vtrace.steps import TrainTuneRequest, run_train_tune
+
+    print("\n--- Tuning train resources ---")
+    step = run_train_tune(TrainTuneRequest(
+        config_path=config_path,
+        model_dir=model_dir,
+        annotation_path=annotation_path,
+        class_map=class_map,
+    ))
+    if not step.ok:
+        print(f"\nResource tuning failed (exit code {step.returncode}); see {step.log_file}")
+        sys.exit(step.returncode)
+    with open(os.path.join(step.work_dir, "train_tune_result.json"), encoding="utf-8") as f:
+        recommended = json.load(f).get("recommended_profile")
+    profile = profile_by_name(recommended)
+    print(f"Using the `{profile.id}` resource profile.\n")
+    return profile.id
+
+
 def train(args):
-    """Train a model."""
+    """Train a model, and score it each epoch when evaluation data is given."""
     _require_cuda()
+    from vtrace.data_prep import TRAIN_SUBSET, VALIDATION_SUBSET
+    from vtrace.proxy_geometry import config_geometry
     from vtrace.steps import TrainRequest, run_train
 
-    model_dir = create_model_dir(args.output or args.video_path)
-    model_dir, dataset_json, classmap_path = _prepare_pairs_into(args.video_path, model_dir, args)
+    config_path = _resolve_config(args)
+    cfg = _merged_config(config_path, args.input_resolution)
+    geometry = config_geometry(cfg)
+
+    model_dir = create_model_dir(args.output)
+    model_dir, dataset_json, classmap_path = _prepare_pairs_into(
+        model_dir, args.explicit_pairs,
+        subset=TRAIN_SUBSET, proxy_geometry=geometry,
+    )
+
+    # Evaluation data is a corpus of its own, prepared into its own folder under
+    # the run. Nothing is held back from the training videos: which videos score
+    # the model is a choice, and it belongs to whoever knows the recordings.
+    eval_annotation = eval_data_dir = None
+    if args.eval_pairs:
+        eval_data_dir, eval_annotation, _ = _prepare_pairs_into(
+            os.path.join(model_dir, "eval_data"),
+            args.eval_pairs,
+            subset=VALIDATION_SUBSET, proxy_geometry=geometry, flag="--eval-pairs",
+        )
+
+    profile_id = args.resource_profile
+    if profile_id == "auto":
+        profile_id = _tuned_profile_or_exit(
+            config_path, model_dir, dataset_json, classmap_path
+        )
+
+    # Epoch counts stay unset unless asked for, so a config's own schedule is
+    # what runs. An override has to reach both keys: `scheduler.max_epoch`
+    # shapes the LR curve and `workflow.end_epoch` stops the loop.
+    cfg_options = {}
+    if args.epochs is not None:
+        cfg_options["scheduler.max_epoch"] = args.epochs
+        cfg_options["workflow.end_epoch"] = args.epochs
+    if args.val_start_epoch is not None:
+        cfg_options["workflow.val_start_epoch"] = args.val_start_epoch
+    if args.val_interval is not None:
+        cfg_options["workflow.val_eval_interval"] = args.val_interval
+    cfg_options.update(_resource_cfg_options(
+        profile_id, cfg, training=True, resolution=args.input_resolution
+    ))
+    if args.cfg_options:
+        cfg_options.update(args.cfg_options)
 
     request = TrainRequest(
-        config_path=_resolve_config(args),
+        config_path=config_path,
         model_dir=model_dir,
         nproc=args.nproc,
         seed=args.seed,
@@ -595,41 +705,61 @@ def train(args):
         dataset_dir=model_dir,
         annotation_path=dataset_json,
         class_map=classmap_path,
+        eval_annotation_path=eval_annotation,
+        eval_data_dir=eval_data_dir,
         pretrained=args.pretrained,
-        cfg_options=args.cfg_options,
+        cfg_options=cfg_options or None,
     )
 
     result = run_train(request)
 
-    if result.ok:
-        print(f"\nTraining completed successfully.")
-        print(f"Model directory: {model_dir}")
-    else:
+    if not result.ok:
         print(f"\nTraining failed (exit code {result.returncode}); see {result.log_file}")
-    sys.exit(result.returncode)
+        sys.exit(result.returncode)
+    print("\nTraining completed successfully.")
+    print(f"Model directory: {model_dir}")
+    if not eval_annotation:
+        print("  No evaluation data, so no epoch was scored: the folder holds "
+              "last.pth, not best.pth.")
+    return model_dir
 
 
 def test(args):
-    """Evaluate a trained model."""
+    """Evaluate a finished model on annotated videos."""
     _require_cuda()
+    from vtrace.data_prep import VALIDATION_SUBSET
+    from vtrace.proxy_geometry import config_geometry
     from vtrace.steps import TestRequest, run_test
 
     model_info = _model_info_or_exit(args.model_dir)
-    dataset_dir = model_info["model_dir"]
-    annotation_path = model_info["dataset_json"]
-    if args.explicit_pairs and not args.video_path:
-        print("Error: --pairs requires --video-path for evaluation data.")
-        sys.exit(1)
+    # Without `--pairs`, the data is the corpus the run scored its own epochs
+    # against. NOT the run's `dataset.json`: that one holds the training videos,
+    # every entry labelled `train`, and an evaluation pass reading it would find
+    # nothing to score.
+    annotation_path = model_info["eval_dataset_json"]
+    dataset_dir = (
+        os.path.dirname(annotation_path) if annotation_path else model_info["model_dir"]
+    )
     output_dir = create_eval_dir(model_info["model_dir"])
-    if args.video_path:
+
+    # The geometry comes from the model's own resolved config, not from a
+    # default: proxies built to another resolution would feed this model
+    # upsampled frames and quietly cost it accuracy.
+    cfg = _merged_config(model_info["config_path"])
+    if args.explicit_pairs:
         dataset_dir, annotation_path, _ = _prepare_pairs_into(
-            args.video_path,
-            output_dir,
-            args,
+            output_dir, args.explicit_pairs,
+            subset=VALIDATION_SUBSET, proxy_geometry=config_geometry(cfg),
         )
     elif not annotation_path:
-        print("Error: model_dir has no dataset.json. Pass --video-path and --pairs for evaluation data.")
+        print("Error: this run has no evaluation data of its own — it was trained "
+              "without --eval-pairs. Pass --pairs naming the videos to score it on.",
+              file=sys.stderr)
         sys.exit(1)
+
+    cfg_options = dict(_resource_cfg_options(args.resource_profile, cfg, training=False))
+    if args.cfg_options:
+        cfg_options.update(args.cfg_options)
 
     request = TestRequest(
         model_dir=model_info["model_dir"],
@@ -641,24 +771,29 @@ def test(args):
         auto_tune=args.auto_tune,
         dataset_dir=dataset_dir,
         annotation_path=annotation_path,
-        cfg_options=args.cfg_options,
+        cfg_options=cfg_options or None,
     )
 
     result = run_test(request)
 
-    if result.ok:
-        print(f"\nTesting completed successfully.")
-    else:
+    if not result.ok:
         print(f"\nTesting failed (exit code {result.returncode}); see {result.log_file}")
-    sys.exit(result.returncode)
+        sys.exit(result.returncode)
+    print("\nTesting completed successfully.")
+    return model_info["model_dir"]
 
 
 def infer(args):
-    """Run inference on video files."""
+    """Run prediction on videos that need no annotations."""
     _require_cuda()
     from vtrace.steps import InferRequest, run_infer
 
     model_info = _model_info_or_exit(args.model_dir)
+    cfg_options = dict(_resource_cfg_options(
+        args.resource_profile, _merged_config(model_info["config_path"]), training=False
+    ))
+    if args.cfg_options:
+        cfg_options.update(args.cfg_options)
 
     request = InferRequest(
         model_dir=model_info["model_dir"],
@@ -668,175 +803,17 @@ def infer(args):
         profile=args.profile,
         auto_tune=args.auto_tune,
         threshold=args.threshold,
-        cfg_options=args.cfg_options,
+        included_stems=args.include_stems or None,
+        cfg_options=cfg_options or None,
     )
 
     result = run_infer(request)
 
-    if result.ok:
-        print(f"\nInference completed successfully.")
-    else:
-        print(f"\nInference failed (exit code {result.returncode}); see {result.log_file}")
-    sys.exit(result.returncode)
-
-
-def _read_json(path):
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def _or_exit(result, label):
-    """Stop the pipeline at the first failing step."""
     if not result.ok:
-        print(f"\n{label} failed (exit code {result.returncode}); see {result.log_file}")
+        print(f"\nInference failed (exit code {result.returncode}); see {result.log_file}")
         sys.exit(result.returncode)
-    return result
-
-
-def _run_pipeline_spec(spec):
-    """Run the UI-shaped pipeline spec step by step."""
-    from vtrace.steps import (
-        InferRequest,
-        PrepRequest,
-        TestRequest,
-        TrainRequest,
-        TrainTuneRequest,
-        run_infer,
-        run_prep,
-        run_test,
-        run_train,
-        run_train_tune,
-    )
-    from vtrace.model_artifacts import resolve_model_dir
-    from vtrace.pipeline_plan import (
-        eval_resource_cfg_options,
-        eval_resource_settings,
-        prep_pairs,
-        prep_work_dir,
-        resource_profile_by_name,
-        resource_settings_from_profile,
-        train_resource_cfg_options,
-        train_resource_settings,
-    )
-
-    if spec.steps.train or spec.steps.extra_test or spec.steps.infer:
-        _require_cuda()
-
-    prep_result = None
-    active_model = None
-    config_path = _resolve_config(
-        argparse.Namespace(model=spec.model or DEFAULT_MODEL, config=spec.config or None)
-    )
-
-    # Derive the proxy geometry from the *merged* config rather than from the
-    # spec's raw int, so a `--cfg-options dataset.*.pipeline.*.resize=` override
-    # can't leave prep building proxies at a resolution training won't use.
-    from vtrace.config import Config
-    from vtrace.proxy_geometry import config_geometry, input_resize_cfg_options
-
-    resolved_cfg = Config.fromfile(config_path)
-    if spec.input_resolution:
-        resolved_cfg.merge_from_dict(
-            input_resize_cfg_options(resolved_cfg, spec.input_resolution)
-        )
-    proxy_geometry = config_geometry(resolved_cfg)
-
-    if spec.steps.train or spec.steps.extra_test:
-        print("\n--- Preparing dataset ---")
-        prep_proxy_workers = (
-            eval_resource_settings(spec).num_workers
-            if spec.steps.extra_test
-            else train_resource_settings(spec).num_workers
-        )
-        prep_result_step = _or_exit(run_prep(PrepRequest(
-            work_dir=prep_work_dir(spec),
-            train_ratio=spec.train_ratio,
-            proxy_resolution=proxy_geometry.short_side,
-            proxy_aspect=not proxy_geometry.square,
-            proxy_workers=prep_proxy_workers,
-            explicit_pairs=prep_pairs(spec),
-        )), "Dataset prep")
-        prep_result = _read_json(os.path.join(prep_result_step.work_dir, "prep_result.json"))
-
-    if spec.steps.train:
-        print("\n--- Training ---")
-        cfg_options = {
-            "scheduler.max_epoch": spec.epochs,
-            "workflow.end_epoch": spec.epochs,
-            "workflow.val_start_epoch": spec.val_start_epoch,
-            "workflow.val_eval_interval": spec.val_interval,
-        }
-
-        if spec.resource_profile == "auto":
-            print("\n--- Tuning train resources ---")
-            tune_step = _or_exit(run_train_tune(TrainTuneRequest(
-                config_path=config_path,
-                model_dir=prep_result["model_dir"],
-                annotation_path=prep_result["dataset_json"],
-                class_map=prep_result["classmap_path"],
-            )), "Train resource tuning")
-            tune_result = _read_json(os.path.join(tune_step.work_dir, "train_tune_result.json"))
-            resource_profile = resource_profile_by_name(tune_result.get("recommended_profile"))
-            train_settings = resource_settings_from_profile(resource_profile.id)
-        else:
-            train_settings = train_resource_settings(spec)
-
-        cfg_options.update(train_resource_cfg_options(
-            train_settings,
-            spec.input_resolution,
-            resolved_cfg,
-        ))
-
-        _or_exit(run_train(TrainRequest(
-            config_path=config_path,
-            model_dir=prep_result["model_dir"],
-            dataset_dir=prep_result["model_dir"],
-            annotation_path=prep_result["dataset_json"],
-            class_map=prep_result["classmap_path"],
-            cfg_options=cfg_options,
-        )), "Training")
-        active_model = resolve_model_dir(prep_result["model_dir"])
-
-    if not spec.steps.train and (spec.steps.extra_test or spec.steps.infer):
-        active_model = resolve_model_dir(spec.model_dir)
-
-    if spec.steps.extra_test:
-        print("\n--- Extra test ---")
-        test_request = TestRequest(
-            model_dir=active_model["model_dir"],
-            auto_tune=False,
-            cfg_options=eval_resource_cfg_options(eval_resource_settings(spec), resolved_cfg),
-        )
-        if prep_result:
-            test_request.dataset_dir = prep_result["model_dir"]
-            test_request.annotation_path = prep_result["dataset_json"]
-        _or_exit(run_test(test_request), "Extra test")
-
-    if spec.steps.infer:
-        print("\n--- Inference ---")
-        _or_exit(run_infer(InferRequest(
-            model_dir=active_model["model_dir"],
-            input=spec.input_selection.folder,
-            included_stems=spec.input_selection.stems,
-            threshold=spec.threshold,
-            auto_tune=False,
-            cfg_options=eval_resource_cfg_options(eval_resource_settings(spec), resolved_cfg),
-        )), "Inference")
-
-    print("\nPipeline completed successfully.")
-
-
-def run(args):
-    """Run the pipeline: prep -> train -> test -> predict."""
-    from vtrace.pipeline_plan import PipelineSpecError, spec_from_cli_args, validate_pipeline_spec
-
-    spec = spec_from_cli_args(args)
-    try:
-        validate_pipeline_spec(spec)
-    except PipelineSpecError as exc:
-        print(f"Error: {exc}")
-        sys.exit(1)
-    _run_pipeline_spec(spec)
+    print("\nInference completed successfully.")
+    return model_info["model_dir"]
 
 
 def demo(args):
@@ -848,8 +825,6 @@ def demo(args):
 
 
 def _add_serve_args(parser):
-    parser.add_argument("--host", default="127.0.0.1",
-        help="Interface to serve on (default: 127.0.0.1, this computer only)")
     parser.add_argument("--port", type=int, default=None,
         help=f"Port (default: {DEFAULT_GUI_PORT}, or the next free one)")
     parser.add_argument("--no-browser", action="store_true",
@@ -866,23 +841,27 @@ def _add_model_config_args(parser):
         help="Custom config file path (overrides --model)")
 
 
-def _add_video_path_arg(parser, *, required=True):
-    parser.add_argument("--video-path", type=str, required=required,
-        help="Folder holding the videos and their annotation CSVs. Relative --pairs "
-             "are resolved against this path.")
-
-
 def _add_model_dir_arg(parser):
     parser.add_argument("--model-dir", type=str, required=True,
         help="Model artifact directory produced by `vtrace train`")
 
 
-def _add_pair_args(parser, *, required=True):
-    parser.add_argument("--pairs", dest="explicit_pairs",
+def _add_pair_args(parser, *, required=True, flag="--pairs", label="training"):
+    parser.add_argument(flag, dest="explicit_pairs" if flag == "--pairs" else "eval_pairs",
         nargs="+", required=required, metavar="VIDEO=CSV",
-        help="Explicit video/annotation pairs to use from --video-path. Each item "
-             "must be VIDEO_PATH=CSV_PATH. Relative paths are resolved against "
-             "--video-path; absolute paths are accepted.")
+        help=f"The {label} videos and their annotation CSVs, as VIDEO_PATH=CSV_PATH. "
+             "Full paths; relative ones resolve against the working directory. "
+             "Each pair names its own files, so there is no folder to set first.")
+
+
+def _add_resource_profile_arg(parser, *, include_auto=False):
+    choices = [*RESOURCE_PROFILE_IDS, "auto"] if include_auto else list(RESOURCE_PROFILE_IDS)
+    extra = (" `auto` benchmarks the training dataloader first."
+             if include_auto else "")
+    parser.add_argument("--resource-profile", choices=choices, default=None,
+        help="Dataloader batch size, workers, decode threads and prefetch depth "
+             "as one named setting. Default: whatever the model config asks for."
+             + extra + " Use --cfg-options for finer control.")
 
 
 def _add_common_job_args(parser, *, include_nproc=False, include_profile=False, include_auto_tune=False):
@@ -901,17 +880,40 @@ def _add_common_job_args(parser, *, include_nproc=False, include_profile=False, 
 
 def _add_train_args(parser):
     _add_model_config_args(parser)
-    _add_video_path_arg(parser)
     _add_pair_args(parser)
-    parser.add_argument("--output", type=str, default=None,
-        help="Directory to create the run folder in (default: --video-path). The "
-             "dataset folder is an input; keeping checkpoints out of it lets the "
-             "same corpus feed many runs without collecting their outputs.")
+    # Required, not derived from where the videos happen to live. A corpus is an
+    # input that many runs read; which of them writes its checkpoints beside it
+    # is a decision, and an unasked one puts run folders wherever the data sits.
+    parser.add_argument("--output", type=str, required=True,
+        help="Directory to create the run folder in. The run writes "
+             "model_YYYYMMDD_HHMMSS/ here, holding the checkpoints, the class "
+             "map and the resolved config.")
+    # Evaluation data turns a training run from "every epoch was saved" into
+    # "one epoch was chosen". Separate videos, not a slice of the training ones.
+    parser.add_argument("--eval-pairs", nargs="+", default=None, metavar="VIDEO=CSV",
+        help="Evaluation videos and their CSVs, as VIDEO_PATH=CSV_PATH. Given "
+             "these, the training loop scores the model on them and writes "
+             "best.pth; without them the run keeps every epoch's checkpoint and "
+             "names none of them best. Equivalent to `train ... then eval ...`.")
     parser.add_argument("--pretrained", type=str, default=None,
         help="Pretrained backbone weights path (overrides config's pretrain)")
+    parser.add_argument("--epochs", type=int, default=None,
+        help="Total training epochs (default: the config's own schedule)")
+    parser.add_argument("--val-start-epoch", type=int, default=None,
+        help="First epoch to score against the evaluation data (default: config)")
+    parser.add_argument("--val-interval", type=int, default=None,
+        help="Epochs between evaluation passes (default: config)")
+    parser.add_argument("--input-resolution", type=int, choices=list(INPUT_RESOLUTIONS),
+        default=None,
+        help="Override the model config's input resolution, and with it the "
+             "decode-proxy geometry built during prep. Default: whatever the "
+             "config asks for. Note that vjepa2 also needs "
+             "--cfg-options model.backbone.crop=<same value>.")
+    _add_resource_profile_arg(parser, include_auto=True)
     _add_common_job_args(parser, include_nproc=True)
     parser.add_argument("--resume", type=str, default=None, help="Resume from checkpoint path")
-    parser.add_argument("--not-eval", action="store_true", help="Skip evaluation, inference only")
+    parser.add_argument("--not-eval", action="store_true",
+        help="Run the evaluation pass for its predictions only, without scoring them")
     parser.add_argument("--disable-deterministic", action="store_true",
         help="Disable deterministic for faster speed")
     parser.set_defaults(func=train)
@@ -919,12 +921,11 @@ def _add_train_args(parser):
 
 def _add_eval_args(parser):
     _add_model_dir_arg(parser)
-    _add_video_path_arg(parser, required=False)
-    _add_pair_args(parser, required=False)
-    parser.add_argument("--cache-workers", type=int, default=None,
-        help="Parallel workers for cached evaluation clip writing")
+    _add_pair_args(parser, required=False, label="evaluation")
+    _add_resource_profile_arg(parser)
     _add_common_job_args(parser, include_nproc=True, include_profile=True, include_auto_tune=True)
-    parser.add_argument("--not-eval", action="store_true", help="Skip evaluation, inference only")
+    parser.add_argument("--not-eval", action="store_true",
+        help="Produce predictions without scoring them")
     parser.set_defaults(func=test)
 
 
@@ -935,52 +936,113 @@ def _add_predict_args(parser):
              "(supported: .mp4, .avi, .mov, .mkv, .webm)")
     parser.add_argument("--output", type=str, default=None,
         help="Directory for the prediction files (default: beside each video)")
+    parser.add_argument("--include-stems", dest="include_stems", nargs="+", default=None,
+        help="Restrict a directory --input to these video stems")
     parser.add_argument("--threshold", type=float, default=0.0,
         help="Minimum score for a detection to reach the prediction file")
+    _add_resource_profile_arg(parser)
     _add_common_job_args(parser, include_profile=True, include_auto_tune=True)
     parser.set_defaults(func=infer)
 
 
-def _add_pipeline_args(parser):
-    parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
-    parser.add_argument("--cfg-options", nargs="+", action=DictAction, help="Override config settings")
-    _add_model_config_args(parser)
-    parser.add_argument("--train", action="store_true",
-        help="Train a model")
-    parser.add_argument("--extra-test", action="store_true",
-        help="Run an additional evaluation pass")
-    parser.add_argument("--infer", action="store_true",
-        help="Run inference")
-    parser.add_argument("--model-dir", type=str, default=None,
-        help="Model artifact directory when not training")
-    parser.add_argument("--video-path", type=str, default=None,
-        help="Folder of videos and their annotation CSVs, for train or extra-test prep")
-    parser.add_argument("--pairs", dest="explicit_pairs", nargs="+", metavar="VIDEO=CSV",
-        help="Explicit video/annotation pairs for train or extra-test prep")
-    parser.add_argument("--input-resolution", type=int, choices=[112, 144, 160, 192, 224, 256], default=None,
-        help="Override the model config's input resolution, and with it the "
-             "decode-proxy geometry built during prep. Default: whatever the "
-             "config asks for. Note that vjepa2 also needs "
-             "--cfg-options model.backbone.crop=<same value>.")
-    parser.add_argument("--train-ratio", type=float, default=0.8,
-        help="Train/validation split ratio for prep (default: 0.8)")
-    parser.add_argument("--epochs", type=int, default=100,
-        help="Total training epochs (default: 100)")
-    parser.add_argument("--val-start-epoch", type=int, default=50,
-        help="Validation start epoch (default: 50)")
-    parser.add_argument("--val-interval", type=int, default=10,
-        help="Validation interval in epochs (default: 10)")
-    parser.add_argument("--resource-profile", choices=["auto", "low", "balanced", "high"], default="balanced",
-        help="Dataloader resource profile for every step (default: balanced). "
-             "`auto` benchmarks the training dataloader first; evaluation stays balanced. "
-             "Use --cfg-options for finer control.")
-    parser.add_argument("--input", type=str, default=None,
-        help="Input video file or folder for inference")
-    parser.add_argument("--include-stems", dest="include_stems", nargs="+",
-        help="Restrict inference to selected video stems")
-    parser.add_argument("--threshold", type=float, default=0.0,
-        help="Minimum prediction score for pipeline inference outputs")
-    parser.set_defaults(func=run)
+# Separates the steps of a chain. A bare word rather than the next verb itself,
+# because `--pairs` takes one-or-more values and would swallow a following
+# `eval` as a filename. `then` cannot be a path or a VIDEO=CSV pair, so the
+# split is unambiguous before any parsing happens.
+CHAIN_SEPARATOR = "then"
+# Steps that can take the model a previous step produced.
+_MODEL_CONSUMERS = ("eval", "predict")
+
+
+def _split_chain(argv):
+    """argv -> one argv per step. Empty steps (`then then`) are an error."""
+    steps, current = [], []
+    for token in argv:
+        if token == CHAIN_SEPARATOR:
+            steps.append(current)
+            current = []
+        else:
+            current.append(token)
+    steps.append(current)
+    if any(not step for step in steps):
+        raise SystemExit(
+            f"Empty step in the chain: `{CHAIN_SEPARATOR}` needs a command on both sides."
+        )
+    return steps
+
+
+def _fold_eval_into_train(steps):
+    """`train ... then eval ...` is ONE run, not two.
+
+    The eval step names the videos the training loop scores each epoch against,
+    and that score is what picks best.pth — so it has to be known before
+    training starts. Measuring the finished model afterwards could report a
+    number but could no longer choose an epoch.
+
+    An `eval` that follows anything else, or stands alone, keeps its ordinary
+    meaning: score a finished model.
+    """
+    folded = []
+    index = 0
+    while index < len(steps):
+        step = steps[index]
+        following = steps[index + 1] if index + 1 < len(steps) else None
+        if step[0] == "train" and following and following[0] == "eval":
+            merged = list(step)
+            merged += ["--eval-pairs", *_parse_eval_data_step(following).pairs]
+            folded.append(merged)
+            index += 2
+            continue
+        folded.append(step)
+        index += 1
+    return folded
+
+
+def _parse_eval_data_step(step):
+    """The data flags of a chained `eval` step, as its own tiny parser.
+
+    Deliberately narrow: inside a chain after `train`, the eval step exists to
+    name videos. Its own `--model-dir` would name a model the training run is
+    about to replace, so it is rejected rather than quietly ignored.
+    """
+    parser = argparse.ArgumentParser(prog=f"{CHAIN_SEPARATOR} eval", add_help=False)
+    parser.add_argument("command")
+    parser.add_argument("--pairs", dest="pairs", nargs="+", default=None)
+    parsed, unknown = parser.parse_known_args(step)
+    if unknown:
+        raise SystemExit(
+            f"`{CHAIN_SEPARATOR} eval` after `train` takes only --pairs; it names "
+            f"the videos that score each epoch. Unexpected: {' '.join(unknown)}"
+        )
+    if not parsed.pairs:
+        raise SystemExit(
+            f"`{CHAIN_SEPARATOR} eval` needs --pairs naming the evaluation videos."
+        )
+    return parsed
+
+
+def _run_chain(argv, parse):
+    """Run each step in order, stopping at the first that fails.
+
+    A step that produced a model hands its folder to any later step that did not
+    name one, which is the whole reason to chain rather than paste three
+    commands: the run folder is a timestamp nobody wants to copy by hand.
+    """
+    steps = _fold_eval_into_train(_split_chain(argv))
+    model_dir = None
+    for position, step in enumerate(steps, start=1):
+        if step[0] in _MODEL_CONSUMERS and model_dir and "--model-dir" not in step:
+            step = [*step, "--model-dir", model_dir]
+        print(f"\n=== step {position}/{len(steps)}: {' '.join(step)} ===")
+        args = parse(step)
+        handler = getattr(args, "func", None)
+        if handler is None:
+            raise SystemExit(f"`{step[0]}` is not a command that can run in a chain.")
+        produced = handler(args)
+        if isinstance(produced, str):
+            model_dir = produced
+    print(f"\nChain finished: {len(steps)} step(s).")
+    return model_dir
 
 
 def main(argv=None):
@@ -1020,10 +1082,6 @@ def main(argv=None):
         help="Run prediction on videos (no annotations needed)")
     _add_predict_args(predict_parser)
 
-    pipeline_parser = subparsers.add_parser("pipeline",
-        help="Run the pipeline: prep -> train -> test -> predict")
-    _add_pipeline_args(pipeline_parser)
-
     demo_parser = subparsers.add_parser("demo",
         help="Download and run the CalMS21 walkthrough")
     demo_subparsers = demo_parser.add_subparsers(dest="demo_command", metavar="STEP", required=True)
@@ -1038,6 +1096,10 @@ def main(argv=None):
     demo_subparsers.add_parser("predict", help="Predict on a held-out demo video")
     demo_subparsers.add_parser("train", help="Prep and train on the demo videos")
     demo_parser.set_defaults(func=demo)
+
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if CHAIN_SEPARATOR in argv:
+        return _run_chain(argv, parser.parse_args)
 
     args = parser.parse_args(argv)
     handler = getattr(args, "func", None)

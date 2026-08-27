@@ -34,6 +34,10 @@ class TrainRequest(BaseModel):
     dataset_dir: Optional[str] = None
     annotation_path: Optional[str] = None
     class_map: Optional[str] = None
+    # Evaluation data, when the run has any: a separate corpus with its own
+    # dataset.json. Unset means training only — checkpoints, no best.pth.
+    eval_annotation_path: Optional[str] = None
+    eval_data_dir: Optional[str] = None
     pretrained: Optional[str] = None
     cfg_options: Optional[dict] = None
     explicit_pairs: Optional[List[str]] = None
@@ -89,7 +93,9 @@ class InferRequest(BaseModel):
 class PrepRequest(BaseModel):
     work_dir: str
     model_dir: Optional[str] = None
-    train_ratio: float = 0.8
+    # `train` or `validation`. Nothing is split during prep; a corpus is one or
+    # the other, and the caller knows which because it chose the folder.
+    subset: str = "train"
     # Decode proxy built next to each source video during prep. 0 disables it
     # and decodes from the originals.
     proxy_resolution: int = 144
@@ -287,6 +293,10 @@ def _train_command(request: TrainRequest) -> list[str]:
         cfg_opts.append(f"annotation_path={request.annotation_path}")
     if request.class_map:
         cfg_opts.append(f"class_map={request.class_map}")
+    if request.eval_annotation_path:
+        cfg_opts.append(f"eval_annotation_path={request.eval_annotation_path}")
+    if request.eval_data_dir:
+        cfg_opts.append(f"eval_data_path={request.eval_data_dir}")
     if request.pretrained:
         cfg_opts.append(f"model.projection.custom.pretrain={request.pretrained}")
     if request.cfg_options:
@@ -387,7 +397,7 @@ def _prep_command(request: PrepRequest) -> list[str]:
     """Build the subprocess command for a dataset preparation step."""
     cmd = [
         sys.executable, "tools/prep_dataset.py", request.work_dir,
-        "--train-ratio", str(request.train_ratio),
+        "--subset", request.subset,
         "--proxy-resolution", str(request.proxy_resolution),
         "--proxy-crf", str(request.proxy_crf),
         "--output-dir", request.model_dir,

@@ -85,6 +85,12 @@ def demo_steps():
     )
 
 
+# `run` only exists at the prompt: it opens a box to compose a chain, which is a
+# way of typing a command and has nothing to do outside a session. The screen is
+# printed in both places, so the row appears only in the interactive one.
+RUN_STEP = ("run", "compose a training or prediction run")
+
+
 def _typed(command: str, interactive: bool) -> str:
     """How the reader should type `command` where they are standing.
 
@@ -124,6 +130,8 @@ def _rich_screen(console, version: str, interactive: bool, annotator=None) -> No
     # One shared label width, so the three command blocks line up as a single
     # column instead of each grid measuring only its own rows.
     labels = [_typed(command, interactive) for command, _note, _done in demo_steps()]
+    if interactive:
+        labels.append(f"   {RUN_STEP[0]}")
     if annotator:
         # The URL shares this column; leaving it out truncates it to an ellipsis.
         labels.append(annotator)
@@ -152,6 +160,11 @@ def _rich_screen(console, version: str, interactive: bool, annotator=None) -> No
         console.print(rows([(Text(f"   {_typed('vtrace app', interactive)}", style="bold"),
                              "start the annotator")]))
 
+    if interactive:
+        console.print()
+        console.print(Text(" Train a model, or label videos with one", style="bold"))
+        console.print(rows([(Text(f"   {RUN_STEP[0]}", style="bold"), RUN_STEP[1])]))
+
     console.print()
     console.print(Text(" Try the demo", style="bold"))
     entries = []
@@ -167,7 +180,7 @@ def _rich_screen(console, version: str, interactive: bool, annotator=None) -> No
 
     console.print()
     console.print(rows([(Text(f"   {_typed('vtrace --help', interactive)}", style="bold"),
-                         "every command and flag")]))
+                         "documentation, on the web")]))
     if interactive:
         console.print()
         console.print(Text(" Type a command below. Tab completes, ctrl-r searches "
@@ -180,9 +193,12 @@ def _plain_screen(version: str, interactive: bool, stream, annotator=None) -> st
     entries = [(f"   {annotator}", "read and label videos on this computer")
                if annotator
                else (f"   {_typed('vtrace app', interactive)}", "start the annotator")]
+    run_entries = [(f"   {RUN_STEP[0]}", RUN_STEP[1])] if interactive else []
+    entries += run_entries
     entries += [((" * " if done else "   ") + _typed(command, interactive), note)
                 for command, note, done in demo_steps()]
-    entries += [(f"   {_typed('vtrace --help', interactive)}", "every command and flag")]
+    entries += [(f"   {_typed('vtrace --help', interactive)}",
+                 "documentation, on the web")]
     width = max(len(label) for label, _ in entries)
 
     lines = [_art(encoding)]
@@ -192,9 +208,15 @@ def _plain_screen(version: str, interactive: bool, stream, annotator=None) -> st
     heading = (" Annotator running — open it in Chrome or Edge" if annotator
                else " Annotate videos in your browser")
     lines += ["", heading, f"{entries[0][0]:<{width}}   {entries[0][1]}"]
+    if run_entries:
+        lines += ["", " Train a model, or label videos with one"]
+        lines += [f"{label:<{width}}   {note}" for label, note in run_entries]
+    demo_start = 1 + len(run_entries)
     lines += ["", " Try the demo"]
-    lines += [f"{label:<{width}}   {note}" for label, note in entries[1:4]]
-    lines += ["", f"{entries[4][0]:<{width}}   {entries[4][1]}", ""]
+    lines += [f"{label:<{width}}   {note}"
+              for label, note in entries[demo_start:demo_start + 3]]
+    tail_label, tail_note = entries[-1]
+    lines += ["", f"{tail_label:<{width}}   {tail_note}", ""]
     if interactive:
         lines += [" Type a command below. Tab completes, ctrl-r searches history, "
                   "`exit` leaves.", ""]

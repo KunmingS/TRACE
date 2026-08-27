@@ -54,13 +54,23 @@ def resolve_model_dir(model_dir):
     if not model_path.is_dir():
         raise FileNotFoundError(f"Model directory not found: {model_path}")
 
+    # A run with evaluation data publishes best.pth; one without publishes
+    # last.pth, since no epoch was scored. Prefer the measured one when a folder
+    # somehow holds both — a later run with evaluation data supersedes an
+    # earlier one without.
     best_pth = model_path / "best.pth"
+    last_pth = model_path / "last.pth"
+    weights = best_pth if best_pth.is_file() else last_pth
     classmap = model_path / "classmap.txt"
     resolved = model_path / RESOLVED_CONFIG_NAME
     config_file = model_path / "config.txt"
     dataset_json = model_path / "dataset.json"
+    # The corpus the run scored its epochs against, when it had one. Its own
+    # `dataset.json` holds the training videos and they are all labelled
+    # `train`, so it is not something an evaluation pass can read.
+    eval_dataset_json = model_path / "eval_data" / "dataset.json"
 
-    missing = [str(path) for path in (best_pth, classmap) if not path.is_file()]
+    missing = [str(path) for path in (weights, classmap) if not path.is_file()]
     if not resolved.is_file() and not config_file.is_file():
         missing.append(f"{resolved} (or {config_file})")
     if missing:
@@ -80,8 +90,11 @@ def resolve_model_dir(model_dir):
 
     return {
         "model_dir": str(model_path),
-        "checkpoint": str(best_pth),
+        "checkpoint": str(weights),
         "class_map": str(classmap),
         "config_path": config_path,
         "dataset_json": str(dataset_json) if dataset_json.is_file() else None,
+        "eval_dataset_json": (
+            str(eval_dataset_json) if eval_dataset_json.is_file() else None
+        ),
     }
