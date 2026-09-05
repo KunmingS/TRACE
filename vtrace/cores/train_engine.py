@@ -38,8 +38,14 @@ def train_one_epoch(
     scaler=None,
     accumulation_steps=1,
     amp_dtype=torch.float16,
+    progress=None,
 ):
-    """Training the model for one epoch"""
+    """Training the model for one epoch.
+
+    `progress`, when given, is called with (step, mean loss) after every
+    iteration — it is what draws the single redrawn line the terminal sees,
+    while the logger keeps the full periodic record in the run's log file.
+    """
 
     logger.info("[Train]: Epoch {:d} started".format(curr_epoch))
     losses_tracker = {}
@@ -96,6 +102,13 @@ def train_one_epoch(
             if key not in losses_tracker:
                 losses_tracker[key] = AverageMeter()
             losses_tracker[key].update(value.item())
+
+        if progress is not None:
+            # The mean is what the line reports; the step's own value is what
+            # the curve plots, so its columns show shape rather than a running
+            # average that can only flatten.
+            progress(iter_idx + 1, losses_tracker["cost"].avg,
+                     step_loss=losses_tracker["cost"].val)
 
         # printing each logging_interval
         if ((iter_idx != 0) and (iter_idx % logging_interval) == 0) or ((iter_idx + 1) == num_iters):

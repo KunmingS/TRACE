@@ -138,22 +138,27 @@ scheduler = dict(type="LinearWarmupCosineAnnealingLR", warmup_epoch=2, max_epoch
 
 inference = dict(load_from_raw_predictions=False, save_raw_prediction=False)
 post_processing = dict(
-    # Soft-NMS merges the dense per-frame scores into behaviour bouts. The research
-    # configs turn this off (iou_threshold=1.0, max_seg_num=500000) because frame-level
-    # mAP is scored on the raw dense output; a reviewer opening the prediction file
-    # wants bouts, not one entry per frame.
+    # No NMS. The dense head scores every frame, and the frame mAP that picks
+    # the best epoch is computed from whatever segments survive post-processing.
+    # Soft-NMS capped at a few thousand segments per video threw most frames
+    # away and reported ~0.6 for a model that scores ~0.95 on the raw dense
+    # output — the same protocol the research configs use. Prediction files do
+    # not need NMS for readable bouts either: tools/infer.py run-length merges
+    # consecutive same-label frames into bouts before writing the CSV.
+    pre_nms_topk=0,
     nms=dict(
-        use_soft_nms=True,
-        sigma=0.5,
-        max_seg_num=2000,
-        min_score=0.05,
+        use_soft_nms=False,
+        iou_threshold=1.0,
+        min_score=0.0,
+        max_seg_num=500000,
         multiclass=True,
-        voting_thresh=0.7,
     ),
     save_dict=True,
 )
-# `vtrace demo train` runs this over all 70 official CalMS21 training videos
-# (~125 iterations per epoch at batch 4). Ten epochs with a 2-epoch warmup is the
+# `vtrace demo train` runs this over the 70 official CalMS21 training videos, 55 to
+# train on and 15 cut out to pick the epoch (~324 iterations per epoch at batch 4
+# with the rare-behaviour oversampling), then scores the run once on the 19 test
+# videos. Ten epochs with a 2-epoch warmup is the
 # same schedule the research recipe in `calms21_distill_vmaeB.py` uses, so the demo
 # reproduces the released checkpoint's training rather than gesturing at it.
 # `logging_interval` stays finer than the research config's 50: a walkthrough wants

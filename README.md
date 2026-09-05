@@ -47,17 +47,19 @@ vtrace
 ```
 
 That opens an interactive session. The annotator starts with it, so the screen
-gives you its address — open `http://localhost:8765` in Chrome or Edge — and you
-type the rest of the commands at the `vtrace >` prompt, without repeating the
-program's name (`demo predict`, not `vtrace demo predict`). Tab completes,
-ctrl-r searches history, `exit` leaves.
+gives you its address — open `http://localhost:8765` in Chrome or Edge — and a
+bordered **command box** opens under the start screen. The box is where the
+command the annotator's configuration page writes goes: paste it, press Enter,
+and it runs. Ordinary commands (`demo predict`, `help`) run from the same box,
+without repeating the program's name. Esc closes the box and leaves the plain
+`vtrace >` prompt, where `run` opens it again and `exit` leaves.
 
-A run is usually several steps long, so `run` opens a bordered box to compose
-one in: type a step per line, chain them with `then`, and Submit when it reads
-right (ctrl-s, or tab to the button). Cancel with esc. `run` exists only at the
-prompt — from a shell the same chain is one command line. The same text works typed
-straight at the prompt — the box exists because a chain is too long to be
-comfortable on one line, not because it is the only way in.
+The folders in a pasted command are named, not located — `<train#8b1d0c47>` is
+the folder called `train` whose contents hash to those digits — because a
+browser never learns where a picked folder lives. The session looks each name
+up on the machine it runs on and prints the path it found. From a plain shell
+or a job script the same command is refused with a list of what to replace:
+paste the page's shell form there and fill the paths in.
 
 The annotator is a single static page. It reads videos and writes annotations
 **on the computer running the browser**, through the File System Access API:
@@ -77,9 +79,9 @@ benchmark in its official split — 70 training videos (4.7 h, 2287 labelled
 bouts) and 19 test videos (2.4 h, 1521 bouts):
 
 ```bash
-vtrace demo predict     # predict on a held-out video, write its predictions
+vtrace demo predict     # predict on the 19 held-out test videos, write their predictions
 vtrace demo download    # fetch the videos (train ~19 GB, test ~11 GB)
-vtrace demo train       # prep + train on the 70 official training videos
+vtrace demo train       # prep + train on the 70 official training videos, then score the test split
 ```
 
 V-TRACE does not re-host CalMS21. The annotation CSVs ship with the package; the
@@ -91,10 +93,19 @@ skipping what is already on disk. `--split train` / `--split test` limits what
 is pulled, and `--from /path/to/task1_videos_mp4.zip` reads a copy you already
 have.
 
-`vtrace demo predict` pulls the single video it needs and runs in about a minute.
-`vtrace demo train` is a real training run on the full benchmark, not a smoke
-test: 337 iterations per epoch over ten epochs, roughly three hours on one
-modern GPU (~23 GB of VRAM).
+`vtrace demo predict` labels all 19 test videos with the released checkpoint
+(`--video STEM` for just one, `--model-dir DIR` for a run you trained) and writes a
+`.pred.csv` beside each, plus a small `.pred.scores.npz` of per-frame class scores
+from which it draws the precision-recall curve of each behavior over the whole
+split and reports the frame mAP they integrate to. `vtrace demo train` is a real training run on the full
+benchmark, not a smoke test: 324 iterations per epoch over ten epochs, roughly
+three hours on one modern GPU (~23 GB of VRAM). It cuts 15 of the 70 training
+videos out to pick the best epoch, and when training is done it labels the 19
+test videos with the finished checkpoint exactly as `vtrace demo predict
+--model-dir` would — the same per-video table, precision-recall curves and
+frame mAP — so a fresh run and the released model are read the same way. Those
+19 videos never took part in training or epoch selection, so that mAP is the
+run's benchmark figure.
 
 If you use the demo data, cite CalMS21: Sun et al., *The Multi-Agent Behavior
 Dataset: Mouse Dyadic Social Interactions*, NeurIPS 2021 Datasets & Benchmarks.
@@ -114,10 +125,11 @@ vtrace predict --model-dir ~/.vtrace/demo/model --input /my/video.mp4
 
 ```bash
 # Train from selected video/annotation pairs. Every epoch is checkpointed;
-# with no evaluation videos, none of them is called best.
+# with no evaluation videos, none of them is called best. The annotation is
+# a CSV, or a <video>.json written by an earlier version of the annotator.
 vtrace train --model maev2b --output /my/runs \
   --pairs /my/dataset/video01.mp4=/my/dataset/video01_final.csv \
-          /my/dataset/video02.mp4=/my/dataset/video02.csv
+          /my/dataset/video02.mp4=/my/dataset/video02.json
 
 # Name evaluation videos and the training loop scores each epoch against
 # them, which is what writes best.pth
@@ -187,7 +199,7 @@ Prediction writes **one file per video**, named after it and placed beside it:
 
 ```
 my_video.mp4
-my_video.predict.csv
+my_video.pred.csv
 ```
 
 Re-running prediction replaces that file rather than accumulating copies — a

@@ -80,15 +80,34 @@ def demo_steps():
         have_data = False
     return (
         ("vtrace demo download", "the official CalMS21 videos + the detector", have_data),
-        ("vtrace demo predict", "label a held-out video, write predictions", None),
-        ("vtrace demo train", "train on the 70 official training videos", None),
+        ("vtrace demo predict", "label the 19 held-out test videos, write predictions", None),
+        ("vtrace demo train", "train on the 70 official training videos, score the test split", None),
     )
 
 
-# `run` only exists at the prompt: it opens a box to compose a chain, which is a
-# way of typing a command and has nothing to do outside a session. The screen is
-# printed in both places, so the row appears only in the interactive one.
-RUN_STEP = ("run", "compose a training or prediction run")
+# `run` only exists at the prompt: it opens the command box the session starts
+# in, which is a way of typing a command and has nothing to do outside a
+# session. The screen is printed in both places, so the row appears only in the
+# interactive one.
+RUN_STEP = ("run", "open the command box: paste what the annotator wrote")
+
+# Also prompt-only, and for the same reason: there is nothing to leave when the
+# screen is printed from a shell. It earns a row rather than a mention in the
+# footer — how to get out is the one thing a reader should never have to hunt
+# for, and a dim line under everything else is where it goes unread.
+EXIT_STEP = ("exit", "leave the session")
+
+
+# Set by `vtrace.shell.run` for as long as the prompt is what runs commands.
+# Anything that prints a command for the reader to type next has to know which
+# of the two places they are standing in: inside the session the program's own
+# name is already the prompt, so echoing it back tells them to type it twice.
+IN_SESSION = False
+
+
+def typed(command: str) -> str:
+    """`command` written the way the reader should type it, wherever they are."""
+    return _typed(command, IN_SESSION)
 
 
 def _typed(command: str, interactive: bool) -> str:
@@ -132,6 +151,7 @@ def _rich_screen(console, version: str, interactive: bool, annotator=None) -> No
     labels = [_typed(command, interactive) for command, _note, _done in demo_steps()]
     if interactive:
         labels.append(f"   {RUN_STEP[0]}")
+        labels.append(f"   {EXIT_STEP[0]}")
     if annotator:
         # The URL shares this column; leaving it out truncates it to an ellipsis.
         labels.append(annotator)
@@ -162,7 +182,7 @@ def _rich_screen(console, version: str, interactive: bool, annotator=None) -> No
 
     if interactive:
         console.print()
-        console.print(Text(" Train a model, or label videos with one", style="bold"))
+        console.print(Text(" Train a model, or predict videos", style="bold"))
         console.print(rows([(Text(f"   {RUN_STEP[0]}", style="bold"), RUN_STEP[1])]))
 
     console.print()
@@ -179,12 +199,16 @@ def _rich_screen(console, version: str, interactive: bool, annotator=None) -> No
     console.print(rows(entries))
 
     console.print()
-    console.print(rows([(Text(f"   {_typed('vtrace --help', interactive)}", style="bold"),
-                         "documentation, on the web")]))
+    closing = [(Text(f"   {_typed('vtrace --help', interactive)}", style="bold"),
+                "documentation, on the web")]
+    if interactive:
+        closing.append((Text(f"   {EXIT_STEP[0]}", style="bold"), EXIT_STEP[1]))
+    console.print(rows(closing))
     if interactive:
         console.print()
-        console.print(Text(" Type a command below. Tab completes, ctrl-r searches "
-                           "history, `exit` leaves.", style="dim"))
+        console.print(Text(" Paste the command the annotator wrote into the box below, or type one.",
+                           style="dim"))
+        console.print(Text(" Esc closes the box for a plain prompt.", style="dim"))
     console.print()
 
 
@@ -197,8 +221,11 @@ def _plain_screen(version: str, interactive: bool, stream, annotator=None) -> st
     entries += run_entries
     entries += [((" * " if done else "   ") + _typed(command, interactive), note)
                 for command, note, done in demo_steps()]
-    entries += [(f"   {_typed('vtrace --help', interactive)}",
-                 "documentation, on the web")]
+    closing = [(f"   {_typed('vtrace --help', interactive)}",
+                "documentation, on the web")]
+    if interactive:
+        closing.append((f"   {EXIT_STEP[0]}", EXIT_STEP[1]))
+    entries += closing
     width = max(len(label) for label, _ in entries)
 
     lines = [_art(encoding)]
@@ -209,17 +236,18 @@ def _plain_screen(version: str, interactive: bool, stream, annotator=None) -> st
                else " Annotate videos in your browser")
     lines += ["", heading, f"{entries[0][0]:<{width}}   {entries[0][1]}"]
     if run_entries:
-        lines += ["", " Train a model, or label videos with one"]
+        lines += ["", " Train a model, or predict videos"]
         lines += [f"{label:<{width}}   {note}" for label, note in run_entries]
     demo_start = 1 + len(run_entries)
     lines += ["", " Try the demo"]
     lines += [f"{label:<{width}}   {note}"
               for label, note in entries[demo_start:demo_start + 3]]
-    tail_label, tail_note = entries[-1]
-    lines += ["", f"{tail_label:<{width}}   {tail_note}", ""]
+    lines += [""]
+    lines += [f"{label:<{width}}   {note}" for label, note in closing]
+    lines += [""]
     if interactive:
-        lines += [" Type a command below. Tab completes, ctrl-r searches history, "
-                  "`exit` leaves.", ""]
+        lines += [" Paste the command the annotator wrote into the box below, or type one.",
+                  " Esc closes the box for a plain prompt.", ""]
     return "\n".join(lines)
 
 

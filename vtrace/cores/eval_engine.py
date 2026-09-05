@@ -1,7 +1,6 @@
 import os
 import json
 import time
-import tqdm
 import torch
 import numpy as np
 import threading
@@ -10,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from .train_engine import _to_cuda, _swap_ema_weights
 
 from vtrace.utils import create_folder
+from vtrace.utils.progress import StatusBar
 from vtrace.models.postprocess import (
     build_classifier, batched_nms, load_predictions, save_predictions,
 )
@@ -262,8 +262,14 @@ def eval_one_epoch(
     not_eval=False,
     profile=False,
     amp_dtype=torch.float16,
+    progress_label="evaluating",
 ):
-    """Pipelined inference: overlaps CPU post-processing and sliding window NMS with GPU forward."""
+    """Pipelined inference: overlaps CPU post-processing and sliding window NMS with GPU forward.
+
+    `progress_label` names the transient bar this draws — it is the same pass
+    whether it is scoring an epoch or predicting on a new video, and the word
+    should say which.
+    """
 
     timer = InferenceTimer(enabled=profile)
 
@@ -331,7 +337,9 @@ def eval_one_epoch(
     data_iter = iter(test_loader)
     prev_video_ids = set()
 
-    for batch_idx in tqdm.tqdm(range(num_batches)):
+    bar = StatusBar(progress_label, num_batches)
+    for batch_idx in range(num_batches):
+        bar.update(batch_idx)
         # --- Phase 1: Load data ---
         timer.cpu_start("DataLoader")
         data_dict = next(data_iter)
@@ -382,6 +390,8 @@ def eval_one_epoch(
         pending_postproc = executor.submit(_postproc_and_aggregate, predictions_cpu, metas)
         prev_video_ids = current_video_ids
 
+    bar.update(num_batches)
+
     # Wait for last batch's post-processing
     timer.cpu_start("Post-processing (CPU)")
     if pending_postproc is not None:
@@ -406,6 +416,9 @@ def eval_one_epoch(
     timer.cpu_end("Sliding Window NMS")
 
     executor.shutdown(wait=False)
+    # Held until here so the bar stays up through post-processing and NMS,
+    # rather than leaving a blank screen for the tail of the pass.
+    bar.close()
 
     # Use NMS'd results if sliding window, otherwise use raw results directly
     if is_sliding_window and cfg.post_processing.nms is not None:

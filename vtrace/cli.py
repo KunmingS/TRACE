@@ -20,6 +20,7 @@ See `vtrace.shell` for the prompt that makes a chain like that easy to type.
 import argparse
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -218,29 +219,102 @@ def gui_path():
     return candidate if candidate.is_file() else None
 
 
-# ── Local path context handed to the page ───────────────────────────────────
-# A browser never learns where a folder the user picked actually lives: the File
-# System Access API hands the page a capability (a handle it can read) and not a
-# location, deliberately, because absolute paths leak the user's name and layout.
-# But this server IS the user's machine, so it can name the directories it can see
-# and let the page match a picked folder against them by name. That turns the
-# generated command from a template with `/path/to/...` into one that runs as
-# pasted, without adding an API the page could ask arbitrary questions through.
+# ── folders named, not located ───────────────────────────────────────────────
+# The configuration page picks folders through the browser, and the browser
+# tells it what a folder is called and nothing about where it is: the File
+# System Access API hands the page a capability, never a location, because an
+# absolute path leaks the user's name and layout. So the page writes the NAME
+# into the command, with a fingerprint of the folder's contents after it —
+# `--output '<runs#3f9a2c1e>'`, `--pairs '<videos#8b1d0c47>/a.mp4=…'` — and
+# the lookup happens here, on the machine that runs the command.
+#
+# That machine is the only one whose paths matter. A folder picked on a laptop
+# through a network mount has one path there and another on the GPU box the
+# command is pasted into; what the two share is the folder's name and the files
+# inside it, which is exactly what the token carries. Resolving in the page
+# would have written the laptop's path into a command meant for the server.
+#
+# Only the interactive session resolves. A one-shot `vtrace train …` from a
+# shell or a job script refuses a token and says what to replace it with: a job
+# on a cluster runs unattended, where a lookup that guesses or asks is worse
+# than one that never starts.
+_FOLDER_TOKEN = re.compile(r"<([^<>/]+)>")
+_FINGERPRINT_MARK = "#"
+# Written by the page into a folder it may write to and has nothing to
+# fingerprint — a fresh output folder — so that folder can still be told apart
+# from another of the same name. Eight hex digits, same width as a fingerprint.
+MARKER_FILE = ".vtrace-folder"
+# What the page writes when no folder was picked at all. Nothing to look up.
+_EMPTY_TOKENS = {"video folder", "output folder", "eval folder", "model folder",
+                 "video.mp4", "video.csv"}
+# Kept in step with VIDEO_EXTENSIONS in the configuration page.
+_VIDEO_SUFFIXES = (".mp4", ".mov", ".avi", ".mkv", ".webm")
+# Extra places to look, for a machine whose data lives nowhere near the working
+# directory or home: `VTRACE_ROOTS=/data:/mnt/lab vtrace`.
+_ROOTS_ENV = "VTRACE_ROOTS"
 _SCAN_DEPTH = 3
 _SCAN_LIMIT = 4000
 _SCAN_SKIP = {".git", "__pycache__", "node_modules", "venv", ".venv", "site-packages"}
 
 
+def folder_fingerprint(path) -> str:
+    """Eight hex digits that identify a folder by what is in it, not where it is.
+
+    The rule the page applies to the folder it picked, so the two agree: the
+    sorted names of the videos in the folder when there are any, otherwise of
+    every visible entry (a run folder has no videos, but it has best.pth and
+    classmap.txt), SHA-256'd and cut to eight digits. Videos only, when
+    possible, because that is the list that stays put — preparation drops
+    .pts.npy files and proxy folders beside the videos, and the CSVs beside
+    them are edited, so a fingerprint over everything would break between
+    copying the command and running it. Hidden entries are skipped on both
+    sides (.DS_Store, AppleDouble sidecars, the marker file itself).
+
+    Empty string when the folder cannot be read or has nothing visible in it.
+    """
+    import hashlib
+    import unicodedata
+
+    try:
+        entries = [entry for entry in os.scandir(path) if not entry.name.startswith(".")]
+    except OSError:
+        return ""
+    # NFC on both sides: a name that arrives decomposed from a macOS mount must
+    # hash the same as the composed one the server's own disk reports.
+    names = [unicodedata.normalize("NFC", entry.name) for entry in entries]
+    videos = [name for name, entry in zip(names, entries)
+              if entry.is_file() and name.lower().endswith(_VIDEO_SUFFIXES)]
+    chosen = sorted(videos or names)
+    if not chosen:
+        return ""
+    return hashlib.sha256("\n".join(chosen).encode("utf-8")).hexdigest()[:8]
+
+
+def folder_marker(path) -> str:
+    """The id in a folder's marker file, or empty when there is none."""
+    try:
+        with open(Path(path) / MARKER_FILE, encoding="utf-8") as handle:
+            return handle.read().strip()
+    except (OSError, UnicodeDecodeError):
+        return ""
+
+
+def _fingerprint_matches(path, fingerprint: str) -> bool:
+    return fingerprint in (folder_fingerprint(path), folder_marker(path))
+
+
 def _scan_roots() -> list[Path]:
-    """Where to look for the folder the user picks in the page.
+    """Where to look for the folder the page named.
 
     A data folder beside the checkout is as common as one inside it, and neither is
     reachable from the other by walking down, so the parent and home are searched
-    too. Ordered by relevance: the entry budget is spent in order.
+    too, plus anything named in VTRACE_ROOTS. Ordered by relevance: the entry
+    budget is spent in order.
     """
     cwd = Path.cwd()
+    extra = [Path(part) for part in os.environ.get(_ROOTS_ENV, "").split(os.pathsep) if part]
     roots: list[Path] = []
-    for candidate in (cwd, cwd.parent, Path.home()):
+    for candidate in (cwd, cwd.parent, Path.home(), *extra):
         try:
             resolved = candidate.resolve()
         except OSError:
@@ -295,20 +369,191 @@ def _local_directories(root, limit: int = _SCAN_LIMIT) -> dict:
     return index
 
 
-def _local_context() -> str:
-    """The `window.__VTRACE__` script tag injected into the served page."""
+def _remembered_file() -> Path:
+    from vtrace.splash import trace_home
+
+    return trace_home() / "folders.json"
+
+
+def _remembered_folders() -> list[str]:
+    """Folders earlier commands resolved to. A name found once is found again.
+
+    The scan is three levels under a few roots, and a data folder on a big
+    disk is often deeper than that or somewhere else entirely. Once it has been
+    found — or typed as a full path the first time — its path is kept, so the
+    next command that names it does not depend on where the session was started.
+    """
+    try:
+        data = json.loads(_remembered_file().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    return [path for path in data if isinstance(path, str)] if isinstance(data, list) else []
+
+
+def _remember_folders(paths) -> None:
+    known = _remembered_folders()
+    new = [path for path in paths if path not in known]
+    if not new:
+        return
+    target = _remembered_file()
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(known + new, indent=2) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _directory_index() -> dict:
+    """basename -> [paths] for every folder a named token could mean.
+
+    The scan roots, plus the folders earlier commands resolved to, plus the
+    demo's own folders, which live under ~/.vtrace and would otherwise be hidden
+    by the dot-directory rule.
+    """
     from vtrace.demo import demo_dir
 
-    cwd = Path.cwd()
     index = _local_directories(_scan_roots())
+
+    def add(path: Path) -> None:
+        if path.is_dir():
+            paths = index.setdefault(path.name, [])
+            if str(path) not in paths:
+                paths.append(str(path))
+
+    for remembered in _remembered_folders():
+        add(Path(remembered))
     demo = demo_dir()
     if demo.is_dir():
         for extra in (demo, demo / "videos" / "train", demo / "videos" / "test"):
-            if extra.is_dir():
-                index.setdefault(extra.name, [])
-                if str(extra) not in index[extra.name]:
-                    index[extra.name].append(str(extra))
-    payload = {"cwd": str(cwd), "dirs": index}
+            add(extra)
+    return index
+
+
+def _split_token(inner: str):
+    """`videos#8b1d0c47` -> ('videos', '8b1d0c47'); `videos` -> ('videos', '')."""
+    name, _mark, fingerprint = inner.partition(_FINGERPRINT_MARK)
+    return name, fingerprint
+
+
+def _replace_instructions(inners) -> str:
+    """What a shell or a job script is told instead of a lookup."""
+    lines = [
+        "This command names folders instead of locating them, so it cannot run",
+        "as it is here. The `vtrace` session finds them — start it and paste the",
+        "command into the box it opens. Anywhere else, replace each token with",
+        "the folder's full path on the machine that runs the command:",
+    ]
+    width = max(len(inner) for inner in inners) + 2
+    for inner in inners:
+        name, _fingerprint = _split_token(inner)
+        lines.append(f"  <{inner}>{' ' * (width - len(inner))}the folder called \"{name}\" "
+                     f"that was picked in the page")
+    return "\n".join(lines)
+
+
+def resolve_placeholders(argv):
+    """Replace `<folder-name>` / `<folder-name#fingerprint>` tokens in `argv`.
+
+    Session only: anywhere else a token is an error that names what to replace
+    it with. In the session, a name is looked up three levels under the working
+    directory, its parent, home and VTRACE_ROOTS, plus every folder resolved
+    before. A fingerprint keeps only the candidates whose contents match the
+    folder the page saw, so a same-named folder somewhere else is never taken.
+    Several survivors are settled by the one under the working directory if
+    there is exactly one there, else by asking — `--output` says where a run
+    gets written, and a confident wrong path is worse than a question.
+    """
+    from vtrace import splash
+    from vtrace.console import ACCENT, say
+
+    inners = []
+    for token in argv:
+        for inner in _FOLDER_TOKEN.findall(token):
+            if inner not in inners:
+                inners.append(inner)
+    if not inners:
+        return argv
+
+    empty = [inner for inner in inners if inner in _EMPTY_TOKENS]
+    if empty:
+        raise SystemExit(
+            f"The command still has <{empty[0]}>: the page had no folder picked "
+            f"for it. Pick one there, or replace it with a path.")
+
+    if not splash.IN_SESSION:
+        raise SystemExit(_replace_instructions(inners))
+
+    cwd = str(Path.cwd())
+    index = _directory_index()
+    resolved = {}
+    for inner in inners:
+        name, fingerprint = _split_token(inner)
+        matches = index.get(name, [])
+        if fingerprint and matches:
+            verified = [path for path in matches if _fingerprint_matches(path, fingerprint)]
+            if not verified:
+                listed = "\n".join(f"  {path}" for path in matches)
+                raise SystemExit(
+                    f"{len(matches)} folder{'s' if len(matches) > 1 else ''} called "
+                    f"\"{name}\" found, but none holds the files the page saw when "
+                    f"it was picked:\n{listed}\n"
+                    f"If it is a different folder, run this from nearer to it, set "
+                    f"{_ROOTS_ENV}, or replace <{inner}> with its full path. If the "
+                    f"folder's contents changed, copy the command from the page again.")
+            matches = verified
+        if len(matches) > 1:
+            inside = [path for path in matches if path.startswith(cwd + os.sep)]
+            if len(inside) == 1:
+                matches = inside
+        if len(matches) == 1:
+            resolved[inner] = matches[0]
+        elif not matches:
+            raise SystemExit(
+                f"No folder called \"{name}\" within three levels of {cwd}, its "
+                f"parent, or your home folder. Run this from nearer the data, set "
+                f"{_ROOTS_ENV}=/where/it/lives, or replace <{inner}> with the full path.")
+        elif sys.stdin.isatty() and sys.stdout.isatty():
+            resolved[inner] = _ask_which(name, matches)
+        else:
+            listed = "\n".join(f"  {path}" for path in matches)
+            raise SystemExit(
+                f"{len(matches)} folders are called \"{name}\":\n{listed}\n"
+                f"Replace <{inner}> with the one you mean.")
+        say(f"  [dim]<{inner}>[/] → [{ACCENT}]{resolved[inner]}[/]")
+    _remember_folders(resolved.values())
+
+    def substitute(token):
+        return _FOLDER_TOKEN.sub(lambda m: resolved.get(m.group(1), m.group(0)), token)
+
+    return [substitute(token) for token in argv]
+
+
+def _ask_which(name, matches):
+    """One question, at the prompt, when a name fits several folders."""
+    from vtrace.console import ACCENT, say
+
+    say(f"\n  [bold]{len(matches)}[/] folders are called [{ACCENT}]{name}[/]:")
+    for number, path in enumerate(matches, 1):
+        say(f"    [{ACCENT}]{number}[/]  {path}")
+    while True:
+        try:
+            answer = input(f"  which one? [1-{len(matches)}] ").strip()
+        except EOFError:
+            raise SystemExit(f"Replace <{name}> with the folder you mean.")
+        if answer.isdigit() and 1 <= int(answer) <= len(matches):
+            return matches[int(answer) - 1]
+        say("  [dim]a number from the list, please[/]")
+
+
+def _local_context() -> str:
+    """The `window.__VTRACE__` script tag injected into the served page.
+
+    Only how the page was opened. It used to carry a directory index so the page
+    could write real paths into the command; the page now writes names and
+    fingerprints and the session does the lookup, on the machine that runs the
+    command — see the note above `resolve_placeholders`.
+    """
+    payload = {"served": True, "cwd": str(Path.cwd())}
     # `</script>` inside the JSON would end the tag early; nothing else can escape it.
     encoded = json.dumps(payload).replace("</", "<\\/")
     return f"<script>window.__VTRACE__ = {encoded};</script>"
@@ -324,8 +569,8 @@ class _GuiHandler(SimpleHTTPRequestHandler):
 
     gui_file = None
     quiet = True
-    # Filled in by `start_gui_server`. The server is loopback-only, so these
-    # paths never leave the machine they describe.
+    # Filled in by `start_gui_server`: the `window.__VTRACE__` tag that tells
+    # the page it was served rather than opened as a file.
     local_context = None
 
     def do_GET(self):
@@ -420,17 +665,16 @@ def serve(args):
 
     Not for the browser APIs: a `file://` page is a secure context in current
     Chrome, and gets IndexedDB and the File System Access API just the same.
-    Two things it does not get. It has no `window.__VTRACE__`, the local
-    directory index that turns a folder picked through a capability-only API
-    back into the absolute path the copyable command needs. And every `file://`
-    page on the machine shares one origin, so a second copy of this file — or
-    any other local page — reads the same IndexedDB, down to the stored
-    directory handles. `http://localhost:PORT` supplies the index and an origin
-    of its own.
+    One thing it does not get: every `file://` page on the machine shares one
+    origin, so a second copy of this file — or any other local page — reads the
+    same IndexedDB, down to the stored directory handles. `http://localhost:PORT`
+    gives the page an origin of its own. (Paths are not the difference: the page
+    writes folder names and fingerprints either way, and the session that runs
+    the command looks them up — see `resolve_placeholders`.)
 
-    Loopback only. Serving to a LAN would hand out neither: the directory index
-    names paths on the server's disk, which is not where a remote viewer's
-    videos are, so a remote page is the bare file with extra steps.
+    Loopback only. There is nothing a LAN bind would add: the page reads videos
+    from the computer running the browser, and the command it writes is run
+    wherever it is pasted.
     """
     if gui_path() is None:
         print("Error: the GUI file is missing from this installation "
@@ -824,6 +1068,17 @@ def demo(args):
     return step[args.demo_command](args)
 
 
+def demo_default_jobs():
+    """The demo's default download concurrency, for `--help`.
+
+    Imported here rather than at module scope so building the parser stays as
+    cheap as it is for every other subcommand.
+    """
+    from vtrace.demo import DEFAULT_JOBS
+
+    return DEFAULT_JOBS
+
+
 def _add_serve_args(parser):
     parser.add_argument("--port", type=int, default=None,
         help=f"Port (default: {DEFAULT_GUI_PORT}, or the next free one)")
@@ -1093,11 +1348,22 @@ def main(argv=None):
         help="Also CRC-check the videos already on disk, not just their size")
     demo_download.add_argument("--from", dest="source", default=None, metavar="PATH",
         help="Read a local copy of task1_videos_mp4.zip instead of downloading")
-    demo_subparsers.add_parser("predict", help="Predict on a held-out demo video")
-    demo_subparsers.add_parser("train", help="Prep and train on the demo videos")
+    demo_download.add_argument("--jobs", type=int, default=None, metavar="N",
+        help=f"Videos to fetch at once (default: {demo_default_jobs()})")
+    demo_predict = demo_subparsers.add_parser("predict",
+        help="Predict on the 19 held-out demo test videos")
+    demo_predict.add_argument("--model-dir", default=None, metavar="DIR",
+        help="A run from `vtrace demo train` to predict with (default: the released checkpoint)")
+    demo_predict.add_argument("--video", default=None, metavar="STEM",
+        help="Predict on this one test video instead of all 19")
+    demo_subparsers.add_parser("train",
+        help="Prep and train on the demo videos, then score the test split")
     demo_parser.set_defaults(func=demo)
 
     argv = sys.argv[1:] if argv is None else list(argv)
+    # Before the parser and before the chain is split: a `<folder>` token is the
+    # same folder wherever in the line it appears, so it is looked up once.
+    argv = resolve_placeholders(argv)
     if CHAIN_SEPARATOR in argv:
         return _run_chain(argv, parser.parse_args)
 
@@ -1115,7 +1381,14 @@ def main(argv=None):
             return shell.run(main, __version__)
         splash.print_start_screen(__version__)
         return None
-    return handler(args)
+    try:
+        return handler(args)
+    except KeyboardInterrupt:
+        # Ctrl-C on a long download or a training run is how it is meant to be
+        # stopped, not a crash. The session already prints this cleanly; a
+        # one-shot `vtrace ...` from a shell was dumping a socket traceback.
+        print("\n  interrupted", file=sys.stderr)
+        return 130
 
 
 if __name__ == "__main__":

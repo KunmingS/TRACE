@@ -39,9 +39,32 @@ pre {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }
 
+/* Inline code is a chip, not just a colour shift: on a page this dense with
+   prose, a command has to be findable by shape before it is read. `pre code`
+   opts back out below — a chip inside a terminal block would draw a border
+   around every line. */
 code {
+  padding: 0.14em 0.42em;
+  border: 1px solid rgba(36, 117, 111, 0.24);
+  border-radius: 5px;
+  background: rgba(36, 117, 111, 0.09);
   color: var(--teal-dark);
-  font-size: 0.94em;
+  font-size: 0.9em;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+pre code {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  /* The chip's teal is calibrated for the light page. Inside a terminal it is
+     nearly the ground colour, so every token that carries no explicit class —
+     an argument value, a bare word — would go dark on dark. */
+  color: inherit;
+  font-weight: inherit;
+  white-space: pre;
 }
 
 .site-header {
@@ -103,16 +126,44 @@ code {
   align-items: flex-end;
   padding: clamp(92px, 12vw, 150px) clamp(20px, 5vw, 72px) clamp(52px, 8vw, 86px);
   overflow: hidden;
-  background-image: url("screenshot.png");
-  background-position: center;
-  background-size: cover;
+  /* The GUI's own home: the configuration page, where a run is assembled. The
+     shot is taken scrolled past that page's own H1 — two headlines on one
+     screen is one too many.
+
+     `cover` is wrong here: it scales the screenshot up to fill whatever the
+     hero happens to be, and a UI blown past 1:1 stops reading as a UI and
+     becomes soft grey shapes. Pin it instead, anchored right, and let the flat
+     ground carry any width it does not reach — the darkest end of the scrim
+     anyway.
+
+     The file is 2880 wide and drawn at 1440: a screenshot laid out at its own
+     CSS size is still upscaled by the display's pixel ratio, which is what
+     made it soft on a HiDPI screen. Shipping it at 2x costs ~60 KB and lands
+     one image pixel per device pixel on the machines most people read this
+     on. */
+  background-color: #0a1413;
+  /* Two layers, image underneath: a wash that starts solid on the left and
+     clears by 60%, so wherever the screenshot's left edge happens to land on a
+     given viewport width, it is inside the fade rather than a visible seam. */
+  background-image:
+    linear-gradient(90deg, #0a1413 0%, #0a1413 20%, rgba(10, 20, 19, 0) 60%),
+    url("img/shot-config-home.webp");
+  background-position: left top, right top;
+  background-size: 100% 100%, 1440px auto;
+  background-repeat: no-repeat, no-repeat;
 }
 
+/* The configuration page is a light UI, so the scrim has one job: hold enough
+   contrast for white type on the left while still letting the app read as an
+   app on the right. No blur — the shot is sharp and should stay that way, and
+   the gradient alone carries the contrast. */
 .hero::before {
   position: absolute;
   inset: 0;
   content: "";
-  background: rgba(8, 20, 19, 0.7);
+  background:
+    linear-gradient(100deg, rgba(6, 16, 15, 0.93) 0%, rgba(6, 16, 15, 0.87) 46%,
+                    rgba(6, 16, 15, 0.56) 76%, rgba(6, 16, 15, 0.44) 100%);
 }
 
 .hero-copy {
@@ -416,3 +467,800 @@ tr:last-child td {
     flex-direction: column;
   }
 }
+
+/* ── Reference layer ──────────────────────────────────────────────────────
+   The overview pages answer "what is this and why"; the reference answers
+   "exactly how". Two surfaces, one identity: same palette, same type, a
+   denser rhythm. Nothing here introduces a new colour or a new family. */
+
+.jump-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 18px;
+  color: var(--teal-dark);
+  font-size: 0.94rem;
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(36, 117, 111, 0.32);
+  padding-bottom: 2px;
+  transition: border-color 160ms cubic-bezier(0.22, 1, 0.36, 1),
+              gap 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.jump-link:hover,
+.jump-link:focus-visible {
+  gap: 12px;
+  border-color: var(--teal);
+}
+
+.jump-link span[aria-hidden] {
+  font-size: 0.85em;
+}
+
+/* The reference page: a rail of topics, and one column of prose beside it. */
+.ref-layout {
+  width: min(1160px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: clamp(36px, 5vw, 64px) 0 clamp(64px, 9vw, 108px);
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  gap: clamp(32px, 5vw, 76px);
+  align-items: start;
+}
+
+.ref-rail {
+  position: sticky;
+  top: 92px;
+  display: grid;
+  gap: 6px;
+}
+
+.ref-rail p {
+  margin: 0 0 6px;
+}
+
+.ref-rail a {
+  padding: 5px 0 5px 14px;
+  border-left: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.92rem;
+  text-decoration: none;
+  transition: color 140ms ease-out, border-color 140ms ease-out;
+}
+
+.ref-rail a:hover,
+.ref-rail a:focus-visible {
+  color: var(--teal-dark);
+  border-color: var(--teal);
+}
+
+.ref-body {
+  display: grid;
+  gap: clamp(44px, 6vw, 76px);
+  /* Wide enough for the flag tables and the long pair paths in the code
+     panels. Prose is capped separately, below, because a measure that suits
+     reading is narrower than one that suits a five-column table. */
+  max-width: 780px;
+  min-width: 0;
+}
+
+/* scroll-margin so a jumped-to heading clears the sticky header. */
+.ref-section {
+  scroll-margin-top: 88px;
+  /* Grid items default to min-width:auto, which here means "never narrower
+     than the 860px table inside me" — enough to push the whole page sideways
+     and stop .table-wrap from ever scrolling. */
+  min-width: 0;
+}
+
+.ref-section h2 {
+  margin: 6px 0 14px;
+  font-size: clamp(1.55rem, 2.6vw, 2.1rem);
+  line-height: 1.12;
+}
+
+.ref-section h3 {
+  margin: 30px 0 10px;
+  font-size: 1.02rem;
+  letter-spacing: -0.01em;
+}
+
+/* ~70 characters at this size. `ch` is the width of a zero, which in Inter is
+   narrower than the average letter, so sizing the measure in `ch` overshoots
+   by about a third. */
+.ref-section p,
+.ref-section ul,
+.ref-note {
+  max-width: 36rem;
+}
+
+.ref-section p {
+  margin: 0 0 14px;
+  line-height: 1.68;
+}
+
+.ref-section ul {
+  margin: 0 0 16px;
+  padding-left: 20px;
+  color: var(--muted);
+  line-height: 1.68;
+}
+
+.ref-section li {
+  margin-bottom: 7px;
+}
+
+.ref-section li::marker {
+  color: var(--teal);
+}
+
+.ref-section .code-panel {
+  margin: 4px 0 20px;
+}
+
+.ref-section .table-wrap {
+  margin-bottom: 20px;
+}
+
+/* The base table carries min-width:860px so the overview's wide CLI table keeps
+   its columns. In this narrower column that only buys a horizontal scrollbar
+   over clipped text, and a flag table is for reading, not scrubbing. Let the
+   cells wrap instead. */
+.ref-section table {
+  min-width: 0;
+}
+
+.ref-section td,
+.ref-section th {
+  vertical-align: top;
+}
+
+/* A short aside that qualifies the paragraph above it: tinted ground, no
+   stripe, no icon. */
+.ref-note {
+  margin: 0 0 18px;
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(36, 117, 111, 0.05);
+  color: var(--ink);
+  font-size: 0.94rem;
+  line-height: 1.6;
+}
+
+.ref-note strong {
+  font-weight: 600;
+}
+
+.ref-back {
+  display: inline-block;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+.ref-back:hover {
+  color: var(--teal-dark);
+}
+
+.ref-intro {
+  width: min(1160px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: clamp(46px, 7vw, 78px) 0 0;
+}
+
+.ref-intro h1 {
+  margin: 8px 0 12px;
+  font-size: clamp(2.3rem, 5vw, 3.4rem);
+  line-height: 1.03;
+}
+
+.ref-intro p {
+  max-width: 34rem;
+  font-size: 1.06rem;
+  line-height: 1.6;
+}
+
+@media (max-width: 920px) {
+  .ref-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 34px;
+  }
+
+  .ref-rail {
+    position: static;
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    gap: 4px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+
+  .ref-rail p {
+    display: none;
+  }
+
+  .ref-rail a {
+    padding: 6px 12px;
+    border-left: 0;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+}
+
+/* ── Terminal layer ───────────────────────────────────────────────────────
+   A command block is a picture of a terminal, not a grey box of text. The
+   chrome (title bar, three dots) says "this is a shell" before a word is
+   read, and the colours are the ones the tool itself prints: the accent cyan
+   of the start screen, gold for flags, a green prompt, dim for comments.
+
+   Every token is a hand-written span. There is no highlighter to load, and a
+   docs page that ships one would be loading a parser to colour nine lines. */
+
+.terminal {
+  --t-bg: #0b1817;
+  --t-chrome: #122523;
+  --t-line: #1d3a37;
+  overflow: hidden;
+  border: 1px solid var(--t-line);
+  border-radius: 10px;
+  background: var(--t-bg);
+  box-shadow: var(--shadow);
+}
+
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--t-line);
+  background: var(--t-chrome);
+  color: #7f9a94;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.76rem;
+  letter-spacing: 0.02em;
+}
+
+/* Three dots, drawn rather than typed, so no glyph has to exist for them. */
+.terminal-dots {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.terminal-dots i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #3d5450;
+}
+
+.terminal-dots i:nth-child(1) { background: #d9645a; }
+.terminal-dots i:nth-child(2) { background: #dfae4d; }
+.terminal-dots i:nth-child(3) { background: #56b98a; }
+
+.terminal-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal pre {
+  margin: 0;
+  overflow-x: auto;
+  padding: 20px 22px;
+  color: #dbe8e2;
+  font-size: 0.88rem;
+  line-height: 1.72;
+  tab-size: 2;
+}
+
+.terminal.tight pre {
+  font-size: 0.83rem;
+  line-height: 1.6;
+}
+
+/* Token colours. Named for what the token IS, not what colour it happens to
+   be, so a palette change stays one edit. */
+.t-prompt  { color: #55c79b; font-weight: 700; }   /* $ and vtrace > */
+.t-cmd     { color: #7fe0d2; font-weight: 700; }   /* the program and its verb */
+.t-flag    { color: #f2b84b; }                     /* --pairs, -L */
+.t-path    { color: #9dc4ea; }                     /* absolute paths, filenames */
+.t-str     { color: #f0a68f; }                     /* quoted values */
+.t-num     { color: #cbb2f0; }                     /* bare numbers */
+.t-key     { color: #e9f2ec; font-weight: 700; }   /* column names, headings */
+.t-com     { color: #6a827c; font-style: italic; } /* # comments */
+.t-ok      { color: #56b98a; font-weight: 700; }   /* ✓ */
+.t-out     { color: #b6c6c0; }                     /* program output */
+.t-accent  { color: #33d6d6; }                     /* the tool's own accent */
+.t-dim     { color: #7d918b; }
+.t-warn    { color: #e2894f; }
+
+/* The start screen prints its wordmark in the accent; keeping it a block lets
+   the rest of the transcript sit at the normal line height. */
+.t-art {
+  display: block;
+  margin-bottom: 2px;
+  color: #33d6d6;
+  line-height: 1.05;
+}
+
+/* A caption under a terminal, in the page's voice rather than the shell's. */
+.terminal-caption,
+.figure figcaption {
+  margin: 10px 2px 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+/* ── Figures ──────────────────────────────────────────────────────────────
+   Screenshots of the annotator, which is a dark app on a light page. The
+   frame is what keeps it from reading as a hole punched in the paper. */
+
+.figure {
+  margin: 0;
+}
+
+.figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #0b1817;
+  box-shadow: var(--shadow);
+}
+
+.figure.plain img {
+  box-shadow: 0 10px 24px rgba(20, 35, 32, 0.08);
+}
+
+/* ── Walkthrough ──────────────────────────────────────────────────────────
+   Numbered steps that alternate prose and screenshot. Each row is one thing
+   the reader does, so the picture and the sentence describing it never end up
+   on different screens. */
+
+.walk {
+  display: grid;
+  gap: clamp(40px, 6vw, 68px);
+  margin-top: 34px;
+}
+
+.walk-step {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: clamp(24px, 4vw, 52px);
+  align-items: center;
+}
+
+/* Even steps mirror, so the eye zigzags down the page instead of running down
+   one rail. `direction` would flip the text too; explicit ordering does not. */
+.walk-step:nth-child(even) .walk-copy { order: 2; }
+.walk-step:nth-child(even) .walk-figure { order: 1; }
+
+.walk-copy h3 {
+  margin: 10px 0 10px;
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
+.walk-copy p {
+  margin: 0 0 12px;
+  max-width: 34rem;
+  line-height: 1.65;
+}
+
+.walk-num {
+  display: inline-flex;
+  min-width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--teal-dark);
+  color: #ffffff;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+/* A short list of keys or facts under a step. */
+.walk-facts {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 0.93rem;
+}
+
+.walk-facts li {
+  padding: 7px 0;
+  border-top: 1px solid var(--line);
+  line-height: 1.55;
+}
+
+/* ── File anatomy ─────────────────────────────────────────────────────────
+   A file example and the sentence explaining each of its parts, side by side.
+   The point of these blocks is that every column in every file V-TRACE writes
+   is accounted for somewhere on the page. */
+
+.anatomy {
+  display: grid;
+  gap: clamp(24px, 4vw, 44px);
+  margin-top: 30px;
+}
+
+.anatomy-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: clamp(22px, 3.5vw, 44px);
+  align-items: start;
+}
+
+.anatomy-row h3 {
+  margin: 0 0 10px;
+  font-size: 1.12rem;
+}
+
+.anatomy-row > div > p {
+  margin: 0 0 12px;
+  line-height: 1.65;
+}
+
+.field-list {
+  margin: 0;
+  display: grid;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.field-list > div {
+  display: grid;
+  grid-template-columns: minmax(112px, auto) minmax(0, 1fr);
+  gap: 14px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.field-list > div:last-child {
+  border-bottom: 0;
+}
+
+.field-list dt,
+.field-list dd {
+  margin: 0;
+}
+
+.field-list dt {
+  color: var(--teal-dark);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.86rem;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.field-list dd {
+  color: var(--muted);
+}
+
+/* ── Example strip ────────────────────────────────────────────────────────
+   Two or three worked commands in a row, each with one line saying when you
+   would type it. Used where a single canonical example would under-sell how
+   little the second and third case differ from the first. */
+
+.example-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+  margin-top: 30px;
+  align-items: start;
+}
+
+.example-grid .terminal-caption {
+  margin-top: 12px;
+}
+
+/* A pill above a terminal naming the situation it belongs to. */
+.example-label {
+  display: inline-block;
+  margin: 0 0 10px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--teal-dark);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* A screenshot that spans the full column, under its own heading. */
+.figure-wide {
+  margin: 32px 0 0;
+}
+
+.ref-section .figure {
+  margin: 4px 0 20px;
+  max-width: 100%;
+}
+
+.ref-section .terminal {
+  margin: 4px 0 20px;
+}
+
+.ref-section .anatomy-row {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+}
+
+@media (max-width: 920px) {
+  .walk-step,
+  .anatomy-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .walk-step:nth-child(even) .walk-copy { order: 0; }
+  .walk-step:nth-child(even) .walk-figure { order: 0; }
+}
+
+@media (max-width: 620px) {
+  .terminal pre {
+    padding: 16px;
+    font-size: 0.8rem;
+  }
+
+  .field-list > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+}
+
+/* A key on a keyboard, not a command: a raised cap rather than the teal chip
+   inline `code` gets, so a hotkey and a command name never read as the same
+   kind of thing. */
+kbd {
+  display: inline-block;
+  min-width: 1.5em;
+  padding: 1px 6px 2px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--surface);
+  box-shadow: 0 1px 0 rgba(20, 35, 32, 0.06);
+  color: var(--ink);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.82em;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* A step whose figure is a wide, short strip: side by side it would be a 68px
+   sliver next to a full paragraph. Stack instead, and let it have the column. */
+.walk-step.wide {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+}
+
+/* Stacked, the mirroring that makes the alternating rows zigzag would put the
+   figure above the heading it belongs to. */
+.walk-step.wide .walk-copy { order: 0; }
+.walk-step.wide .walk-figure { order: 1; }
+
+.walk-step.wide .walk-copy p {
+  max-width: 46rem;
+}
+
+/* Inline code in a headline: the chip's border and tinted ground are calibrated
+   for body text and read as a box at 3rem. Keep the colour and the monospace,
+   drop the frame. */
+h1 code,
+h2 code {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 0.86em;
+  font-weight: inherit;
+}
+
+/* The CLI table's Example column holds whole command lines. As an inline chip
+   they would wrap into two or three separate bordered fragments, so make the
+   chip a block that wraps inside one frame instead. */
+.cli-table td:nth-child(3) code {
+  display: block;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+
+/* The CLI table's three columns hold very different things: a short verb, a
+   sentence, and a whole command line. Auto layout hands the width to whichever
+   cell has the longest unbreakable run — which is always the example — and
+   squeezes Purpose down to one word per line. Fix the ratio instead. */
+.cli-table {
+  table-layout: fixed;
+}
+
+.cli-table th:nth-child(1),
+.cli-table td:nth-child(1) { width: 17%; }
+
+.cli-table th:nth-child(2),
+.cli-table td:nth-child(2) { width: 33%; }
+
+.cli-table th:nth-child(3),
+.cli-table td:nth-child(3) { width: 50%; }
+
+/* The situation pill above an example: `code` inside it is already inside a
+   small uppercase chip, so a second chip around it is one frame too many. */
+.example-label code {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 0.95em;
+}
+
+/* ── The composer box ─────────────────────────────────────────────────────
+   `run` draws a framed editor in the terminal. Drawing that frame with box
+   characters (┌ │ └) does not survive the web: those glyphs are missing from
+   most monospace webfont stacks, fall back to a font with a different advance
+   width, and the right-hand border then walks off the column by a pixel per
+   line. Draw the frame in CSS instead — one border, always square, whatever
+   font the reader happens to have. */
+
+.terminal-body {
+  padding: 20px 22px;
+  color: #dbe8e2;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.88rem;
+  line-height: 1.72;
+}
+
+.terminal.tight .terminal-body {
+  font-size: 0.83rem;
+  line-height: 1.6;
+}
+
+.terminal-body pre {
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+}
+
+.composer {
+  position: relative;
+  margin: 14px 0 0;
+  padding: 16px 14px 14px;
+  border: 1px solid #33d6d6;
+  border-radius: 4px;
+}
+
+/* The frame's title sits in a gap in the top border, the way the real one does.
+   The background has to match the terminal ground, not be transparent, or the
+   border runs behind the text. */
+.composer-legend {
+  position: absolute;
+  top: 0;
+  left: 12px;
+  transform: translateY(-50%);
+  padding: 0 8px;
+  background: var(--t-bg, #0b1817);
+  color: #33d6d6;
+}
+
+.composer-hint {
+  margin: 10px 0 0;
+  color: #7d918b;
+  font-family: inherit;
+  font-size: 0.95em;
+}
+
+.composer-keys {
+  display: flex;
+  justify-content: flex-end;
+  gap: 26px;
+  margin-top: 16px;
+  color: #7d918b;
+  text-align: center;
+}
+
+.composer-keys b {
+  display: block;
+  font-weight: 400;
+}
+
+.composer-keys em {
+  display: block;
+  font-style: normal;
+  font-size: 0.92em;
+  opacity: 0.75;
+}
+
+/* A rejected review decision. Red rather than the warn amber, so accepted /
+   corrected / rejected are three visibly different outcomes rather than two. */
+.t-bad { color: #e0736a; }
+
+/* A `<folder#fingerprint>` token inside a command: the part the reader acts
+   on, so it gets its own colour within the quoted string — same hue the
+   configuration page uses for it. */
+.t-tok { color: #fab387; font-weight: 600; }
+
+/* Two terminals that are read in sequence — the screen you land on, then the
+   box one of its commands opens — rather than compared side by side. Stacked,
+   each gets the full column, so the transcript is not clipped mid-line. */
+.example-grid.stacked {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 34px;
+}
+
+/* A caption under a full-width terminal would otherwise run the whole 1160px
+   column — twice a comfortable measure. */
+.example-grid.stacked .terminal-caption {
+  max-width: 42rem;
+}
+
+/* ── The two run modes ────────────────────────────────────────────────────
+   Sitting at the machine, or submitting to a queue. Two cards side by side
+   because the point is that they are alternatives taking identical arguments,
+   not a sequence. */
+
+.mode-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 26px;
+}
+
+.mode-card {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--teal);
+  border-radius: 8px;
+  padding: 20px 22px;
+  background: var(--surface);
+  box-shadow: 0 10px 24px rgba(20, 35, 32, 0.06);
+}
+
+.mode-card h3 {
+  margin: 8px 0 10px;
+  font-size: 1.18rem;
+}
+
+.mode-card p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.mode-tag {
+  color: var(--coral);
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 920px) {
+  .mode-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Two pointers out of one section, side by side rather than stacked. */
+.jump-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 32px;
+}
+
+/* The two ethogram colours the demo prints, so the strip on the page and the
+   strip in the terminal are the same picture. */
+.t-eth-a { color: #89b4fa; }
+.t-eth-b { color: #f9c74f; }

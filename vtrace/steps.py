@@ -6,6 +6,8 @@ run one at a time, in the caller's process — there is no queue, no registry an
 no background thread.
 """
 import json
+import os
+import re
 import shutil
 import subprocess
 import sys
@@ -86,6 +88,15 @@ class InferRequest(BaseModel):
     profile: bool = False
     auto_tune: bool = False
     threshold: float = Field(default=0.0, ge=0.0, le=1.0)
+    # Pick the cutoff per class against the annotation CSV beside each video,
+    # when there is one. Only the demo asks for this: it tunes on the video it
+    # reports, which is a demonstration, not an evaluation.
+    tune_threshold: bool = False
+    # Also write `<stem>.pred.scores.npz` beside each prediction file — every
+    # frame's score for every class — so frame-level curves and AP can be drawn
+    # after the fact. The demo asks for it to plot precision-recall over its
+    # test videos; a plain `vtrace predict` writes only the CSVs.
+    frame_scores: bool = False
     cfg_options: Optional[dict] = None
     included_stems: Optional[List[str]] = None
 
@@ -137,6 +148,81 @@ def _find_project_root():
     return None
 
 
+# Colour belongs on the terminal, not in a file someone greps a year later.
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+# A redraw of a multi-line block starts by moving the cursor back over it.
+_CURSOR_UP = re.compile(r"\x1b\[(\d*)A")
+
+
+class _LogTee:
+    """Turns a step's terminal output into something worth keeping in a file.
+
+    Two things a terminal does are noise on disk. A progress bar redraws one
+    line with `\r`, so only the last frame of each line is kept. A live plot
+    redraws a whole block by moving the cursor up over it, so those lines are
+    dropped outright: on seeing `ESC[nA`, the last n lines held back are the
+    ones being overwritten and go away, and everything older is now settled and
+    can be written out.
+
+    Holding back only the current block is what keeps this exact — nothing is
+    guessed from timing, and `tail -f` lags by one frame at most.
+    """
+
+    def __init__(self, handle):
+        self.handle = handle
+        self.held = []
+        self.pending = b""
+
+    def feed(self, chunk: bytes) -> None:
+        self.pending += chunk
+        while b"\n" in self.pending:
+            line, self.pending = self.pending.split(b"\n", 1)
+            self._line(line.decode("utf-8", errors="replace"))
+
+    def _line(self, text: str) -> None:
+        match = _CURSOR_UP.match(text)
+        if match:
+            rewound = int(match.group(1) or 1)
+            if rewound:
+                del self.held[max(0, len(self.held) - rewound):]
+            self._settle()
+            text = text[match.end():]
+        # A bar's frames are separated by `\r`; the last one is its final state.
+        self.held.append(_ANSI.sub("", text.rsplit("\r", 1)[-1]).rstrip())
+
+    def _settle(self) -> None:
+        for line in self.held:
+            self.handle.write(line + "\n")
+        self.held.clear()
+        self.handle.flush()
+
+    def close(self) -> None:
+        if self.pending.strip():
+            self._line(self.pending.decode("utf-8", errors="replace"))
+        self.pending = b""
+        self._settle()
+
+
+def _child_env() -> dict:
+    """The child's environment, told what kind of terminal it is writing to.
+
+    A step runs with its stdout on a pipe, so Rich and friends would correctly
+    conclude there is nobody to colour for — but this process is teeing that
+    pipe straight to a real terminal. FORCE_COLOR passes on what the child
+    cannot see, and COLUMNS passes on how wide it is.
+    """
+    env = dict(os.environ)
+    if sys.stdout.isatty() and not env.get("NO_COLOR"):
+        env["FORCE_COLOR"] = "1"
+        env["COLUMNS"] = str(shutil.get_terminal_size((100, 24)).columns)
+    # decord 0.6 occasionally gives up on a frame near EOF with "Unable to
+    # handle EOF because it takes too long to retrieve last few frames" (its
+    # default budget is 10240 retries). Give it more room; VideoDecode also
+    # reopens the reader and retries, so this is belt and braces.
+    env.setdefault("DECORD_EOF_RETRY_MAX", "40960")
+    return env
+
+
 def _run(cmd: list[str], *, work_dir: str, log_file: str) -> StepResult:
     """Run one step to completion, teeing its output to `log_file` and stdout.
 
@@ -151,20 +237,31 @@ def _run(cmd: list[str], *, work_dir: str, log_file: str) -> StepResult:
 
     Path(log_file).parent.mkdir(parents=True, exist_ok=True)
     with open(log_file, "w", encoding="utf-8") as fh:
+        # Binary, not text: a text-mode pipe is opened with universal newlines,
+        # which translates the bare `\r` a progress bar redraws with into `\n`.
+        # That is what turned one updating line into a hundred printed ones.
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             cwd=project_root,
-            text=True,
-            errors="replace",
-            bufsize=1,
+            env=_child_env(),
         )
+        tee = _LogTee(fh)
         try:
-            for line in proc.stdout:
-                sys.stdout.write(line)
-                sys.stdout.flush()
-                fh.write(line)
+            while True:
+                # read1 returns what has arrived instead of waiting to fill a
+                # buffer, so the bar moves while the step runs.
+                chunk = proc.stdout.read1(65536)
+                if not chunk:
+                    break
+                # Straight through, escapes intact: the terminal is what makes
+                # them redraw in place. The log is scrollback, not a live
+                # display, and gets the settled version.
+                sys.stdout.buffer.write(chunk)
+                sys.stdout.buffer.flush()
+                tee.feed(chunk)
+            tee.close()
             returncode = proc.wait()
         except BaseException:
             proc.terminate()
@@ -226,7 +323,7 @@ def run_test(request: TestRequest) -> StepResult:
 def run_infer(request: InferRequest) -> StepResult:
     """Predict behavior segments on new videos.
 
-    The results are the `<video>.predict.csv` files the run writes beside each
+    The results are the `<video>.pred.csv` files the run writes beside each
     video, so nothing else needs to survive it: the engine's scratch (its log and
     the raw per-frame `result_detection.json`) goes to a temporary directory that
     is removed on success. A failed run keeps it, and `StepResult.log_file` then
@@ -377,6 +474,10 @@ def _infer_command(request: InferRequest) -> list[str]:
     if request.output:
         cmd.extend(["--output", request.output])
     cmd.extend(["--threshold", str(request.threshold)])
+    if request.tune_threshold:
+        cmd.append("--tune-threshold")
+    if request.frame_scores:
+        cmd.append("--frame-scores")
     if request.profile:
         cmd.append("--profile")
     if request.auto_tune:

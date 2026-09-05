@@ -5,15 +5,21 @@ split into argv and handed to the same `main()` a one-shot `vtrace ...` call goe
 through, so there is no second command surface to keep in sync.
 
 The line editor is prompt_toolkit when it is installed — the same choice pgcli,
-mycli and IPython make — which brings a completion menu, reverse history search
-and a status bar for free. Without it the loop falls back to `input()` plus
+mycli and IPython make. Without it the loop falls back to `input()` plus
 readline, which still gives history and arrow keys on any normal Unix box.
 
-The prompt itself is one line. A chain is longer than that, and the answer is
-`run`, which opens a bordered box to compose one in — so the prompt does not
-also need a hidden multi-line mode, nor a permanent toolbar advertising one.
-Pasting a chain still works, on one line or with the backslash continuations a
-copied shell command carries.
+Neither completion nor reverse history search is offered. The command set is
+short enough to read off the start screen, and a session whose whole surface is
+printed on arrival does not need a second, hidden way to discover it. Up and
+down still walk the history, which is the part people reach for.
+
+The session opens on a bordered box, not the one-line prompt. The command most
+people bring is the one the annotator's configuration page wrote — several lines
+of `train --pairs … --output …` with `then eval …` after it — and a box is where
+a pasted block of lines belongs. Enter runs it. Escape closes the box and leaves
+the plain prompt, where `run` opens it again: two places to type, one command
+surface. Pasting into the prompt still works too, on one line or with the
+backslash continuations a copied shell command carries.
 
 The loop's job is to survive. Commands fail by calling `sys.exit()` (argparse
 does it for a bad flag, the step runners for a non-zero exit code) and that has
@@ -37,11 +43,11 @@ BACKSLASH = chr(92)
 # `\` at the end of a line, with the newline: a pasted shell continuation.
 _CONTINUATION = __import__("re").compile(BACKSLASH + BACKSLASH + r"\s*\n")
 
-# Command tree, used for completion and for the in-session `help`.
+# The command set, and what the in-session `help` prints.
 COMMANDS = {
     "app": "Serve the annotator UI (already running in this session)",
     "demo": "Download and run the CalMS21 walkthrough",
-    "run": "Open a box to compose a run of chained steps",
+    "run": "Open the command box (paste the command the annotator wrote)",
     "train": "Train a model on video/CSV pairs",
     "eval": "Evaluate a trained model",
     "predict": "Run prediction on videos",
@@ -50,26 +56,6 @@ COMMANDS = {
     "update": "Check PyPI for a newer release",
     "help": "Where the documentation lives",
     "exit": "Leave the session",
-}
-
-_COMPLETION_TREE = {
-    "app": {"--port", "--no-browser", "--verbose"},
-    # No flags of its own: `run` opens the box, and the flags are typed in there.
-    "run": None,
-    "demo": {"download": {"--from"}, "predict": None, "train": None},
-    "train": {"--model", "--config", "--pairs", "--output", "--eval-pairs",
-              "--epochs", "--val-start-epoch", "--val-interval",
-              "--input-resolution", "--resource-profile", "--pretrained",
-              "--nproc", "--seed", "--resume", "--cfg-options"},
-    "eval": {"--model-dir", "--pairs", "--resource-profile",
-             "--nproc", "--seed", "--profile", "--auto-tune", "--cfg-options"},
-    "predict": {"--model-dir", "--input", "--output", "--include-stems",
-                "--threshold", "--resource-profile", "--profile", "--auto-tune"},
-    "prepare": {"--weights"},
-    "update": {"-y", "--yes", "--check-only", "--timeout"},
-    "then": None,
-    "help": {c: None for c in COMMANDS},
-    "exit": None,
 }
 
 
@@ -100,7 +86,7 @@ def _to_argv(line: str):
 _HELP_NOTES = (
     "Every command, flag and file format.",
     "",
-    "`run` opens a box to compose a run.",
+    "`run` opens the command box; esc closes it for this prompt.",
     "`COMMAND --help` prints one command's flags.",
     "Tab lists what can be typed here.",
 )
@@ -154,10 +140,10 @@ def _print_chain_help() -> None:
         An eval that does not follow a train keeps its ordinary meaning:
         score a model that already exists.
 
-   `run` opens a bordered box for exactly this, drawn below the prompt so
-   the screen above it stays: a step per line, ctrl-s to submit, esc or the
-   Cancel button to leave. A chain can be laid out and read back before any
-   of it starts.
+   The box the session opens on is for exactly this, drawn below the start
+   screen so it stays in view: paste the chain the annotator wrote, or type
+   one a step per line (ctrl-j for a new line), then enter runs it. Esc
+   closes the box for the plain prompt, and `run` opens it again.
 """)
 
 
@@ -167,8 +153,8 @@ def _make_session():
     """A prompt_toolkit session, or None when prompt_toolkit is missing."""
     try:
         from prompt_toolkit import PromptSession
-        from prompt_toolkit.completion import NestedCompleter
         from prompt_toolkit.history import FileHistory
+        from prompt_toolkit.key_binding import KeyBindings
         from prompt_toolkit.styles import Style
     except ImportError:
         return None
@@ -180,13 +166,20 @@ def _make_session():
     except OSError:
         history = None
 
+    # Reverse-i-search is an emacs default binding, so removing the feature
+    # means taking the key back rather than leaving an option unset.
+    bindings = KeyBindings()
+
+    @bindings.add("c-r")
+    def _(event):
+        pass
+
     style = Style.from_dict({"prompt": "bold cyan"})
     return PromptSession(
-        completer=NestedCompleter.from_nested_dict(_COMPLETION_TREE),
         history=history,
         style=style,
-        complete_while_typing=False,   # a menu that pops on every keystroke is noise
-        enable_history_search=True,
+        key_bindings=bindings,
+        enable_history_search=False,
     )
 
 
@@ -216,17 +209,42 @@ def run(dispatch, version: str = "") -> int:
     if session is None:
         _enable_readline()
 
+    # Anything printed from here on is being read at the prompt, so a command
+    # suggested to the reader drops the program's own name.
+    splash.IN_SESSION = True
+    try:
+        return _loop(dispatch, session, console)
+    finally:
+        splash.IN_SESSION = False
+
+
+def _loop(dispatch, session, console=None) -> int:
+    """Read and run commands until the reader leaves.
+
+    Two places to type. The session starts in the box, where a command copied
+    from the annotator is pasted and enter runs it; escape closes the box and
+    the loop falls back to the one-line prompt, where `run` opens the box again.
+    Whichever place a command came from is where the loop returns after it.
+    """
+    in_box = True
     while True:
-        try:
-            if session is not None:
-                line = session.prompt(_prompt_fragments())
-            else:
-                line = input("vtrace > ")
-        except EOFError:  # Ctrl-D
-            print()
-            break
-        except KeyboardInterrupt:  # Ctrl-C abandons the line, not the session
-            continue
+        if in_box:
+            line = composer.compose()
+            if line is None:
+                in_box = False
+                print("  Plain prompt. Type a command; `run` reopens the box; `exit` leaves.")
+                continue
+        else:
+            try:
+                if session is not None:
+                    line = session.prompt(_prompt_fragments())
+                else:
+                    line = input("vtrace > ")
+            except EOFError:  # Ctrl-D
+                print()
+                break
+            except KeyboardInterrupt:  # Ctrl-C abandons the line, not the session
+                continue
 
         argv = _to_argv(line)
         if argv is None:
@@ -236,12 +254,8 @@ def run(dispatch, version: str = "") -> int:
         # Interactive-only, so it never reaches the argument parser: `run` is a
         # way of typing a command, not a command of its own.
         if argv[0] == "run" and len(argv) == 1:
-            composed = composer.compose()
-            if composed is None:
-                continue
-            argv = _to_argv(composed)
-            if argv is None:
-                continue
+            in_box = True
+            continue
         elif argv[0] == "run":
             # `run train ...` reads as "run this", and refusing it outright would
             # be pedantry — the rest of the line is already the command.
@@ -283,7 +297,10 @@ def run(dispatch, version: str = "") -> int:
 
 
 def _enable_readline():
-    """Arrow keys and history for the fallback `input()` path."""
+    """Arrow keys and history for the fallback `input()` path.
+
+    History only — no completion, and no reverse search.
+    """
     try:
         import atexit
         import readline
@@ -298,11 +315,7 @@ def _enable_readline():
         atexit.register(readline.write_history_file, str(path))
     except OSError:
         pass
-    readline.parse_and_bind("tab: complete")
-    readline.set_completer(_readline_completer)
-    readline.set_completer_delims(" \t\n")
-
-
-def _readline_completer(text, state):
-    matches = [name for name in _COMPLETION_TREE if name.startswith(text)]
-    return matches[state] if state < len(matches) else None
+    # Tab inserts a tab, and ctrl-r does nothing: see the note at the top of
+    # the module. Both are readline defaults, so both have to be taken back.
+    readline.parse_and_bind("tab: self-insert")
+    readline.parse_and_bind(r'"\C-r": ')

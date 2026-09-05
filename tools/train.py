@@ -9,6 +9,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from vtrace.config import Config, DictAction, num_classes_cfg
+from vtrace.console import ACCENT, say
 from vtrace.model_artifacts import RESOLVED_CONFIG_NAME
 from vtrace.models import build_detector
 from vtrace.datasets import build_dataset, build_dataloader
@@ -23,6 +24,27 @@ from vtrace.utils import (
     save_checkpoint,
     save_best_checkpoint,
 )
+from vtrace.utils.logger import BRIEF
+from vtrace.utils.progress import EpochBar, LossPlot, plot_width
+from vtrace.verbosity import verbose
+
+
+# Warnings that fire on every run, say nothing about this run, and are four
+# lines of stack trace each. They stay one `TRACE_VERBOSE=1` away.
+_EXPECTED_WARNINGS = (
+    "torch.utils.checkpoint: the use_reentrant parameter should be passed explicitly",
+    "Flash Attention defaults to a non-deterministic algorithm",
+    "upsample_linear1d_backward_out_cuda does not have a deterministic implementation",
+    "Detected call of `lr_scheduler.step()` before `optimizer.step()`",
+)
+
+
+def _quiet_expected_warnings():
+    import re
+    import warnings
+
+    for message in _EXPECTED_WARNINGS:
+        warnings.filterwarnings("ignore", message=re.escape(message))
 
 
 def parse_args():
@@ -61,8 +83,47 @@ def _latest_epoch_checkpoint(work_dir):
     return best[1]
 
 
+def _print_header(cfg, train_dataset, test_dataset, train_loader,
+                  max_epoch, accumulation_steps, use_amp, use_ema):
+    """The four facts worth knowing before a run that takes hours.
+
+    Everything else the run knows about itself — the sampler's window table,
+    the resolved config, which weights loaded — is in the log file named here.
+    """
+    setup = [f"[{ACCENT}]{max_epoch}[/] epochs [dim]x[/] "
+             f"[{ACCENT}]{len(train_loader)}[/] steps"]
+    if accumulation_steps > 1:
+        setup.append(f"grad-accum [{ACCENT}]x{accumulation_steps}[/]")
+    if use_amp:
+        setup.append("mixed precision")
+    if use_ema:
+        setup.append("EMA")
+    try:
+        device = torch.cuda.get_device_name(0)
+    except Exception:
+        device = None
+
+    windows = f"[{ACCENT}]{len(train_dataset)}[/] training"
+    if test_dataset is not None:
+        windows += f", [{ACCENT}]{len(test_dataset)}[/] validation"
+
+    behaviors = ", ".join(f"[{ACCENT}]{name}[/]"
+                          for name in train_dataset.class_map)
+    say()
+    say("[bold]Training the model[/]")
+    say(f"  [dim]behaviors[/]  {behaviors}")
+    say(f"  [dim]windows[/]    {windows}")
+    joined = " [dim]\u00b7[/] ".join(setup)
+    say(f"  [dim]setup[/]      {joined}"
+        + (f" [dim]on[/] [dim]{device}[/]" if device else ""))
+    say(f"  [dim]log[/]        [dim]{os.path.join(cfg.work_dir, 'log.json')}[/]")
+    say()
+
+
 def main():
     args = parse_args()
+    if not verbose():
+        _quiet_expected_warnings()
 
     # load config
     cfg = Config.fromfile(args.config)
@@ -105,7 +166,7 @@ def main():
     save_config(args.config, cfg.work_dir)
 
     # setup logger
-    logger = setup_logger("Train", save_dir=cfg.work_dir)
+    logger = setup_logger("Train", save_dir=cfg.work_dir, brief=True)
     logger.info(f"Using torch version: {torch.__version__}, CUDA version: {torch.version.cuda}")
     logger.info(f"Config: {args.config}")
 
@@ -136,7 +197,8 @@ def main():
             "No evaluation data — training only. Every epoch is checkpointed and "
             "no best.pth is written. To pick a best epoch, give evaluation videos: "
             "`vtrace train ... --eval-pairs VIDEO=CSV`, or `train ... then eval "
-            "--pairs VIDEO=CSV` at the prompt."
+            "--pairs VIDEO=CSV` at the prompt.",
+            extra=BRIEF,
         )
 
     # Auto-detect num_classes from dataset (DFC-only model: lives at model.num_classes)
@@ -188,7 +250,7 @@ def main():
 
     # resume: reset epoch, load checkpoint
     if args.resume is not None:
-        logger.info("Resume training from: {}".format(args.resume))
+        logger.info("Resume training from: {}".format(args.resume), extra=BRIEF)
         checkpoint = torch.load(args.resume, map_location="cuda")
         resume_epoch = checkpoint["epoch"]
         logger.info("Resume epoch is {}".format(resume_epoch))
@@ -247,30 +309,42 @@ def main():
                 if any(k.startswith("module.") for k in es.keys()):
                     es = {k.removeprefix("module."): v for k, v in es.items()}
                 model_ema.module.load_state_dict(es)
-            logger.info(f"init_weights loaded (from epoch {ckpt.get('epoch')}); training fresh from epoch 0.")
+            logger.info(f"init_weights loaded (from epoch {ckpt.get('epoch')}); training fresh from epoch 0.",
+                        extra=BRIEF)
             del ckpt
             torch.cuda.empty_cache()
 
     # train the detector
 
     logger.info("Training Starts...\n")
+    _print_header(cfg, train_dataset, test_dataset, train_loader,
+                  max_epoch, accumulation_steps, use_amp, use_ema)
     val_start_epoch = cfg.workflow.get("val_start_epoch", 0)
     best_metric = -1.0
+    # One plot for the run, so the curve carries across epochs instead of
+    # restarting — the question it answers is whether the loss is still falling.
+    plot = LossPlot(plot_width())
     for epoch in range(resume_epoch + 1, max_epoch):
-        # train for one epoch
-        train_one_epoch(
-            train_loader,
-            model,
-            optimizer,
-            scheduler,
-            epoch,
-            logger,
-            model_ema=model_ema,
-            clip_grad_l2norm=cfg.solver.clip_grad_norm,
-            logging_interval=cfg.workflow.logging_interval,
-            scaler=scaler,
-            accumulation_steps=accumulation_steps, 
-        )
+        # train for one epoch. The bar is the terminal's whole view of the
+        # epoch; the periodic loss/lr/memory lines still go to the log file.
+        bar = EpochBar(epoch, max_epoch, len(train_loader), plot=plot)
+        try:
+            train_one_epoch(
+                train_loader,
+                model,
+                optimizer,
+                scheduler,
+                epoch,
+                logger,
+                model_ema=model_ema,
+                clip_grad_l2norm=cfg.solver.clip_grad_norm,
+                logging_interval=cfg.workflow.logging_interval,
+                scaler=scaler,
+                accumulation_steps=accumulation_steps,
+                progress=bar.update,
+            )
+        finally:
+            bar.close()
 
         # save checkpoint
         if (epoch == max_epoch - 1) or ((epoch + 1) % cfg.workflow.checkpoint_interval == 0):
@@ -290,10 +364,18 @@ def main():
                 )
 
                 # save best model
-                if primary_metric is not None and primary_metric > best_metric:
-                    best_metric = primary_metric
-                    logger.info(f"New best metric: {best_metric:.4f}, saving best checkpoint...")
-                    save_best_checkpoint(model, model_ema, epoch, work_dir=cfg.work_dir)
+                if primary_metric is not None:
+                    improved = primary_metric > best_metric
+                    if improved:
+                        logger.info(f"New best metric: {primary_metric:.4f}, saving best checkpoint...")
+                        save_best_checkpoint(model, model_ema, epoch, work_dir=cfg.work_dir)
+                    # One line for what the epoch scored, next to the bar that
+                    # produced it. The full per-class table is in the log file.
+                    note = (f"[{ACCENT}]best so far[/]" if improved
+                            else f"[dim]best {best_metric:.3f}[/]")
+                    say(f"  [dim]validation[/]  mAP [bold]{primary_metric:.3f}[/]  {note}")
+                    if improved:
+                        best_metric = primary_metric
     # Make the work_dir itself a self-contained model folder. A run with no
     # evaluation data still produces a usable model — it just has no epoch that
     # was measured to be better than the others, so the weights it publishes are

@@ -53,6 +53,9 @@ class SlidingWindowDataset:
         self.ann_file = ann_file
         self.subset_name = subset_name
         self.logger = logger.info if logger != None else print
+        # Detail that belongs in the log file rather than in front of someone
+        # waiting on a prediction.
+        self.logger_debug = logger.debug if logger != None else (lambda *a, **k: None)
         self.class_map = self.get_class_map(class_map)
         self.class_agnostic = class_agnostic
         self.filter_gt = filter_gt
@@ -82,8 +85,11 @@ class SlidingWindowDataset:
         self.base_jitter = 0.0 if test_mode else max(0.0, float(base_jitter))
 
         self.get_dataset()
-        self.logger(
-            f"{self.subset_name} subset: {len(set([data[0] for data in self.data_list]))} videos, "
+        # How many windows a corpus becomes is a fact about this class, not
+        # about the run — the progress bar already counts them.
+        self.logger_debug(
+            f"{self.subset_name} subset: "
+            f"{len(set([data[0] for data in self.data_list]))} videos, "
             f"truncated as {len(self.data_list)} windows."
         )
 

@@ -8,6 +8,8 @@ import torch.nn.functional as F
 import torch.utils.checkpoint as cp
 from torch import Tensor, nn
 
+from vtrace.verbosity import note, warn
+
 
 # ---------------------------------------------------------------------------
 # Inline replacements for mmcv / mmengine utilities
@@ -462,7 +464,7 @@ class VisionTransformerAdapter(nn.Module):
         num_vit_param = sum(p.numel() for name, p in self.named_parameters() if "adapter" not in name)
         num_adapter_param = sum(p.numel() for name, p in self.named_parameters() if "adapter" in name)
         ratio = num_adapter_param / num_vit_param * 100
-        print("ViT params: {}, Adapter params: {}, ratio: {:2.1f}%".format(
+        note("ViT params: {}, Adapter params: {}, ratio: {:2.1f}%".format(
             num_vit_param, num_adapter_param, ratio))
 
     def forward(self, x: Tensor) -> Tensor:
@@ -623,7 +625,7 @@ class BackboneWrapper(nn.Module):
         if pretrain is not None:
             self._load_pretrained(pretrain)
         else:
-            print(
+            warn(
                 "Warning: no pretrain path provided — backbone will be randomly initialised "
                 "unless weights are loaded elsewhere."
             )
@@ -667,11 +669,11 @@ class BackboneWrapper(nn.Module):
                 else:
                     param.requires_grad = False
                     frozen_params += param.numel()
-            print(
+            note(
                 "backbone trainable_patterns="
                 f"{list(trainable_patterns)}, trainable_params={trainable_params}, frozen_params={frozen_params}"
             )
-        print(f"freeze_backbone: {self.freeze_backbone}, norm_eval: {self.norm_eval}")
+        note(f"freeze_backbone: {self.freeze_backbone}, norm_eval: {self.norm_eval}")
 
         self.use_temporal_checkpointing = custom_cfg.get("temporal_checkpointing", False)
         if self.use_temporal_checkpointing:
@@ -788,7 +790,7 @@ class BackboneWrapper(nn.Module):
         """Load pretrained weights with flexible key matching."""
         from vtrace.weights import resolve as _resolve_weights
         checkpoint_path = _resolve_weights(checkpoint_path)
-        print(f"Loading pretrained backbone from: {checkpoint_path}")
+        note(f"Loading pretrained backbone from: {checkpoint_path}")
         ckpt = torch.load(checkpoint_path, map_location="cpu")
 
         # Extract state dict from various checkpoint formats
@@ -856,11 +858,11 @@ class BackboneWrapper(nn.Module):
                         if k not in expected_missing and "adapter" not in k]
 
         loaded = len(state_dict) - len(unexpected)
-        print(f"  Loaded {loaded}/{len(state_dict)} pretrained keys.")
+        note(f"  Loaded {loaded}/{len(state_dict)} pretrained keys.")
         if real_missing:
-            print(f"  WARNING — unexpected missing keys ({len(real_missing)}): {real_missing[:5]}{'...' if len(real_missing)>5 else ''}")
+            warn(f"  WARNING — unexpected missing keys ({len(real_missing)}): {real_missing[:5]}{'...' if len(real_missing)>5 else ''}")
         if unexpected:
-            print(f"  WARNING — unexpected keys ({len(unexpected)}): {unexpected[:5]}{'...' if len(unexpected)>5 else ''}")
+            warn(f"  WARNING — unexpected keys ({len(unexpected)}): {unexpected[:5]}{'...' if len(unexpected)>5 else ''}")
 
     def _temporal_checkpointing(self, frames, chunk_num, chunk_dim):
         """Memory-efficient temporal checkpointing."""
@@ -1143,7 +1145,7 @@ class VJEPA2Backbone(nn.Module):
 
         n_train = sum(p.numel() for p in self.parameters() if p.requires_grad)
         n_total = sum(p.numel() for p in self.parameters())
-        print(
+        note(
             f"[VJEPA2Backbone] model={model_id} crop={crop} fpc={fpc} "
             f"windows={self.num_windows} token_frames/window={self.token_frames_per_window} "
             f"trainable={n_train/1e6:.1f}M / total={n_total/1e6:.1f}M "

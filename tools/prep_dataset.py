@@ -78,7 +78,8 @@ def main():
 
     with open(args.output, "w") as f:
         json.dump(result, f, indent=2)
-    print(f"Prep result saved to: {args.output}")
+    # The path is machine-facing — the caller passed it in and reads it back.
+    # `prepare_dataset` has already said where the run folder is.
 
 
 if __name__ == "__main__":

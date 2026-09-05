@@ -949,6 +949,7 @@ Replaces: mmaction.DecordInit, DecordDecode, Resize, RandomResizedCrop,
 """
 import os
 import random
+import warnings
 from collections import OrderedDict
 
 import numpy as np
@@ -985,9 +986,18 @@ class _VideoReaderCache:
         self._cache: "OrderedDict[tuple[str, int, int, int], decord.VideoReader]" = OrderedDict()
         self._max = max(1, maxsize)
 
+    @staticmethod
+    def _key(path: str, num_threads: int, width: int, height: int):
+        return (os.path.abspath(path), int(width), int(height), int(num_threads))
+
+    def evict(self, path: str, num_threads: int, width: int = -1, height: int = -1) -> None:
+        """Drop a reader whose decoder state went bad (e.g. decord EOF-retry
+        error) so the next get() reopens the file from scratch."""
+        old = self._cache.pop(self._key(path, num_threads, width, height), None)
+        del old
+
     def get(self, path: str, num_threads: int, width: int = -1, height: int = -1) -> decord.VideoReader:
-        path = os.path.abspath(path)
-        key = (path, int(width), int(height), int(num_threads))
+        key = self._key(path, num_threads, width, height)
         if key in self._cache:
             self._cache.move_to_end(key)
             return self._cache[key]
@@ -1027,6 +1037,7 @@ class VideoInit:
         filename = results["filename"]
         vr = _video_reader_cache.get(filename, self.num_threads, width=self.width, height=self.height)
         results["video_reader"] = vr
+        results["video_reader_spec"] = (filename, self.num_threads, self.width, self.height)
         if "clip_frame_count" in results:
             results["total_frames"] = int(results["clip_frame_count"])
         else:
@@ -1135,12 +1146,41 @@ class VideoDecode:
         if offset:
             flat_inds = flat_inds + offset
         # clamp to valid source-frame range
-        flat_inds = np.clip(flat_inds, 0, len(vr) - 1)
-        imgs = vr.get_batch(flat_inds.tolist()).asnumpy()  # [N, H, W, 3]
+        flat_inds = np.clip(flat_inds, 0, len(vr) - 1).tolist()
+        imgs = self._get_batch(vr, flat_inds, results).asnumpy()  # [N, H, W, 3]
         imgs = imgs.reshape(*frame_inds.shape, *imgs.shape[1:])  # [..., H, W, 3]
         results["imgs"] = list(imgs) if imgs.ndim > 3 else [imgs]
         del results["video_reader"]
+        results.pop("video_reader_spec", None)
         return results
+
+    # decord 0.6 intermittently raises "Unable to handle EOF because it takes
+    # too long to retrieve last few frames" from a long-lived, multi-threaded
+    # reader after many seeks (dmlc/decord#150/#283). The file is fine; the
+    # reader's decoder state is not. Reopen the file and retry, falling back
+    # to single-threaded decode on the last attempt.
+    RETRIES = 2
+
+    def _get_batch(self, vr, flat_inds, results):
+        spec = results.get("video_reader_spec")
+        last_err = None
+        for attempt in range(self.RETRIES + 1):
+            try:
+                return vr.get_batch(flat_inds)
+            except decord.DECORDError as e:
+                last_err = e
+                if spec is None or attempt == self.RETRIES:
+                    break
+                filename, num_threads, width, height = spec
+                _video_reader_cache.evict(filename, num_threads, width=width, height=height)
+                if attempt == self.RETRIES - 1:
+                    num_threads = 1  # last try: single-threaded decoder
+                vr = _video_reader_cache.get(filename, num_threads, width=width, height=height)
+                warnings.warn(
+                    f"decord get_batch failed on {filename} (attempt {attempt + 1}/{self.RETRIES + 1}, "
+                    f"reopening with num_threads={num_threads}): {str(e).splitlines()[-1][:160]}"
+                )
+        raise last_err
 
 
 def _resize_img(img, scale):

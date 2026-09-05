@@ -15,9 +15,13 @@
     </a>
     <nav class="top-nav" aria-label="Documentation navigation">
       <a href="#quick-start">Quick Start</a>
-      <a href="#demo">Demo</a>
       <a href="#workflow">Workflow</a>
+      <a href="#app">The App</a>
+      <a href="#running">Running It</a>
       <a href="#cli">CLI</a>
+      <a href="#files">Files</a>
+      <a href="#demo">Demo</a>
+      <a href="document.html">Document</a>
       <a href="https://github.com/KunmingS/TRACE">GitHub</a>
     </nav>
   </header>
@@ -29,9 +33,7 @@
         <h1 id="hero-title">V-TRACE</h1>
         <p class="hero-lede">
           Label a few recordings in the browser, train a detector on them, and
-          have it annotate the rest. The annotator is one static page that reads
-          and writes files on your own machine; training and prediction run from
-          the command line.
+          have it annotate the rest.
         </p>
         <div class="hero-actions">
           <a class="button button-primary" href="#quick-start">Start Here</a>
@@ -45,153 +47,557 @@
         <p class="section-label">Quick Start</p>
         <h2>Install, then run it with no arguments.</h2>
         <p>
-          Create a Python 3.9+ environment with conda, mamba, or uv first.
+          Create a Python 3.9+ environment with conda, mamba, or uv first. Then
           <code>vtrace</code> opens an interactive session and starts the
           annotator with it, so nothing has to be launched by hand — open the
-          address it prints in Chrome or Edge. Type the rest of the commands at
-          the <code>vtrace &gt;</code> prompt without repeating the program's
-          name, or type <code>run</code> to compose a whole chain of steps in a
-          bordered box. Training, evaluation and prediction need a CUDA-capable
-          PyTorch environment; annotation does not.
+          address it prints in Chrome or Edge. Under the start screen a command
+          box waits for the command the annotator will write.
         </p>
-      </div>
-      <div class="code-panel" aria-label="Quick start commands">
-<pre><code># conda
-conda create -n vtrace python=3.11 pip
-conda activate vtrace
-
-# mamba
-mamba create -n vtrace python=3.11 pip
-mamba activate vtrace
-
-# uv
-uv venv --python 3.11 --seed .venv
-source .venv/bin/activate
-
-python -m pip install vtrace-behavior
-vtrace prepare --weights all
-vtrace</code></pre>
-      </div>
-    </section>
-
-    <section id="demo" class="section split-section">
-      <div>
-        <p class="section-label">Demo</p>
-        <h2>The whole CalMS21 benchmark, in one command.</h2>
         <p>
-          The demo is the complete Task-1 mouse social-behavior benchmark in its
-          official split — 70 training videos and 19 test videos. V-TRACE
-          re-hosts none of it: the annotation CSVs ship with the package, and
-          the videos come straight from the official CalMS21 release, one at a
-          time over HTTP range requests, so nothing pulls the 28 GB archive and
-          an interrupted fetch resumes where it stopped. Predicting takes
-          about a minute; training is a real run on the full benchmark.
+          Training, evaluation and prediction need a CUDA-capable PyTorch
+          environment; annotation does not.
         </p>
+        <a class="jump-link" href="document.html#install">Installing, the session, and serving over SSH <span aria-hidden="true">&rarr;</span></a>
       </div>
-      <div class="code-panel compact" aria-label="Demo commands">
-<pre><code>vtrace demo predict
-vtrace demo download
-vtrace demo train</code></pre>
+      <div class="terminal">
+        <div class="terminal-bar">
+          <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="terminal-title">bash — install and launch</span>
+        </div>
+<pre><code><span class="t-com"># pick one environment manager</span>
+<span class="t-prompt">$</span> <span class="t-cmd">conda</span> create <span class="t-flag">-n</span> vtrace python=<span class="t-num">3.11</span> pip
+<span class="t-prompt">$</span> <span class="t-cmd">conda</span> activate vtrace
+
+<span class="t-com"># or mamba</span>
+<span class="t-prompt">$</span> <span class="t-cmd">mamba</span> create <span class="t-flag">-n</span> vtrace python=<span class="t-num">3.11</span> pip
+<span class="t-prompt">$</span> <span class="t-cmd">mamba</span> activate vtrace
+
+<span class="t-com"># or uv</span>
+<span class="t-prompt">$</span> <span class="t-cmd">uv</span> venv <span class="t-flag">--python</span> <span class="t-num">3.11</span> <span class="t-flag">--seed</span> <span class="t-path">.venv</span>
+<span class="t-prompt">$</span> <span class="t-cmd">source</span> <span class="t-path">.venv/bin/activate</span>
+
+<span class="t-com"># then, in any of them</span>
+<span class="t-prompt">$</span> <span class="t-cmd">python</span> <span class="t-flag">-m</span> pip install <span class="t-str">vtrace-behavior</span>
+<span class="t-prompt">$</span> <span class="t-cmd">vtrace</span> prepare <span class="t-flag">--weights</span> all
+<span class="t-prompt">$</span> <span class="t-cmd">vtrace</span></code></pre>
       </div>
     </section>
 
     <section id="workflow" class="section">
       <div class="section-heading">
         <p class="section-label">Workflow</p>
-        <h2>From labeled video to predictions.</h2>
+        <h2>Four steps, in the order you take them.</h2>
+        <p>
+          Everything happens in two places: the annotator in your browser, and
+          the <code>vtrace</code> session in a terminal. The browser is where
+          recordings are labeled and a run is configured. The session is where
+          the command the browser wrote is pasted and run.
+        </p>
       </div>
       <div class="step-grid">
         <article class="step-card">
           <span class="step-number">01</span>
           <h3>Annotate</h3>
           <p>
-            Open the annotator, choose a video folder, and mark behaviors on the
-            timeline. Everything is read and written on the computer running the
-            browser — nothing is uploaded and there is no server-side state.
+            Open a folder of videos in the annotator and mark behaviors on the
+            timeline. Labels are written as one CSV beside each video, on the
+            computer running the browser — nothing is uploaded.
           </p>
+          <a class="jump-link" href="#walk-annotate">Steps 01–03 <span aria-hidden="true">&rarr;</span></a>
         </article>
         <article class="step-card">
           <span class="step-number">02</span>
-          <h3>Train</h3>
+          <h3>Configure</h3>
           <p>
-            Name the video/annotation pairs for the run and where the run folder
-            goes. Every video is indexed whole; nothing is held back from the
-            training set, and every epoch is checkpointed.
+            On the Configuration page, pick the task, the folder and the videos,
+            the recipe, and where the run goes. The page writes the command —
+            with the folders named, not located.
           </p>
+          <a class="jump-link" href="#walk-configure">Steps 04–07 <span aria-hidden="true">&rarr;</span></a>
         </article>
         <article class="step-card">
           <span class="step-number">03</span>
-          <h3>Evaluate</h3>
+          <h3>Run</h3>
           <p>
-            Name evaluation recordings and the training loop scores each epoch
-            against them, which is what writes <code>best.pth</code>. They are a
-            corpus of their own, chosen deliberately — which videos judge a model
-            is a question about the recordings.
+            Paste the command into the box the <code>vtrace</code> session opens
+            on. The session finds each named folder on the machine it runs on,
+            then trains, and scores every epoch against the evaluation videos.
           </p>
+          <a class="jump-link" href="#walk-paste">Step 08 <span aria-hidden="true">&rarr;</span></a>
         </article>
         <article class="step-card">
           <span class="step-number">04</span>
-          <h3>Review</h3>
+          <h3>Predict &amp; review</h3>
           <p>
-            Prediction writes one file per video beside it. Open that folder in
-            the annotator to accept, reject, or correct each predicted bout
-            where the labeling happened.
+            Point the finished model at new recordings. Predictions land beside
+            each video in the shape the annotator imports, so accepting or
+            correcting a bout happens where the labeling happened.
           </p>
+          <a class="jump-link" href="#walk-review">Step 09 <span aria-hidden="true">&rarr;</span></a>
         </article>
       </div>
     </section>
 
-    <section class="section split-section">
-      <div>
-        <p class="section-label">Training Data</p>
-        <h2>Use explicit video and annotation pairs.</h2>
+    <section id="app" class="section">
+      <div class="section-heading">
+        <p class="section-label">The App, Step by Step</p>
+        <h2>From an unlabeled folder to a running command.</h2>
         <p>
-          The annotation CSV format is time-based: each row maps a behavior
-          label to start and end times in seconds. A single source video can
-          have several CSVs beside it, and each training pair chooses which one
-          to use.
+          The app is one static HTML page served at
+          <code>http://localhost:8765</code>, with two screens:
+          <strong>Annotation</strong>, where bouts are marked on a timeline, and
+          <strong>Configuration</strong>, where a folder and a recipe become the
+          command that trains on them. It reads and writes through the File
+          System Access API, so use Chrome or Edge. Nothing is uploaded; every
+          file it touches is on the computer running the browser.
+        </p>
+        <p>
+          Steps 01–03 are annotation. Steps 04–07 assemble a run and end at a
+          command written for you; step 08 is pasting it into the session. Step
+          09 comes back to the annotator once a model has predicted something.
         </p>
       </div>
-      <div class="code-panel compact" aria-label="Annotation CSV example">
-<pre><code>labelId,timestamp,endTimestamp
-grooming,12.430,18.970
-rearing,42.100,45.650</code></pre>
+
+      <div class="walk">
+        <article id="walk-annotate" class="walk-step">
+          <div class="walk-copy">
+            <span class="walk-num">01</span>
+            <h3>Open a folder of videos</h3>
+            <p>
+              <strong>Open Video Folder</strong> grants the page read and write
+              access to one directory. Every <code>.mp4</code>,
+              <code>.mov</code>, <code>.avi</code>, <code>.mkv</code> or
+              <code>.webm</code> in it becomes a row in the video list, and any
+              <code>&lt;video&gt;.csv</code> already beside a video is loaded as
+              its existing labels.
+            </p>
+            <p>
+              Coming from the configuration page, there is no folder to open:
+              step 02 hands its folder and its video selection straight to the
+              annotator, which opens with them already loaded. If the browser
+              has forgotten the access grant, one <strong>Continue with
+              &hellip;</strong> click restores it.
+            </p>
+            <p>
+              Dropping files in instead works too, but the page then has no
+              folder to write back into, so saving is manual.
+            </p>
+            <ul class="walk-facts">
+              <li>Auto-save writes <code>&lt;video&gt;.csv</code> into the same folder, 500&nbsp;ms after an edit.</li>
+              <li>Each video's frame rate is measured from its own frame timestamps — by the annotator, and by the configuration page before it — and shown read-only in the toolbar. Nothing here is typed in, and a file that yields no timestamps shows no rate rather than a guess.</li>
+              <li>The last folder is remembered. After a reload it reopens on its own if the browser kept the permission, and otherwise offers a one-click <strong>Reopen</strong> — the browser hands the page a capability, not a location, and a capability can need re-granting.</li>
+              <li>This is the annotator's own choice of folder. Picking one on the Configuration page does not load it here; that page is assembling a command, not opening files.</li>
+            </ul>
+          </div>
+          <div class="walk-figure">
+            <figure class="figure">
+              <img src="assets/img/shot-annot-empty.webp" alt="The annotator's opening screen: an Open Video Folder button above a dashed drop zone reading Drop MP4 / MKV files here." loading="lazy" width="1440" height="900">
+              <figcaption>Nothing is loaded yet — the page has no state until a folder is granted.</figcaption>
+            </figure>
+          </div>
+        </article>
+
+        <article class="walk-step">
+          <div class="walk-copy">
+            <span class="walk-num">02</span>
+            <h3>Mark behaviors on the timeline</h3>
+            <p>
+              Click a behavior in the palette, then <kbd>I</kbd> at the start of
+              a bout and <kbd>O</kbd> at the end. The bout is drawn on the
+              timeline in that behavior's colour, and the label currently under
+              the playhead is shown over the video.
+            </p>
+            <p>
+              Arrow keys step one frame; <code>Shift</code> with them jumps a
+              second. The frame counter under the timeline is the authority —
+              a bout is stored as both a time span and a frame span, so nothing
+              drifts on a variable-frame-rate recording.
+            </p>
+            <ul class="walk-facts">
+              <li><kbd>I</kbd> / <kbd>O</kbd> — mark in, mark out.</li>
+              <li><kbd>←</kbd> <kbd>→</kbd> — one frame; with <kbd>Shift</kbd>, one second.</li>
+              <li>Double-click a segment to edit or re-label it.</li>
+            </ul>
+          </div>
+          <div class="walk-figure">
+            <figure class="figure">
+              <img src="assets/img/shot-annot-timeline.webp" alt="The annotator with a CalMS21 resident-intruder video loaded: the label attack shown over the video, and a timeline strip below filled with blue investigation bouts, yellow mount bouts and a run of pink attack bouts." loading="lazy" width="1440" height="900">
+              <figcaption>CalMS21 <code>mouse008_task1_annotator1</code>, part-way through labeling. Every bar on the strip is one bout.</figcaption>
+            </figure>
+          </div>
+        </article>
+
+        <article class="walk-step wide">
+          <div class="walk-copy">
+            <span class="walk-num">03</span>
+            <h3>Read the ethogram strip</h3>
+            <p>
+              The strip is the whole recording at once. Colour is the behavior;
+              width is the duration. The pink playhead is where the video is,
+              and clicking anywhere on the strip moves it there.
+            </p>
+            <p>
+              Because it is the whole video rather than a window, the shape of
+              the session is visible without scrubbing: below, four minutes of
+              CalMS21 in which the two mice mostly investigate each other
+              (blue), mount twice (yellow), and then break into a sustained
+              bout of attacks (pink) in the last minute.
+            </p>
+          </div>
+          <div class="walk-figure">
+            <figure class="figure">
+              <img src="assets/img/shot-timeline-closeup.webp" alt="Close-up of the timeline strip: blue investigation bouts, thin yellow mount bouts, a dense run of pink attack bouts near the end, and a frame ruler running from 0 to 7000." loading="lazy" width="1184" height="131">
+              <figcaption>Frame ruler underneath. The playhead sits inside the attack run at frame 6150.</figcaption>
+            </figure>
+          </div>
+        </article>
+
+        <article id="walk-configure" class="walk-step wide">
+          <div class="walk-copy">
+            <span class="walk-num">04</span>
+            <h3>Say what you want done</h3>
+            <p>
+              Switch to <strong>Configuration</strong> and pick a task.
+              <strong>Annotate</strong> sends you back to the timeline;
+              <strong>Train</strong> fits a model on labeled video;
+              <strong>Inference</strong> applies a finished one. Everything
+              below the chooser changes to ask only for what that task needs,
+              which is why there is no form full of fields that do not apply.
+            </p>
+          </div>
+          <div class="walk-figure">
+            <figure class="figure plain">
+              <img src="assets/img/ui-task.webp" alt="The configuration page's task chooser: three cards reading Annotate, Train and Inference, with Train selected." loading="lazy" width="1356" height="106">
+              <figcaption>Train selected. The rest of the page follows from this one choice.</figcaption>
+            </figure>
+          </div>
+        </article>
+
+        <article class="walk-step wide">
+          <div class="walk-copy">
+            <span class="walk-num">05</span>
+            <h3>Pick the folder, then the videos</h3>
+            <p>
+              Choosing a folder scans it once: each video is probed for its real
+              duration and frame rate, and any <code>&lt;video&gt;.csv</code>
+              beside it is counted — as is a <code>&lt;video&gt;.json</code>
+              written by an earlier version of the annotator, which trains just
+              the same. So the list tells you, before anything runs,
+              which recordings are actually readable and how many bouts each one
+              carries.
+            </p>
+            <p>
+              Tick the videos for this run. A recording the browser cannot
+              decode is marked unusable rather than silently included, and a
+              video with no CSV shows up with nothing to train on.
+            </p>
+          </div>
+          <div class="walk-figure">
+            <figure class="figure plain">
+              <img src="assets/img/ui-data.webp" alt="The configuration page's data picker: a folder card reading train, 4 videos, 8 top-level files, above a checklist of CalMS21 videos each showing its duration, frame rate and annotation count." loading="lazy" width="1356" height="456">
+              <figcaption>Four CalMS21 training videos, each with its measured length, frame rate and bout count.</figcaption>
+            </figure>
+          </div>
+        </article>
+
+        <article class="walk-step wide">
+          <div class="walk-copy">
+            <span class="walk-num">06</span>
+            <h3>Choose the recipe and where the run goes</h3>
+            <p>
+              The model preset carries the architecture and the schedule, so the
+              only two questions here are which preset and where the run folder
+              is written. <strong>Advanced</strong> holds the runtime knobs the
+              command will carry; leaving them alone leaves the config's own
+              choices in place.
+            </p>
+          </div>
+          <div class="walk-figure">
+            <figure class="figure plain">
+              <img src="assets/img/ui-recipe.webp" alt="Two cards side by side: V-TRACE recipe with Model set to VideoMAE-B and Temporal head set to From the config, and Output showing the chosen runs folder." loading="lazy" width="1356" height="358">
+              <figcaption>A preset and an output folder. Everything else the run needs is already in the config.</figcaption>
+            </figure>
+          </div>
+        </article>
+
+        <article class="walk-step wide" id="walk-copy">
+          <div class="walk-copy">
+            <span class="walk-num">07</span>
+            <h3>Copy the command it wrote</h3>
+            <p>
+              The page ends with the same configuration rendered twice, one for
+              each place it can run. The first is for the <strong>vtrace
+              session</strong>: a keyword per line, the flags under it,
+              <code>then</code> between steps — the shape the session's box
+              takes. The second is a <strong>shell command line</strong>, for a
+              terminal or a job script. A live summary above them names the
+              task, the preset and the output, so what you are about to paste
+              is never a surprise.
+            </p>
+            <p>
+              Look at the folders. A browser is never told where a picked folder
+              lives, only what it is called and what is in it, so the page writes
+              the <em>name</em>, not a path:
+              <code>&lt;train#8b1d0c47&gt;/mouse001.mp4</code>. The digits after
+              <code>#</code> are a fingerprint of the folder's contents. Whoever
+              runs the command looks the name up on their own machine — which is
+              the point: a folder you annotated through a network mount on a
+              laptop has a different path on the GPU box that will train on it,
+              and the same name and files on both.
+            </p>
+            <ul class="walk-facts">
+              <li><strong>Session form</strong> — tokens carry fingerprints. The session finds each folder by name and checks its contents before taking it. Copy this one for step 08.</li>
+              <li><strong>Shell form</strong> — bare tokens, and a <em>Replace before running</em> list under the command naming each one. A shell or a job script looks nothing up; you fill the paths in.</li>
+              <li>A folder typed as a path (in a browser without a folder picker) goes into both forms exactly as typed.</li>
+            </ul>
+          </div>
+          <div class="walk-figure">
+            <figure class="figure plain">
+              <img src="assets/img/ui-command.webp" alt="The configuration page's Run section: a live summary of task, config, encoder, projection, temporal head and output, above two dark panels — the vtrace session form with fingerprinted folder tokens, and the bash form with a Replace before running list under it." loading="lazy" width="1368" height="1354">
+              <figcaption>The session form and the shell form of one configuration. The orange tokens are the folders, named rather than located.</figcaption>
+            </figure>
+          </div>
+        </article>
+
+        <article class="walk-step wide" id="walk-paste">
+          <div class="walk-copy">
+            <span class="walk-num">08</span>
+            <h3>Paste it into the session</h3>
+            <p>
+              Back in the terminal where <code>vtrace</code> is running, the
+              command box is already open under the start screen. Paste the
+              session form and press <kbd>Enter</kbd>. The first thing printed
+              is where each named folder was found on this machine — then the
+              run starts. If you closed the box, <code>run</code> at the
+              <code>vtrace &gt;</code> prompt opens it again.
+            </p>
+            <p>
+              The lookup is by name and by contents. The session searches three
+              levels under the working directory, its parent and your home
+              folder, plus every folder it has resolved before, and keeps only
+              the candidate whose files match the fingerprint. Two folders both
+              called <code>train</code> are told apart by what is in them; a
+              folder whose contents changed since the command was copied is
+              refused rather than guessed, and the page's command is copied again.
+            </p>
+            <ul class="walk-facts">
+              <li>Started <code>vtrace</code> far from the data? Start it nearer, or set <code>VTRACE_ROOTS=/data:/mnt/lab</code> to add places to search.</li>
+              <li>A fresh, empty output folder has nothing to fingerprint; the page leaves a <code>.vtrace-folder</code> marker in it and the session matches on that.</li>
+              <li>Annotating on a laptop, training on a server: mount the server's folder, annotate through the mount, and paste the session form into <code>vtrace</code> <em>on the server</em>. The names are the same on both sides; the paths were never in the command.</li>
+            </ul>
+          </div>
+          <div class="walk-figure">
+            <div class="terminal tight">
+              <div class="terminal-bar">
+                <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="terminal-title">vtrace — the command box, with the session form pasted</span>
+              </div>
+              <div class="terminal-body">
+                <div class="composer">
+                  <span class="composer-legend">Paste the command from the annotator, or type one</span>
+<pre><code><span class="t-cmd">train</span>
+<span class="t-flag">--model</span> maev2b
+<span class="t-flag">--output</span> <span class="t-str">'<span class="t-tok">&lt;runs#3f9a2c1e&gt;</span>'</span>
+<span class="t-flag">--pairs</span> <span class="t-str">'<span class="t-tok">&lt;train#8b1d0c47&gt;</span>/mouse001.mp4=<span class="t-tok">&lt;train#8b1d0c47&gt;</span>/mouse001.csv'</span>
+<span class="t-cmd">then</span>
+<span class="t-cmd">eval</span>
+<span class="t-flag">--pairs</span> <span class="t-str">'<span class="t-tok">&lt;test#c41e77a0&gt;</span>/mouse071.mp4=<span class="t-tok">&lt;test#c41e77a0&gt;</span>/mouse071.csv'</span></code></pre>
+                  <p class="composer-hint">enter runs it &middot; ctrl-j starts a new line &middot; esc closes the box for a plain prompt</p>
+                </div>
+                <div class="composer-keys">
+                  <span><b>[ Run ]</b><em>enter</em></span>
+                  <span><b>[ Close ]</b><em>esc</em></span>
+                </div>
+<pre><code><span class="t-dim">  &lt;runs#3f9a2c1e&gt;</span>  →  <span class="t-accent">/data/calms21/runs</span>
+<span class="t-dim">  &lt;train#8b1d0c47&gt;</span> →  <span class="t-accent">/data/calms21/train</span>
+<span class="t-dim">  &lt;test#c41e77a0&gt;</span>  →  <span class="t-accent">/data/calms21/test</span>
+
+<span class="t-out">=== step 1/2: train --model maev2b --output /data/calms21/runs … ===</span></code></pre>
+              </div>
+            </div>
+            <p class="terminal-caption">
+              Enter runs what was pasted. The three lines after the box are the
+              session saying which folder each name became, before anything runs.
+            </p>
+          </div>
+        </article>
+
+        <article id="walk-review" class="walk-step wide">
+          <div class="walk-copy">
+            <span class="walk-num">09</span>
+            <h3>Review what the model predicted</h3>
+            <p>
+              Prediction writes <code>&lt;video&gt;.pred.csv</code> beside
+              each video. Open that folder and the predictions come in as
+              draft bouts carrying their confidence, with
+              <strong>Accept prediction</strong> and <strong>Reject</strong>
+              beside the playback controls.
+            </p>
+            <p>
+              Dragging a predicted bout's edge instead of accepting it marks it
+              <code>corrected</code>, so the file records the difference between
+              a bout you agreed with and one you fixed.
+            </p>
+            <p>
+              Once a file holds both, <strong>Show &middot; Both / Human /
+              Model</strong> in the toolbar picks which provenance the timeline
+              draws. It is a view, not an edit &mdash; hidden bouts stay in the
+              file and come back with the other setting. The configuration
+              page's video list says which each file holds and sets the one a
+              video opens with.
+            </p>
+            <ul class="walk-facts">
+              <li>Accepted, rejected and corrected all stay in the file — a rejection is data, not a deletion.</li>
+              <li>A reviewed prediction file is already a training annotation file; there is nothing to convert.</li>
+              <li>Provenance is the CSV's <code>source</code> column, so one file can hold hand-drawn bouts and accepted model bouts side by side.</li>
+            </ul>
+          </div>
+          <div class="walk-figure">
+            <figure class="figure">
+              <img src="assets/img/shot-review-bar.webp" alt="The annotator's timeline and transport bar in review mode: hatched rejected bouts on the strip, and Accept prediction and Reject buttons beside the playback controls." loading="lazy" width="1200" height="175">
+              <figcaption>Review mode. The transport bar gains accept and reject; everything else is where it was.</figcaption>
+            </figure>
+          </div>
+        </article>
+
       </div>
+
+      <a class="jump-link" href="document.html#annotator">Why the page is served rather than opened as a file <span aria-hidden="true">&rarr;</span></a>
     </section>
 
-    <section class="section split-section">
-      <div>
-        <p class="section-label">Prediction Output</p>
-        <h2>One file per video, replaced on re-run.</h2>
+    <section id="running" class="section">
+      <div class="section-heading">
+        <p class="section-label">Running It</p>
+        <h2>Two ways in: the session, or a plain shell.</h2>
         <p>
-          A prediction lands as <code>&lt;video&gt;.predict.csv</code> next to
-          the video it describes. Re-running replaces it rather than piling up
-          timestamped folders, so a video has exactly one current prediction —
-          and the file is in the shape the annotator imports, so predictions are
-          reviewed where the labeling happened.
+          Every command works both ways, and they take identical arguments. The
+          difference is who fills in the folders.
         </p>
+        <div class="mode-cards">
+          <article class="mode-card">
+            <span class="mode-tag">Mode 1</span>
+            <h3>Interactive session</h3>
+            <p>
+              <code>vtrace</code> with no arguments. The annotator starts on a
+              background thread, the start screen prints the address it is
+              listening on, and a command box opens under it. Paste the session
+              form the configuration page wrote and press Enter. Its folders
+              are named — <code>&lt;train#8b1d0c47&gt;</code> — and the session
+              looks each name up on the machine it runs on, keeps the folder
+              whose contents match, and prints the path it took. Esc leaves the
+              box for the <code>vtrace &gt;</code> prompt; <code>run</code>
+              opens it again; <code>exit</code> leaves.
+            </p>
+          </article>
+          <article class="mode-card">
+            <span class="mode-tag">Mode 2</span>
+            <h3>Plain shell, and HPC</h3>
+            <p>
+              The same commands as ordinary command lines, which is what a
+              cluster needs: put one in an <code>sbatch</code> script and it
+              runs unattended. Nothing is looked up here, on purpose — a job
+              that guesses a folder, or stops to ask, is worse than one that
+              never starts. A command still carrying folder tokens is refused
+              with a list of what to replace. Use the page's shell form, which
+              prints that same list under the command.
+            </p>
+          </article>
+        </div>
       </div>
-      <div class="code-panel compact" aria-label="Prediction output layout">
-<pre><code>my_video.mp4
-my_video.predict.csv</code></pre>
-      </div>
-    </section>
 
-    <section class="section split-section">
-      <div>
-        <p class="section-label">UI + CLI</p>
-        <h2>The app writes the command for you.</h2>
-        <p>
-          Pick the folder and the recipe in the browser and the configuration
-          screen builds the exact command, ready to paste. A browser is never
-          told where a picked folder lives, so the local server passes along the
-          directories it can see and the page resolves the folder by name.
-        </p>
-      </div>
-      <div class="code-panel compact" aria-label="Generated CLI command example">
-<pre><code>vtrace train --model maev2b \
-  --output /data/runs \
-  --pairs /data/my_dataset/video01.mp4=/data/my_dataset/video01.csv</code></pre>
+      <div class="example-grid stacked">
+        <div>
+          <p class="example-label">Mode 1 &middot; the start screen, then the box</p>
+          <div class="terminal tight">
+            <div class="terminal-bar">
+              <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="terminal-title">vtrace — interactive session</span>
+            </div>
+<pre><code><span class="t-art"> ██╗   ██╗     ████████╗██████╗  █████╗  ██████╗███████╗
+ ██║   ██║     ╚══██╔══╝██╔══██╗██╔══██╗██╔════╝██╔════╝
+ ██║   ██║ ███╗   ██║   ██████╔╝███████║██║     █████╗
+ ╚██╗ ██╔╝ ╚══╝   ██║   ██╔══██╗██╔══██║██║     ██╔══╝
+  ╚████╔╝         ██║   ██║  ██║██║  ██║╚██████╗███████╗
+   ╚═══╝          ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚══════╝</span>
+<span class="t-dim"> Video-based Temporal Recognition and Annotation of</span>
+<span class="t-dim"> Continuous Ethograms of Animal Behavior   v1.0.0</span>
+
+<span class="t-key"> Annotator running — open it in Chrome or Edge</span>
+   <span class="t-accent">http://localhost:8765</span>      <span class="t-dim">read and label videos on this computer</span>
+
+<span class="t-key"> Train a model, or predict videos</span>
+   <span class="t-key">run</span>                        <span class="t-dim">open the command box: paste what the annotator wrote</span>
+
+<span class="t-key"> Try the demo</span>
+   <span class="t-key">demo download</span>              <span class="t-dim">the official CalMS21 videos + the detector</span>
+   <span class="t-key">demo predict</span>               <span class="t-dim">label the 19 held-out test videos, write predictions</span>
+   <span class="t-key">demo train</span>                 <span class="t-dim">train on the 70 official training videos, score the test split</span>
+
+   <span class="t-key">help</span>                       <span class="t-dim">documentation, on the web</span>
+   <span class="t-key">exit</span>                       <span class="t-dim">leave the session</span>
+
+<span class="t-dim"> Paste the command the annotator wrote into the box below, or type one.</span>
+<span class="t-dim"> Esc closes the box for a plain prompt.</span></code></pre>
+          </div>
+          <p class="terminal-caption">
+            The box opens right under this screen — step 08 above shows it with
+            a command pasted in. Every line on the screen is a real command, so
+            whatever is copied goes through the ordinary argument parser.
+          </p>
+        </div>
+
+        <div>
+          <p class="example-label">Mode 2 &middot; a shell refuses a token, and says why</p>
+          <div class="terminal tight">
+            <div class="terminal-bar">
+              <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="terminal-title">bash — the session form, pasted where nothing looks folders up</span>
+            </div>
+<pre><code><span class="t-prompt">$</span> <span class="t-cmd">vtrace</span> <span class="t-cmd">train</span> <span class="t-flag">--model</span> maev2b <span class="t-flag">--output</span> <span class="t-str">'<span class="t-tok">&lt;runs#3f9a2c1e&gt;</span>'</span> <span class="t-flag">--pairs</span> <span class="t-str">'<span class="t-tok">&lt;train#8b1d0c47&gt;</span>/mouse001.mp4=…'</span>
+<span class="t-out">This command names folders instead of locating them, so it cannot run
+as it is here. The `vtrace` session finds them — start it and paste the
+command into the box it opens. Anywhere else, replace each token with
+the folder's full path on the machine that runs the command:</span>
+<span class="t-tok">  &lt;runs#3f9a2c1e&gt;</span>   <span class="t-dim">the folder called "runs" that was picked in the page</span>
+<span class="t-tok">  &lt;train#8b1d0c47&gt;</span>  <span class="t-dim">the folder called "train" that was picked in the page</span></code></pre>
+          </div>
+          <p class="terminal-caption">
+            Nothing ran. The page's shell form carries the same tokens without
+            the digits and lists them under the command, which is the list to
+            work through before the script below is submitted.
+          </p>
+        </div>
+
+        <div>
+          <p class="example-label">Mode 2 &middot; a job script, tokens replaced</p>
+          <div class="terminal tight">
+            <div class="terminal-bar">
+              <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="terminal-title">train.sbatch — the shell form, with the paths filled in</span>
+            </div>
+<pre><code><span class="t-com">#!/bin/bash</span>
+<span class="t-com">#SBATCH --job-name=vtrace-calms21</span>
+<span class="t-com">#SBATCH --gres=gpu:a100:1</span>
+<span class="t-com">#SBATCH --time=06:00:00</span>
+
+<span class="t-prompt">$</span> <span class="t-cmd">conda</span> activate vtrace
+
+<span class="t-com"># &lt;runs&gt; → /scratch/$USER/calms21/runs, &lt;train&gt; → /scratch/$USER/calms21/train,</span>
+<span class="t-com"># &lt;test&gt; → /scratch/$USER/calms21/test. `then` chains steps here exactly as</span>
+<span class="t-com"># it does at the prompt — the split happens before any parsing.</span>
+<span class="t-prompt">$</span> <span class="t-cmd">vtrace</span> <span class="t-cmd">train</span> <span class="t-flag">--model</span> maev2b <span class="t-flag">--nproc</span> <span class="t-num">1</span> \
+      <span class="t-flag">--output</span> <span class="t-path">/scratch/$USER/calms21/runs</span> \
+      <span class="t-flag">--pairs</span> <span class="t-path">/scratch/$USER/calms21/train/mouse001.mp4</span>=<span class="t-path">…/mouse001.csv</span> \
+              <span class="t-path">/scratch/$USER/calms21/train/mouse002.mp4</span>=<span class="t-path">…/mouse002.csv</span> \
+      <span class="t-flag">--eval-pairs</span> <span class="t-path">/scratch/$USER/calms21/test/mouse071.mp4</span>=<span class="t-path">…/mouse071.csv</span> \
+    <span class="t-cmd">then</span> <span class="t-cmd">predict</span> <span class="t-flag">--input</span> <span class="t-path">/scratch/$USER/calms21/new</span></code></pre>
+          </div>
+          <p class="terminal-caption">
+            Submitted with <code>sbatch train.sbatch</code>. Nothing about the
+            command changes between the two modes except who wrote the paths —
+            the session is a nicer place to type it, not a different program.
+          </p>
+        </div>
       </div>
     </section>
 
@@ -204,7 +610,7 @@ my_video.predict.csv</code></pre>
         </p>
       </div>
       <div class="table-wrap">
-        <table>
+        <table class="cli-table">
           <thead>
             <tr>
               <th>Command</th>
@@ -236,22 +642,22 @@ my_video.predict.csv</code></pre>
             <tr>
               <td><code>vtrace train</code></td>
               <td>Prepare the named pairs and train a detector.</td>
-              <td><code>vtrace train --model maev2b --pairs /data/video01.mp4=/data/video01.csv --output /data/runs</code></td>
+              <td><code>vtrace train --model maev2b --pairs /data/calms21/train/mouse001.mp4=/data/calms21/train/mouse001.csv --output /data/calms21/runs</code></td>
             </tr>
             <tr>
               <td><code>vtrace eval</code></td>
               <td>Evaluate a trained model, optionally on new paired data.</td>
-              <td><code>vtrace eval --model-dir /data/model_YYYYMMDD_HHMMSS</code></td>
+              <td><code>vtrace eval --model-dir /data/calms21/runs/model_20260827_014500</code></td>
             </tr>
             <tr>
               <td><code>vtrace predict</code></td>
               <td>Predict on new videos and write a file beside each one.</td>
-              <td><code>vtrace predict --model-dir /data/model_YYYYMMDD_HHMMSS --input /data/video03.mp4</code></td>
+              <td><code>vtrace predict --model-dir /data/calms21/runs/model_20260827_014500 --input /data/new</code></td>
             </tr>
             <tr>
               <td><code>then</code></td>
               <td>Chain steps. A later step reuses the model an earlier one produced.</td>
-              <td><code>vtrace train --pairs /data/a.mp4=/data/a.csv --output /data/runs then eval --pairs /data/b.mp4=/data/b.csv then predict --input /data/new</code></td>
+              <td><code>vtrace train --pairs /data/calms21/train/mouse001.mp4=/data/calms21/train/mouse001.csv --output /data/calms21/runs then eval --pairs /data/calms21/train/mouse002.mp4=/data/calms21/train/mouse002.csv then predict --input /data/new</code></td>
             </tr>
             <tr>
               <td><code>vtrace update</code></td>
@@ -261,34 +667,287 @@ my_video.predict.csv</code></pre>
           </tbody>
         </table>
       </div>
+
+      <div class="example-grid">
+        <div>
+          <p class="example-label">Train on four videos</p>
+          <div class="terminal tight">
+            <div class="terminal-bar">
+              <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="terminal-title">bash — training</span>
+            </div>
+<pre><code><span class="t-prompt">$</span> <span class="t-cmd">vtrace</span> <span class="t-cmd">train</span> <span class="t-flag">--model</span> maev2b \
+    <span class="t-flag">--output</span> <span class="t-path">/data/calms21/runs</span> \
+    <span class="t-flag">--pairs</span> <span class="t-path">/data/calms21/train/mouse001.mp4</span>=<span class="t-path">/data/calms21/train/mouse001.csv</span> \
+            <span class="t-path">/data/calms21/train/mouse002.mp4</span>=<span class="t-path">/data/calms21/train/mouse002.csv</span> \
+    <span class="t-flag">--eval-pairs</span> <span class="t-path">/held/c.mp4</span>=<span class="t-path">/held/c.csv</span>
+
+<span class="t-out">Preparing 2 videos …</span>
+<span class="t-out">  mouse001.mp4   242 bouts over 712.1s (kept whole)</span>
+<span class="t-out">  mouse002.mp4   198 bouts over 654.9s (kept whole)</span>
+<span class="t-out">Run folder: </span><span class="t-path">/data/calms21/runs/model_20260827_014500</span>
+<span class="t-out">epoch 9/10  loss 0.183  </span><span class="t-ok">mAP 0.912  ← best</span></code></pre>
+          </div>
+          <p class="terminal-caption">
+            <code>--eval-pairs</code> is what makes the run write
+            <code>best.pth</code>: without it no epoch is measured, so the last
+            one is published as <code>last.pth</code> instead.
+          </p>
+        </div>
+
+        <div>
+          <p class="example-label">Label a folder of new recordings</p>
+          <div class="terminal tight">
+            <div class="terminal-bar">
+              <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="terminal-title">bash — prediction</span>
+            </div>
+<pre><code><span class="t-prompt">$</span> <span class="t-cmd">vtrace</span> <span class="t-cmd">predict</span> \
+    <span class="t-flag">--model-dir</span> <span class="t-path">/data/calms21/runs/model_20260827_014500</span> \
+    <span class="t-flag">--input</span> <span class="t-path">/data/new_recordings</span> \
+    <span class="t-flag">--threshold</span> <span class="t-num">0.25</span>
+
+<span class="t-out">Prediction CSV: </span><span class="t-path">/data/new_recordings/mouse071.pred.csv</span><span class="t-out"> (214 bouts)</span>
+<span class="t-out">Prediction CSV: </span><span class="t-path">/data/new_recordings/mouse072.pred.csv</span><span class="t-out"> (188 bouts)</span>
+<span class="t-out">Prediction CSV: </span><span class="t-path">/data/new_recordings/mouse073.pred.csv</span><span class="t-out"> (240 bouts)</span>
+
+<span class="t-com"># open that folder in the annotator to review them</span></code></pre>
+          </div>
+          <p class="terminal-caption">
+            Omit <code>--threshold</code> and the run's own
+            <code>recommended_thresholds.json</code> is applied per class.
+          </p>
+        </div>
+
+        <div>
+          <p class="example-label">All three, as one chain</p>
+          <div class="terminal tight">
+            <div class="terminal-bar">
+              <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="terminal-title">vtrace &gt; — chained steps</span>
+            </div>
+<pre><code><span class="t-prompt">vtrace &gt;</span> <span class="t-cmd">train</span> <span class="t-flag">--output</span> <span class="t-path">/data/calms21/runs</span> \
+      <span class="t-flag">--pairs</span> <span class="t-path">/data/calms21/train/mouse001.mp4</span>=<span class="t-path">/data/calms21/train/mouse001.csv</span> \
+    <span class="t-cmd">then</span> <span class="t-cmd">eval</span> <span class="t-flag">--pairs</span> <span class="t-path">/held/c.mp4</span>=<span class="t-path">/held/c.csv</span> \
+    <span class="t-cmd">then</span> <span class="t-cmd">predict</span> <span class="t-flag">--input</span> <span class="t-path">/data/new_recordings</span></code></pre>
+          </div>
+          <p class="terminal-caption">
+            A later step reuses the model the training step produced, so its
+            timestamped folder never has to be typed. <code>train … then eval …</code>
+            is one run, not two: the eval step names the videos the loop scores
+            each epoch against.
+          </p>
+        </div>
+      </div>
+
+      <div class="jump-row">
+        <a class="jump-link" href="document.html#train">Every flag, and what decides best.pth <span aria-hidden="true">&rarr;</span></a>
+        <a class="jump-link" href="document.html#chaining">Chaining steps, and what a chained eval means <span aria-hidden="true">&rarr;</span></a>
+      </div>
     </section>
 
-    <section class="section split-section">
-      <div>
-        <p class="section-label">Artifacts</p>
-        <h2>Model runs are self-contained.</h2>
+    <section id="files" class="section">
+      <div class="section-heading">
+        <p class="section-label">Files</p>
+        <h2>Every file V-TRACE reads or writes, in full.</h2>
         <p>
-          Training creates <code>model_YYYYMMDD_HHMMSS/</code> under
-          <code>--output</code>. Alongside the checkpoint and class map it
-          writes <code>config_resolved.py</code> — the configuration the run
-          actually used, with its bases merged and every override applied.
-          Prediction loads that, so a later edit of the config it started from
-          cannot change how a finished model is rebuilt.
-        </p>
-        <p>
-          The checkpoint is <code>best.pth</code> when the run had evaluation
-          videos to score its epochs against, and <code>last.pth</code> when it
-          did not — no epoch was measured, so none is called best. Evaluation and
-          prediction read whichever is there.
+          There are three of them: the annotation CSV a human writes, the run
+          folder training produces, and the prediction CSV inference writes.
+          All three are plain text or a directory of plain files, and the first
+          and third are the same format.
         </p>
       </div>
-      <div class="artifact-list" aria-label="Model artifact files">
-        <span>best.pth / last.pth</span>
-        <span>classmap.txt</span>
-        <span>config_resolved.py</span>
-        <span>dataset.json</span>
-        <span>eval_YYYYMMDD_HHMMSS/</span>
+
+      <div class="anatomy">
+        <article class="anatomy-row">
+          <div>
+            <p class="example-label">Written by the annotator</p>
+            <div class="terminal tight">
+              <div class="terminal-bar">
+                <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="terminal-title">mouse008_task1_annotator1.csv</span>
+              </div>
+<pre><code><span class="t-com"># trace-meta: {"annotation_version": "behavioral-annotator-v1",</span>
+<span class="t-com">#              "fps": 30, "duration": 240, "frame": 7200}</span>
+<span class="t-key">labelId,        timestamp,  endTimestamp</span>
+<span class="t-str">investigation</span>,       <span class="t-num">5.433</span>,         <span class="t-num">6.533</span>
+<span class="t-str">investigation</span>,       <span class="t-num">9.267</span>,         <span class="t-num">9.633</span>
+<span class="t-str">investigation</span>,      <span class="t-num">38.467</span>,        <span class="t-num">40.267</span>
+<span class="t-str">mount</span>,              <span class="t-num">40.267</span>,        <span class="t-num">41.500</span>
+<span class="t-str">attack</span>,            <span class="t-num">196.933</span>,       <span class="t-num">201.300</span></code></pre>
+            </div>
+            <p class="terminal-caption">
+              Real bouts from CalMS21 <code>mouse008_task1_annotator1</code>.
+              Padding the columns is optional and harmless — the reader trims
+              the header and the values, so an aligned file trains exactly like
+              a dense one.
+            </p>
+          </div>
+          <div>
+            <h3>The annotation CSV</h3>
+            <p>
+              One file per video, named <code>&lt;video&gt;.csv</code> and
+              written beside it. Three columns, and <code>#</code> lines are
+              skipped — that is the whole format. Times in seconds are what
+              training reads; frame numbers are re-derived from the video's own
+              presentation timestamps, so nothing here has to know the frame
+              rate.
+            </p>
+            <dl class="field-list">
+              <div><dt>labelId</dt><dd>The behavior name. Free text; the class map is built from whatever appears across the run's videos.</dd></div>
+              <div><dt>timestamp</dt><dd>Where the bout starts, in seconds.</dd></div>
+              <div><dt>endTimestamp</dt><dd>Where it ends, in seconds.</dd></div>
+            </dl>
+            <p>
+              A file that has been through a review pass carries three more
+              columns. Only the last of them changes what training sees.
+            </p>
+            <dl class="field-list">
+              <div><dt>score</dt><dd>The model's confidence in the bout. Empty for a hand label.</dd></div>
+              <div><dt>source</dt><dd><code>model</code>, or empty. Without it a reviewed prediction would come back as an anonymous human label.</dd></div>
+              <div><dt>review</dt><dd>The reviewer's verdict. A <code>rejected</code> row is a false positive they threw out, and prep skips it; it stays in the file so the decision travels with the data.</dd></div>
+            </dl>
+          </div>
+        </article>
+
+        <article class="anatomy-row">
+          <div>
+            <p class="example-label">Written by <code>vtrace predict</code></p>
+            <div class="terminal tight">
+              <div class="terminal-bar">
+                <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="terminal-title">mouse071_task1_annotator1.pred.csv</span>
+              </div>
+<pre><code><span class="t-com"># trace-meta: {"trace_prediction_version": 1,</span>
+<span class="t-com">#              "video": "mouse071_task1_annotator1.mp4",</span>
+<span class="t-com">#              "class_map": ["attack", "investigation", "mount"],</span>
+<span class="t-com">#              "threshold": 0.25}</span>
+<span class="t-key">labelId,        timestamp,  endTimestamp,   score,  predictionId</span>
+<span class="t-str">investigation</span>,      <span class="t-num">12.433</span>,        <span class="t-num">15.900</span>,  <span class="t-num">0.9412</span>,  mouse071::<span class="t-num">0</span>
+<span class="t-str">attack</span>,             <span class="t-num">20.167</span>,        <span class="t-num">23.033</span>,  <span class="t-num">0.8815</span>,  mouse071::<span class="t-num">1</span>
+<span class="t-str">mount</span>,              <span class="t-num">41.200</span>,        <span class="t-num">48.767</span>,  <span class="t-num">0.7604</span>,  mouse071::<span class="t-num">2</span>
+<span class="t-str">investigation</span>,      <span class="t-num">63.500</span>,        <span class="t-num">64.133</span>,  <span class="t-num">0.3110</span>,  mouse071::<span class="t-num">3</span></code></pre>
+            </div>
+          </div>
+          <div>
+            <h3>The prediction CSV</h3>
+            <p>
+              One per video, written beside it as
+              <code>&lt;video&gt;.pred.csv</code> and replaced on re-run, so
+              a video has exactly one current prediction rather than a pile of
+              timestamped folders. The first three columns are the annotation
+              format — that is what lets a corrected prediction be a training
+              file with nothing to convert.
+            </p>
+            <dl class="field-list">
+              <div><dt>score</dt><dd>The model's confidence in the bout. <code>--threshold</code> is the minimum needed to reach the file at all.</dd></div>
+              <div><dt>predictionId</dt><dd><code>&lt;stem&gt;::&lt;n&gt;</code>. Stable within a file, so a review decision has something to name.</dd></div>
+              <div><dt># trace-meta</dt><dd>The run's provenance — which video, which classes, which cutoff — riding along without becoming a column.</dd></div>
+            </dl>
+            <p>
+              Once reviewed in the annotator, the bout is saved back with
+              <code>source=model</code> and
+              <code>review=accepted|rejected|corrected</code>, so the judgement
+              travels with the data.
+            </p>
+          </div>
+        </article>
+
+        <article class="anatomy-row">
+          <div>
+            <p class="example-label">Written by <code>vtrace train</code></p>
+            <div class="terminal tight">
+              <div class="terminal-bar">
+                <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="terminal-title">/data/calms21/runs — one run folder</span>
+              </div>
+<pre><code><span class="t-path">model_20260827_014500/</span>
+├── <span class="t-key">best.pth</span>              <span class="t-com"># or last.pth, when no epoch was scored</span>
+├── <span class="t-key">classmap.txt</span>          <span class="t-com"># the class names, in training order</span>
+├── <span class="t-key">config_resolved.py</span>    <span class="t-com"># the configuration the run actually used</span>
+├── <span class="t-key">config.txt</span>            <span class="t-com"># the config file it started from</span>
+├── <span class="t-key">dataset.json</span>          <span class="t-com"># the training corpus index</span>
+├── <span class="t-key">prep.log</span>              <span class="t-com"># per-video detail from indexing</span>
+├── <span class="t-path">checkpoint/</span>           <span class="t-com"># epoch_0.pth, epoch_1.pth, ...</span>
+├── <span class="t-path">eval_data/</span>            <span class="t-com"># the evaluation corpus, when the run had one</span>
+└── <span class="t-path">eval_20260827_020000/</span>
+    ├── <span class="t-key">metrics.json</span>
+    ├── <span class="t-key">recommended_thresholds.json</span>
+    └── <span class="t-key">result_detection.json</span></code></pre>
+            </div>
+          </div>
+          <div>
+            <h3>The model run folder</h3>
+            <p>
+              Training creates <code>model_YYYYMMDD_HHMMSS/</code> under
+              <code>--output</code>. Everything needed to rebuild and reuse the
+              model is inside it, so <code>--model-dir</code> is the only thing
+              evaluation or prediction ever needs to be told.
+            </p>
+            <dl class="field-list">
+              <div><dt>best.pth</dt><dd>The highest-scoring epoch. Only exists when the run had evaluation videos to score against.</dd></div>
+              <div><dt>last.pth</dt><dd>Stands in when it did not: nothing measured any epoch, so none is called best.</dd></div>
+              <div><dt>classmap.txt</dt><dd>One class name per line, sorted. The index of a line is the class index the head emits.</dd></div>
+              <div><dt>config_resolved.py</dt><dd>Bases merged, every override applied, class count as detected. Loaded in preference to <code>config.txt</code>, so editing the original cannot change how a finished model is rebuilt.</dd></div>
+              <div><dt>dataset.json</dt><dd>Per video: frame count, duration, every bout in frames and seconds, and where the frames decode from.</dd></div>
+            </dl>
+          </div>
+        </article>
+
+        <article class="anatomy-row">
+          <div>
+            <p class="example-label">Two files from inside a run</p>
+            <div class="terminal tight">
+              <div class="terminal-bar">
+                <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="terminal-title">classmap.txt &middot; dataset.json</span>
+              </div>
+<pre><code><span class="t-com">$ cat classmap.txt</span>
+<span class="t-out">attack</span>
+<span class="t-out">investigation</span>
+<span class="t-out">mount</span>
+
+<span class="t-com">$ head dataset.json</span>
+<span class="t-out">{ </span><span class="t-key">"database"</span><span class="t-out">: {</span>
+<span class="t-out">    </span><span class="t-key">"mouse008_task1_annotator1"</span><span class="t-out">: {</span>
+<span class="t-out">      </span><span class="t-key">"frame"</span><span class="t-out">:                </span><span class="t-num">7200</span><span class="t-out">,</span>
+<span class="t-out">      </span><span class="t-key">"duration"</span><span class="t-out">:             </span><span class="t-num">240.0</span><span class="t-out">,</span>
+<span class="t-out">      </span><span class="t-key">"subset"</span><span class="t-out">:               </span><span class="t-str">"train"</span><span class="t-out">,</span>
+<span class="t-out">      </span><span class="t-key">"source_video"</span><span class="t-out">:         </span><span class="t-str">"…/mouse008_task1_annotator1.mp4"</span><span class="t-out">,</span>
+<span class="t-out">      </span><span class="t-key">"source_frame_offset"</span><span class="t-out">:  </span><span class="t-num">0</span><span class="t-out">,</span>
+<span class="t-out">      </span><span class="t-key">"source_pts_table"</span><span class="t-out">:     </span><span class="t-str">"…/mouse008_task1_annotator1.mp4.pts.npy"</span><span class="t-out">,</span>
+<span class="t-out">      </span><span class="t-key">"proxy_video"</span><span class="t-out">:          </span><span class="t-str">"…/s144_sq_crf23_g30_v1/proxy.mp4"</span><span class="t-out">,</span>
+<span class="t-out">      </span><span class="t-key">"annotations"</span><span class="t-out">: [</span>
+<span class="t-out">        { </span><span class="t-key">"label"</span><span class="t-out">:         </span><span class="t-str">"investigation"</span><span class="t-out">,</span>
+<span class="t-out">          </span><span class="t-key">"segment"</span><span class="t-out">:       [</span><span class="t-num">5.433</span><span class="t-out">, </span><span class="t-num">6.500</span><span class="t-out">],</span>
+<span class="t-out">          </span><span class="t-key">"timestamp_sec"</span><span class="t-out">: [</span><span class="t-num">5.433</span><span class="t-out">, </span><span class="t-num">6.500</span><span class="t-out">],</span>
+<span class="t-out">          </span><span class="t-key">"frame_segment"</span><span class="t-out">: [</span><span class="t-num">163</span><span class="t-out">, </span><span class="t-num">195</span><span class="t-out">] }, …</span>
+<span class="t-out">      ]</span>
+<span class="t-out">} } }</span></code></pre>
+            </div>
+          </div>
+          <div>
+            <h3>What preparation leaves behind</h3>
+            <p>
+              Preparation runs automatically as the first part of a training or
+              evaluation command. It indexes each video whole — nothing is cut
+              into clip files — and writes two sidecars next to the source that
+              later runs reuse.
+            </p>
+            <dl class="field-list">
+              <div><dt>&lt;video&gt;.pts.npy</dt><dd>The per-frame presentation timestamps, plus a <code>.pts.meta.json</code>. This is what turns the CSV's seconds into frame indices, correctly, whether the recording is constant or variable frame rate.</dd></div>
+              <div><dt>.trace-proxy/</dt><dd>One downscaled, frame-aligned decode proxy per video, reused while the source's size and mtime still match. <code>source_*</code> stays authoritative for every timestamp; this only redirects which file frames come from.</dd></div>
+            </dl>
+            <p>
+              <strong>Nothing is split.</strong> Every video a command names is
+              training data, and evaluation videos are a corpus of their own
+              that you name separately.
+            </p>
+          </div>
+        </article>
       </div>
+
+      <a class="jump-link" href="document.html#data">Pair syntax, and what preparation writes <span aria-hidden="true">&rarr;</span></a>
     </section>
 
     <section id="models" class="section split-section">
@@ -302,12 +961,103 @@ my_video.predict.csv</code></pre>
           so later runs and other configs reuse the same copy. No checkpoint is
           bundled in the repository or the wheel.
         </p>
+        <a class="jump-link" href="document.html#models">The three presets, and where weights are cached <span aria-hidden="true">&rarr;</span></a>
       </div>
-      <div class="code-panel compact" aria-label="Model presets">
-<pre><code>--model maev2b             # VideoMAE V2 ViT-B, frozen + adapters (default)
---model maev2b-distilled   # same ViT-B, adapters distilled from V-JEPA 2
---model vjepa2             # V-JEPA 2 ViT-L, upper half fine-tuned</code></pre>
+      <div class="terminal">
+        <div class="terminal-bar">
+          <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="terminal-title">bash — model presets</span>
+        </div>
+<pre><code><span class="t-flag">--model</span> maev2b
+    <span class="t-com"># VideoMAE V2 ViT-B, frozen + adapters (default)</span>
+
+<span class="t-flag">--model</span> maev2b-distilled
+    <span class="t-com"># same ViT-B, adapters distilled from V-JEPA 2</span>
+
+<span class="t-flag">--model</span> vjepa2
+    <span class="t-com"># V-JEPA 2 ViT-L, upper half fine-tuned</span>
+
+<span class="t-prompt">$</span> <span class="t-cmd">vtrace</span> prepare <span class="t-flag">--weights</span> all
+<span class="t-out">vit_b_k710_dl_from_giant.pth   </span><span class="t-ok">✓ cached</span>
+<span class="t-out">vjepa2_vitl_fpc64_256.pth      </span><span class="t-warn">↓ 1.2 GB …</span></code></pre>
       </div>
+    </section>
+
+    <section id="demo" class="section">
+      <div class="section-heading">
+        <p class="section-label">Demo</p>
+        <h2>The whole CalMS21 benchmark, in one command.</h2>
+        <p>
+          The demo is the complete Task-1 mouse social-behavior benchmark in its
+          official split — 70 training videos and 19 test videos. V-TRACE
+          re-hosts none of it: the annotation CSVs ship with the package, and
+          the videos come straight from the official CalMS21 release, one at a
+          time over HTTP range requests, so nothing pulls the 28&nbsp;GB archive
+          and an interrupted fetch keeps every video it finished. Predicting takes
+          about a minute; training is a real run on the full benchmark.
+        </p>
+      </div>
+      <div class="terminal">
+        <div class="terminal-bar">
+          <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="terminal-title">vtrace &gt; — the CalMS21 walkthrough</span>
+        </div>
+<pre><code><span class="t-prompt">vtrace &gt;</span> <span class="t-cmd">demo</span> predict          <span class="t-com"># pulls one video, ~1 minute</span>
+<span class="t-key">Predicting on</span><span class="t-out"> </span><span class="t-accent">mouse083_task1_annotator1.mp4</span>
+<span class="t-out">  with </span><span class="t-accent">~/.vtrace/demo/model</span>
+
+<span class="t-key">22 bouts across 2 behaviors</span><span class="t-out"> → </span><span class="t-accent">mouse083_task1_annotator1.pred.csv</span>
+<span class="t-key">  investigation</span><span class="t-out">   17 bouts   </span><span class="t-ok">39.8s</span><span class="t-out">   </span><span class="t-dim">24.4%   best 0.88</span>
+<span class="t-key">  mount</span><span class="t-out">            5 bouts   </span><span class="t-ok">18.3s</span><span class="t-out">   </span><span class="t-dim">11.2%   best 0.92</span>
+<span class="t-dim">  58.1s of 163s labelled (36% of the recording)</span>
+
+<span class="t-key">  annotated</span><span class="t-out">   </span><span class="t-dim">━</span><span class="t-eth-a">█████████</span><span class="t-dim">━━━</span><span class="t-eth-a">███</span><span class="t-dim">━━━━━━━━━━</span><span class="t-eth-a">█</span><span class="t-dim">━━━━━━━</span><span class="t-eth-a">███</span><span class="t-eth-b">█</span><span class="t-dim">━━━</span><span class="t-eth-a">█</span><span class="t-dim">━━</span><span class="t-eth-b">█</span><span class="t-dim">━</span><span class="t-eth-b">█</span><span class="t-dim">━━━━━</span><span class="t-eth-b">█████</span><span class="t-dim">━━━</span><span class="t-eth-a">█</span><span class="t-dim">━━━━</span>
+<span class="t-key">  predicted</span><span class="t-out">   </span><span class="t-eth-a">█████████</span><span class="t-dim">━━━━</span><span class="t-eth-a">██</span><span class="t-dim">━━━</span><span class="t-eth-a">███</span><span class="t-dim">━━━━━</span><span class="t-eth-a">█</span><span class="t-dim">━━━━━━━</span><span class="t-eth-a">█████</span><span class="t-dim">━━━━━</span><span class="t-eth-a">█</span><span class="t-dim">━</span><span class="t-eth-b">█</span><span class="t-dim">━━━━━</span><span class="t-eth-b">████</span><span class="t-dim">━━━━━━━━</span><span class="t-eth-a">█</span><span class="t-dim">━━━━</span>
+<span class="t-out">              </span><span class="t-dim">0s               41s              82s              122s        163s</span>
+<span class="t-eth-a">  █</span><span class="t-dim"> investigation   </span><span class="t-eth-b">█</span><span class="t-dim"> mount</span>
+
+<span class="t-key">  annotated (32)</span><span class="t-out">                </span><span class="t-key">predicted (22)</span>
+<span class="t-dim">  investigation 0.9–16.7s       investigation 0.6–16.0s</span>
+<span class="t-dim">  investigation 22.8–25.3s      investigation 22.5–25.4s</span>
+<span class="t-dim">  investigation 25.7–26.3s      investigation 30.3–32.0s</span>
+<span class="t-dim">  … 24 more</span>
+
+<span class="t-key">Against the CalMS21 annotation for this video</span><span class="t-dim"> (4881 frames, threshold tuned per class)</span>
+<span class="t-dim">                   threshold   precision    recall      F1</span>
+<span class="t-key">  investigation</span><span class="t-out">        </span><span class="t-accent">0.64</span><span class="t-out">        0.80      0.81    </span><span class="t-ok">0.80</span>
+<span class="t-key">  mount</span><span class="t-out">                </span><span class="t-accent">0.12</span><span class="t-out">        0.91      0.84    </span><span class="t-ok">0.87</span>
+<span class="t-key">  macro F1</span><span class="t-out">                                            </span><span class="t-ok">0.84</span>
+<span class="t-dim">  thresholds tuned on this video, so this is the best it can do here</span>
+
+<span class="t-key">Review them in the annotator</span>
+<span class="t-out">  1. </span><span class="t-dim">(already running in this session)</span>
+<span class="t-out">  2. </span><span class="t-key">Open Video Folder</span><span class="t-out"> → </span><span class="t-accent">~/.vtrace/demo/videos/test</span>
+<span class="t-out">  3. Pick </span><span class="t-accent">mouse083_task1_annotator1.mp4</span><span class="t-out"> — the predictions load with it.</span>
+
+<span class="t-prompt">vtrace &gt;</span> <span class="t-cmd">demo</span> download         <span class="t-com"># train ~19 GB, test ~11 GB</span>
+<span class="t-out">Fetching 70 train videos (18.83 GB) from https://data.caltech.edu/…</span>
+<span class="t-out">  into </span><span class="t-path">~/.vtrace/demo/videos/train</span>
+<span class="t-warn">  ctrl-c</span><span class="t-out"> stops it.</span>
+<span class="t-out">  all 53          </span><span class="t-accent">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span><span class="t-dim">━━━━━━━━━━━━━━━</span><span class="t-out">  </span><span class="t-num">67%</span><span class="t-out"> </span><span class="t-ok">8.6/12.8 GB</span><span class="t-out"> </span><span class="t-warn">6.7 MB/s</span><span class="t-out"> </span><span class="t-accent">10:23</span>
+<span class="t-accent">  9/53</span><span class="t-out"> mouse018….mp4 </span><span class="t-accent">━━━━━━━━━━━━━━━━━━━</span><span class="t-dim">━━━━━━━━━━━━━━━━━━━━━━━━━━</span><span class="t-out">  </span><span class="t-num">42%</span><span class="t-out"> </span><span class="t-ok">104.9/248.4 MB</span><span class="t-out"> </span><span class="t-warn">6.7 MB/s</span><span class="t-out"> </span><span class="t-accent">00:22</span>
+
+<span class="t-prompt">vtrace &gt;</span> <span class="t-cmd">demo</span> download <span class="t-flag">--split</span> test
+<span class="t-prompt">vtrace &gt;</span> <span class="t-cmd">demo</span> download <span class="t-flag">--from</span> <span class="t-path">/mnt/share/task1_videos_mp4.zip</span>
+<span class="t-prompt">vtrace &gt;</span> <span class="t-cmd">demo</span> download <span class="t-flag">--verify</span>  <span class="t-com"># CRC-check what is on disk</span>
+
+<span class="t-prompt">vtrace &gt;</span> <span class="t-cmd">demo</span> train            <span class="t-com"># 10 epochs, ~3 h on one GPU, ~23 GB VRAM</span>
+<span class="t-out">Training on 55 CalMS21 videos</span>
+<span class="t-out">  15 more, split out of the same 70 by behavior, score each epoch</span>
+<span class="t-out">  the benchmark's 19-video test split is scored once, after training</span></code></pre>
+      </div>
+      <p class="terminal-caption">
+        The validation set is cut out of the training videos, stratified so each
+        behavior lands on both sides in proportion; the 19 test videos are
+        touched once, after training, to score the finished checkpoint &mdash;
+        the run's benchmark figure. If you use the demo data, cite CalMS21 — Sun et al., NeurIPS 2021 Datasets
+        &amp; Benchmarks.
+      </p>
+      <a class="jump-link" href="document.html#demo">What each demo step downloads and runs <span aria-hidden="true">&rarr;</span></a>
     </section>
 
     <section class="section publish-section">

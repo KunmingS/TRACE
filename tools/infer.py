@@ -180,7 +180,6 @@ def generate_pseudo_annotations(
     probed = []
     for vpath in video_paths:
         video_name = _video_stem(vpath)
-        logger.info(f"Probing video: {video_name}")
         try:
             num_frames, duration, fps, pts_path = probe_video(vpath)
         except Exception as e:
@@ -188,9 +187,12 @@ def generate_pseudo_annotations(
             continue
 
         logger.info(
-            f"  {num_frames} frames, {duration:.2f}s, {fps:.1f} fps"
-            + (f", PTS cached" if pts_path else f", PTS cache unavailable (read-only dir?)")
+            f"{video_name}: {num_frames} frames, {duration:.1f}s, {fps:.1f} fps"
         )
+        if not pts_path:
+            # Worth saying out loud: without the sidecar every later run pays
+            # the scan again.
+            logger.warning(f"  {video_name}: PTS cache unavailable (read-only dir?)")
         probed.append((vpath, video_name))
 
     proxies = {}
@@ -214,7 +216,7 @@ def generate_pseudo_annotations(
             continue
 
         proxy_path = proxies.get(os.path.abspath(vpath))
-        logger.info(
+        logger.debug(
             f"  {len(clips)} virtual clip(s)"
             + (" decoding from proxy" if proxy_path else " decoding from source")
         )
@@ -305,6 +307,92 @@ def _merge_detections(detections, max_gap=_BOUT_GAP_SECONDS):
     return sorted(bouts, key=lambda bout: (bout[1], bout[0]))
 
 
+def _truth_bouts(video_path):
+    """(label, start, end) from the annotation CSV beside `video_path`, if any."""
+    stem_path = os.path.splitext(video_path)[0] + ".csv"
+    if not os.path.isfile(stem_path):
+        return None
+    from vtrace.data_prep import _csv_dict_reader
+
+    bouts = []
+    with open(stem_path, "r", encoding="utf-8") as f:
+        for row in _csv_dict_reader(f):
+            try:
+                bouts.append((row["labelId"].strip(),
+                              float(row["timestamp"]),
+                              float(row["endTimestamp"])))
+            except (KeyError, ValueError):
+                continue
+    return bouts
+
+
+def _spans_to_mask(spans, grid):
+    """Boolean array over `grid` (seconds), True inside any of `spans`."""
+    import numpy as np
+
+    mask = np.zeros(len(grid), dtype=bool)
+    for start, end in spans:
+        first = int(np.searchsorted(grid, start, side="left"))
+        last = int(np.searchsorted(grid, end, side="right"))
+        mask[first:last] = True
+    return mask
+
+
+def _f1(gt, pr):
+    tp = int((gt & pr).sum())
+    fp = int((~gt & pr).sum())
+    fn = int((gt & ~pr).sum())
+    precision = tp / (tp + fp) if tp + fp else 0.0
+    recall = tp / (tp + fn) if tp + fn else 0.0
+    return (precision, recall,
+            2 * precision * recall / (precision + recall) if precision + recall else 0.0)
+
+
+def tune_thresholds(detections, truth, duration, step=0.02):
+    """Per-class cutoff that maximises frame-level F1 against `truth`.
+
+    Swept on the raw per-frame detections and re-merged at every candidate,
+    because the threshold is not only a filter: it decides which frames survive
+    to be run-length merged, and so changes the bouts themselves. Filtering an
+    already-merged bout list gives a different — and much worse — answer.
+
+    Returns {label: (cutoff, precision, recall, f1)}.
+    """
+    import numpy as np
+
+    if not truth or duration <= 0:
+        return {}
+    # 100 Hz is finer than any frame rate here, so the grid is not what limits
+    # agreement.
+    grid = np.arange(0.0, duration, 0.01)
+    labels = sorted({label for label, _s, _e in truth}
+                    | {det["label"] for det in detections})
+    tuned = {}
+    for label in labels:
+        gt = _spans_to_mask([(s, e) for lab, s, e in truth if lab == label], grid)
+        mine = [det for det in detections if det["label"] == label]
+        if not gt.any():
+            # The annotator recorded none of this behaviour in this recording,
+            # so every frame predicted is a false positive and the F1-optimal
+            # cutoff is the one that predicts nothing. Without this the sweep
+            # sees F1 = 0 everywhere, keeps the first candidate it tried, and
+            # writes out the whole unfiltered class.
+            tuned[label] = (1.0, 0.0, 0.0, 0.0)
+            continue
+        best = (1.0, 0.0, 0.0, -1.0)
+        for cutoff in np.arange(0.0, 1.0, step):
+            kept = [det for det in mine if float(det.get("score", 0.0)) >= cutoff]
+            bouts = _merge_detections(kept)
+            pr = _spans_to_mask([(b[1], b[2]) for b in bouts], grid)
+            precision, recall, f1 = _f1(gt, pr)
+            # `>=` rather than `>`: candidates ascend, so a tie keeps the
+            # stricter cutoff — the same F1 with fewer false positives.
+            if f1 >= best[3]:
+                best = (float(cutoff), precision, recall, f1)
+        tuned[label] = best
+    return tuned
+
+
 def filter_predictions(predictions, threshold):
     """Drop detections scoring below ``threshold``."""
     threshold = max(0.0, min(1.0, float(threshold)))
@@ -318,8 +406,12 @@ def filter_predictions(predictions, threshold):
 # One prediction file per video, beside it, replaced on re-run. Same three columns
 # training reads plus a score, so a corrected prediction is already an annotation
 # file rather than something to convert.
-PREDICTION_SUFFIX = ".predict.csv"
+PREDICTION_SUFFIX = ".pred.csv"
 PREDICTION_COLUMNS = ("labelId", "timestamp", "endTimestamp", "score", "predictionId")
+# Beside the CSV, on request: every frame's score for every class. The CSV keeps
+# only bouts above a cutoff, which is what a reviewer wants and exactly what a
+# precision-recall curve cannot be drawn from.
+FRAME_SCORES_SUFFIX = ".pred.scores.npz"
 
 
 def prediction_path(video_path, output_dir=None):
@@ -334,23 +426,79 @@ def prediction_path(video_path, output_dir=None):
     return os.path.join(folder, stem + PREDICTION_SUFFIX)
 
 
-def write_prediction_files(
-    video_paths, predictions, class_map, threshold, output_dir=None, logger=None
-):
-    """Write one `<video stem>.predict.csv` per video; return name -> path."""
+def frame_scores_path(video_path, output_dir=None):
+    """Where `video_path`'s per-frame score file goes: beside its prediction CSV."""
+    path = prediction_path(video_path, output_dir)
+    return path[:-len(PREDICTION_SUFFIX)] + FRAME_SCORES_SUFFIX
+
+
+def write_frame_scores(video_paths, predictions, class_map, output_dir=None, logger=None):
+    """Write one `<video stem>.pred.scores.npz` per video; return name -> path.
+
+    `scores[t, c]` is the highest detection score covering frame `t` for class
+    `labels[c]`, on the video's own PTS grid (the `.pts.npy` beside it), 0 where
+    nothing covered the frame. Detections map to frames exactly as the evaluator
+    maps them, so frame-level AP computed from this file is the evaluator's AP.
+    float16: a ten-minute video at 30 fps is ~100 KB for three classes.
+    """
+    import numpy as np
+    from vtrace.data_prep import _load_or_build_pts
+
+    labels = list(class_map)
+    column = {label: index for index, label in enumerate(labels)}
     written = {}
     for video_path in video_paths:
         stem = _video_stem(video_path)
+        pts = np.asarray(_load_or_build_pts(video_path), dtype=np.float64)
+        matrix = np.zeros((len(pts), len(labels)), dtype=np.float32)
+        for det in predictions.get(stem, []):
+            col = column.get(det.get("label"))
+            if col is None:
+                continue
+            start, end = det.get("segment", (0.0, 0.0))
+            first = int(np.searchsorted(pts, float(start), side="left"))
+            last = int(np.searchsorted(pts, float(end), side="right"))
+            first = max(0, min(first, len(pts) - 1))
+            last = max(first + 1, min(last, len(pts)))
+            np.maximum(matrix[first:last, col], float(det.get("score", 0.0)),
+                       out=matrix[first:last, col])
+        path = frame_scores_path(video_path, output_dir)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        np.savez_compressed(path, scores=matrix.astype(np.float16),
+                            labels=np.array(labels), video=os.path.basename(video_path))
+        written[stem] = path
+        if logger:
+            logger.info(f"Frame scores: {path} ({len(pts)} frames x {len(labels)} classes)")
+    return written
+
+
+def write_prediction_files(
+    video_paths, predictions, class_map, threshold, output_dir=None, logger=None,
+    tuned=None,
+):
+    """Write one `<video stem>.pred.csv` per video; return name -> path.
+
+    `tuned` maps a video stem to {label: (cutoff, precision, recall, f1)}. When
+    present the per-class cutoff replaces the flat `threshold` for that video,
+    and the header records which was used.
+    """
+    written = {}
+    for video_path in video_paths:
+        stem = _video_stem(video_path)
+        cutoffs = (tuned or {}).get(stem) or {}
+        raw = predictions.get(stem, [])
+        if cutoffs:
+            raw = [det for det in raw
+                   if float(det.get("score", 0.0))
+                   >= cutoffs.get(det["label"], (1.0,))[0]]
         bouts = [
             {
                 "label": label,
                 "segment": [round(start, 3), round(end, 3)],
                 "score": round(score, 4),
             }
-            for label, start, end, score in _merge_detections(
-                predictions.get(stem, [])
-            )
-        ] if predictions.get(stem) else []
+            for label, start, end, score in _merge_detections(raw)
+        ] if raw else []
 
         path = prediction_path(video_path, output_dir)
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -358,8 +506,12 @@ def write_prediction_files(
             "trace_prediction_version": 1,
             "video": os.path.basename(video_path),
             "class_map": list(class_map),
-            "threshold": threshold,
+            "threshold": ({label: round(value[0], 3)
+                           for label, value in sorted(cutoffs.items())}
+                          if cutoffs else threshold),
         }
+        if cutoffs:
+            meta["threshold_tuned_on"] = "this video's own annotation CSV"
         with open(path, "w", encoding="utf-8", newline="") as f:
             # `#` lines are skipped by prep's reader and by the annotator's, so the
             # run's provenance rides along without becoming a column.
@@ -406,6 +558,15 @@ def parse_args():
                              "(default: beside each source video)")
     parser.add_argument("--threshold", type=float, default=0.0,
                         help="Minimum score for a detection to reach the prediction file")
+    parser.add_argument("--frame-scores", action="store_true",
+                        help="Also write <stem>.pred.scores.npz beside each prediction "
+                             "file: every frame's score for every class, for frame-level "
+                             "metrics such as a precision-recall curve or AP.")
+    parser.add_argument("--tune-threshold", action="store_true",
+                        help="Choose the cutoff per class by maximising frame-level "
+                             "F1 against the annotation CSV beside each video. "
+                             "Tunes on the video it reports, so the result is an "
+                             "upper bound, not a held-out estimate.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--profile", action="store_true",
                         help="Enable inference profiling (CPU + GPU timing)")
@@ -440,7 +601,7 @@ def main():
     cfg = Config.fromfile(args.config)
     if args.cfg_options is not None:
         cfg.merge_from_dict(args.cfg_options)
-    # Scratch, not output: the results are the `<video>.predict.csv` files
+    # Scratch, not output: the results are the `<video>.pred.csv` files
     # written beside each video, so the engine's log and its raw per-frame
     # `result_detection.json` go somewhere disposable. Removed at the end of a
     # clean run; kept, with its path printed, when something failed. The CLI
@@ -455,7 +616,8 @@ def main():
     create_folder(cfg.work_dir)
 
     logger = setup_logger("Infer", save_dir=cfg.work_dir)
-    logger.info(f"Using torch version: {torch.__version__}, CUDA version: {torch.version.cuda}")
+    logger.debug(f"Using torch version: {torch.__version__}, "
+                 f"CUDA version: {torch.version.cuda}")
 
     # Discover and probe videos
     input_path = os.path.abspath(args.input)
@@ -524,7 +686,7 @@ def main():
         # Load checkpoint
         logger.info(f"Loading checkpoint from: {args.checkpoint}")
         checkpoint = torch.load(args.checkpoint, map_location="cuda")
-        logger.info(f"Checkpoint is epoch {checkpoint['epoch']}.")
+        logger.debug(f"Checkpoint is epoch {checkpoint['epoch']}.")
 
         use_ema = getattr(cfg.solver, "ema", False)
         state_key = "state_dict_ema" if use_ema else "state_dict"
@@ -539,7 +701,7 @@ def main():
         if unexpected:
             logger.warning(f"Unexpected keys in checkpoint: {unexpected}")
         if use_ema:
-            logger.info("Using Model EMA weights.")
+            logger.debug("Using Model EMA weights.")
 
         # Auto-tune dataloader parameters
         if args.auto_tune:
@@ -560,10 +722,10 @@ def main():
         # AMP
         use_amp = getattr(cfg.solver, "amp", False)
         if use_amp:
-            logger.info("Using Automatic Mixed Precision...")
+            logger.debug("Using Automatic Mixed Precision...")
 
         # Run inference (skip evaluation — no ground truth)
-        logger.info("Inference starts...\n")
+        logger.info("Inference starts ...")
         eval_one_epoch(
             test_loader,
             model,
@@ -573,8 +735,9 @@ def main():
             use_amp=use_amp,
             not_eval=True,  # Always skip evaluation for inference
             profile=args.profile,
+            progress_label="predicting",
         )
-        logger.info("Inference complete.\n")
+        logger.info("Inference complete.")
         _shutdown_dataloader_workers(test_loader, logger)
 
         # Read the result file written by eval_one_epoch
@@ -591,6 +754,30 @@ def main():
 
             # One file per video, named after it. `--output` moves the folder;
             # the names stay tied to the videos either way.
+            tuned = {}
+            if args.tune_threshold:
+                for vpath in video_paths:
+                    stem = _video_stem(vpath)
+                    truth = _truth_bouts(vpath)
+                    if not truth:
+                        continue
+                    try:
+                        _frames, duration, _fps, _pts = probe_video(vpath)
+                    except Exception:
+                        continue
+                    # Sweep the unfiltered detections: `predictions` is already
+                    # cut at --threshold, which would put a floor under the sweep.
+                    tuned[stem] = tune_thresholds(
+                        raw_predictions.get(stem, []), truth, duration)
+                for stem, cutoffs in tuned.items():
+                    if not cutoffs:
+                        continue
+                    logger.info(f"Tuned thresholds for {stem} "
+                                f"(frame-level F1 against its own annotation):")
+                    for label, (cutoff, precision, recall, f1) in sorted(cutoffs.items()):
+                        logger.info(f"    {label:<16} threshold {cutoff:.2f}  "
+                                    f"P {precision:.2f}  R {recall:.2f}  F1 {f1:.2f}")
+
             written = write_prediction_files(
                 video_paths,
                 predictions,
@@ -598,19 +785,22 @@ def main():
                 args.threshold,
                 output_dir=args.output,
                 logger=logger,
+                tuned=tuned,
             )
+            if args.frame_scores:
+                # From the unfiltered detections: the file is for curves over the
+                # whole score range, which a cutoff would truncate.
+                write_frame_scores(
+                    video_paths, raw_predictions, test_dataset.class_map,
+                    output_dir=args.output, logger=logger,
+                )
 
             # Summarise what was written: bouts, since that is what the files
             # contain — the raw per-frame count means nothing to a reviewer.
-            logger.info(f"Wrote {len(written)} prediction file(s)")
             for video_name, path in written.items():
                 bouts = _merge_detections(predictions.get(video_name, [])) \
                     if predictions.get(video_name) else []
-                logger.info(f"  {os.path.basename(path)}: {len(bouts)} bouts")
-                for label, start, end, score in bouts[:5]:
-                    logger.info(f"    [{start:.2f}s - {end:.2f}s] {label} (score={score:.3f})")
-                if len(bouts) > 5:
-                    logger.info(f"    ... and {len(bouts) - 5} more")
+                logger.debug(f"  {os.path.basename(path)}: {len(bouts)} bouts")
         else:
             logger.warning("No result file found. Check if post_processing.save_dict is enabled.")
 

@@ -1,5 +1,5 @@
 from .misc import set_seed, update_workdir, create_folder, save_config, AverageMeter
-from .logger import setup_logger
+from .logger import setup_logger, BRIEF
 from .ema import ModelEma
 from .checkpoint import save_checkpoint, save_best_checkpoint
 from .auto_tune import auto_tune_inference
@@ -11,6 +11,7 @@ __all__ = [
     "create_folder",
     "save_config",
     "setup_logger",
+    "BRIEF",
     "AverageMeter",
     "ModelEma",
     "save_checkpoint",

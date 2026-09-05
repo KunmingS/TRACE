@@ -11,6 +11,7 @@ this module:
 import csv
 import json
 import os
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -20,6 +21,9 @@ import subprocess
 import cv2
 import numpy as np
 
+from vtrace.console import (
+    ACCENT, clear_status, console, duration, say, status,
+)
 from vtrace.model_artifacts import create_model_dir
 from vtrace.proxy_geometry import ProxyGeometry
 
@@ -48,13 +52,61 @@ def _resolve_proxy_workers(workers=None):
     return max(1, min(8, parsed))
 
 
-def _emit_cache_log(logger, message, *, warning=False):
+# ── Where prep's detail goes ─────────────────────────────────────────────────
+# Preparing the CalMS21 demo indexes 89 videos, and the per-video detail —
+# frame count, average rate, resolution, which proxy the frames will come from —
+# is worth keeping and not worth watching go past. It is written to a file, and
+# the terminal gets one line per video.
+_detail_sink = None
+
+
+def _detail(message: str) -> None:
+    """Record `message` in the prep log, if one is open."""
+    if _detail_sink is not None:
+        _detail_sink.write(message + "\n")
+        _detail_sink.flush()
+
+
+class _prep_log:
+    """Open `path` as the detail sink for the duration of the block."""
+
+    def __init__(self, path):
+        self.path = path
+        self.handle = None
+
+    def __enter__(self):
+        global _detail_sink
+        try:
+            self.handle = open(self.path, "w", encoding="utf-8")
+        except OSError:
+            # A read-only output directory loses the detail, not the run.
+            return self
+        _detail_sink = self.handle
+        return self
+
+    def __exit__(self, *exc):
+        global _detail_sink
+        _detail_sink = None
+        if self.handle is not None:
+            self.handle.close()
+        return False
+
+
+def _emit_cache_log(logger, message, *, warning=False, detail=False):
+    """Log a proxy-cache message.
+
+    `detail=True` is for the cases that cost the reader nothing — reusing what
+    is already built, counting what was enumerated. Building a proxy is slow
+    enough to be worth announcing; finding one is not.
+    """
     if logger is not None:
         if warning:
             logger.warning(message)
+        elif detail:
+            logger.debug(message)
         else:
             logger.info(message)
-    else:
+    elif not detail:
         level = "WARNING: " if warning else ""
         print(f"    {level}{message}")
 
@@ -325,7 +377,8 @@ def ensure_video_proxies(video_paths, geometry, crf=PROXY_CRF, workers=None, log
 
     if not pending:
         if proxies:
-            _emit_cache_log(logger, f"Reusing {len(proxies)} decode proxy/proxies ({geometry.key})")
+            _emit_cache_log(logger, f"Reusing {len(proxies)} decode proxy/proxies "
+                            f"({geometry.key})", detail=True)
         return proxies
 
     # One job per source video now, not per window: these are long-running
@@ -497,12 +550,14 @@ def _normalise_explicit_pairs(dataset_path, explicit_pairs):
             spec_label = spec
             if "=" not in spec:
                 raise ValueError(
-                    f"Invalid pair spec '{spec}'. Use VIDEO_PATH=CSV_PATH."
+                    f"Invalid pair spec '{spec}'. Use VIDEO_PATH=ANNOTATION_PATH "
+                    f"(a .csv, or a .json from an earlier annotator)."
                 )
             video_spec, csv_spec = (part.strip() for part in spec.split("=", 1))
         if not video_spec or not csv_spec:
             raise ValueError(
-                f"Invalid pair spec '{spec_label}'. Use VIDEO_PATH=CSV_PATH."
+                f"Invalid pair spec '{spec_label}'. Use VIDEO_PATH=ANNOTATION_PATH "
+                f"(a .csv, or a .json from an earlier annotator)."
             )
         video_path = os.path.abspath(_resolve_dataset_file(dataset_path, video_spec))
         csv_path = os.path.abspath(_resolve_dataset_file(dataset_path, csv_spec))
@@ -534,8 +589,11 @@ def _find_video_csv_pairs(dataset_path, included_stems=None, explicit_pairs=None
                 )
             if not os.path.isfile(video_path):
                 raise FileNotFoundError(f"Pair video not found: {video_path}")
+            if not csv_path.lower().endswith(ANNOTATION_EXTENSIONS):
+                raise ValueError(
+                    f"Pair annotation must be a .csv or a .json file: {csv_path}")
             if not os.path.isfile(csv_path):
-                raise FileNotFoundError(f"Pair CSV not found: {csv_path}")
+                raise FileNotFoundError(f"Pair annotation file not found: {csv_path}")
         return list(explicit_pairs)
 
     included_stems = _normalise_included_stems(included_stems)
@@ -554,8 +612,15 @@ def _find_video_csv_pairs(dataset_path, included_stems=None, explicit_pairs=None
 
     video_stems = sorted({stem for stem, _, _ in source_videos}, key=len, reverse=True)
     csvs_by_stem = {}
+    # `<stem>.json` from an earlier annotator, taken only when the stem has no
+    # CSV at all: a CSV beside it is the migrated copy and is the one to trust.
+    jsons_by_stem = {}
     for index, fname in enumerate(entries):
-        if not fname.lower().endswith(".csv"):
+        lower = fname.lower()
+        if lower.endswith(".json"):
+            jsons_by_stem.setdefault(fname[:-5], fname)
+            continue
+        if not lower.endswith(".csv"):
             continue
         csv_stem = fname[:-4]
         matched_stem = next(
@@ -570,6 +635,8 @@ def _find_video_csv_pairs(dataset_path, included_stems=None, explicit_pairs=None
             continue
         csv_candidates = csvs_by_stem.get(stem, [])
         if not csv_candidates:
+            if stem in jsons_by_stem:
+                pairs.append((video_path, os.path.join(dataset_path, jsons_by_stem[stem])))
             continue
         canonical = f"{stem}.csv"
         csv_candidates = sorted(
@@ -583,8 +650,85 @@ def _find_video_csv_pairs(dataset_path, included_stems=None, explicit_pairs=None
 def _csv_dict_reader(file_obj):
     """DictReader that skips `# trace-meta:` and other `#`-prefixed comment
     lines emitted by the annotator above the real header row.
+
+    Column names are stripped. A CSV padded so its columns line up —
+    `labelId,  timestamp,  endTimestamp` — is a reasonable thing to write or
+    edit by hand, and the values already survive it (`float` skips leading
+    whitespace, and every label goes through `.strip()`). Without this the
+    header alone would turn such a file into a `KeyError` on 'timestamp', which
+    says nothing about the two spaces that caused it. The annotator's own
+    reader has always trimmed here; this is the Python side catching up.
     """
-    return csv.DictReader(line for line in file_obj if not line.lstrip().startswith("#"))
+    reader = csv.DictReader(
+        line for line in file_obj if not line.lstrip().startswith("#"))
+    if reader.fieldnames:
+        reader.fieldnames = [name.strip() for name in reader.fieldnames]
+    return reader
+
+
+ANNOTATION_EXTENSIONS = (".csv", ".json")
+
+
+def _json_annotation_entry(payload, path, video_stem):
+    """The per-video entry inside an annotator JSON file.
+
+    Two shapes are accepted: `{"database": {<video key>: {...}}}` — the
+    annotator's own file, whether it holds one video (`<video>.json`) or many
+    (`annotations.json`) — and a bare entry `{"annotations": [...]}`. In a
+    database the entry is looked up by the video's stem; a file holding exactly
+    one video is taken as that video's regardless of key, since a renamed video
+    beside its own JSON is the common case, not a mismatch.
+    """
+    if isinstance(payload, dict) and isinstance(payload.get("database"), dict):
+        database = payload["database"]
+        if video_stem in database:
+            return database[video_stem]
+        if len(database) == 1:
+            return next(iter(database.values()))
+        keys = ", ".join(sorted(database)[:5])
+        raise ValueError(
+            f"{path} holds annotations for {len(database)} videos and none is "
+            f"keyed '{video_stem}' (keys start: {keys}).")
+    if isinstance(payload, dict) and isinstance(payload.get("annotations"), list):
+        return payload
+    raise ValueError(f"{path} is not an annotation file the annotator writes.")
+
+
+def _read_annotation_rows(path, video_stem=None):
+    """Rows of `labelId / timestamp / endTimestamp / review` from a CSV or a JSON.
+
+    The CSV is the annotator's current format. The JSON is what earlier
+    versions wrote — `frame_segment`, `time_segment`, `label` per bout — and a
+    folder labelled before the switch should train without a conversion step.
+    Seconds come from `time_segment`; a bout that only has frames is placed
+    with the entry's fps, the way the annotator itself does when it loads one.
+    """
+    if not str(path).lower().endswith(".json"):
+        with open(path, "r", encoding="utf-8") as f:
+            return [dict(row) for row in _csv_dict_reader(f)]
+    with open(path, "r", encoding="utf-8") as f:
+        payload = json.load(f)
+    entry = _json_annotation_entry(payload, path, video_stem)
+    fps = float(entry.get("fps") or 0.0)
+    rows = []
+    for anno in entry.get("annotations") or []:
+        if not isinstance(anno, dict):
+            continue
+        times = anno.get("time_segment")
+        frames = anno.get("frame_segment")
+        if isinstance(times, (list, tuple)) and len(times) == 2:
+            start, end = float(times[0]), float(times[1])
+        elif isinstance(frames, (list, tuple)) and len(frames) == 2 and fps > 0:
+            start, end = float(frames[0]) / fps, (float(frames[1]) + 1.0) / fps
+        else:
+            continue
+        rows.append({
+            "labelId": str(anno.get("label") or ""),
+            "timestamp": start,
+            "endTimestamp": end,
+            "review": str(anno.get("review") or ""),
+        })
+    return rows
 
 
 def _is_rejected(row):
@@ -597,19 +741,116 @@ def _is_rejected(row):
     return (row.get("review") or "").strip().lower() == "rejected"
 
 
-def _extract_classes_from_csvs(csv_paths):
-    """Collect all unique labels from CSV files, return sorted list."""
+def _extract_classes(pairs):
+    """Every label across the (video, annotation file) pairs, sorted."""
     labels = set()
-    for csv_path in csv_paths:
-        with open(csv_path, "r", encoding="utf-8") as f:
-            reader = _csv_dict_reader(f)
-            for row in reader:
-                if _is_rejected(row):
-                    continue
-                label = row["labelId"].strip()
-                if label:
-                    labels.add(label)
+    for video_path, ann_path in pairs:
+        labels |= _annotation_labels(video_path, ann_path)
     return sorted(labels)
+
+
+# ── splitting a corpus ─────────────────────────────────────────────────────
+# Videos labelled with a rare behavior are rare themselves, and a random cut of
+# a small corpus routinely lands every one of them on the same side — a
+# validation set with no `attack` in it cannot tell you anything about `attack`.
+# So the cut is stratified on which behaviors each video contains.
+
+# Videos with no behavior at all still have to be shared out proportionally, so
+# they are stratified under a label of their own.
+_BG_STRATUM = "(background)"
+
+
+def _annotation_labels(video_path, ann_path):
+    """The set of behaviors annotated for one video (empty => background only)."""
+    labels = set()
+    for row in _read_annotation_rows(ann_path, Path(video_path).stem):
+        if _is_rejected(row):
+            continue
+        label = (row.get("labelId") or "").strip()
+        if label:
+            labels.add(label)
+    return labels
+
+
+def stratified_split(pairs, ratios, seed=42):
+    """Divide video/CSV pairs into named splits with even per-behavior shares.
+
+    The multi-label iterative stratification of Sechidis, Tsoumakas & Vlahavas
+    (2011): repeatedly take the behavior with the fewest videos still
+    unassigned, and give each of those videos to whichever split is furthest
+    from its quota for that behavior. Starting from the rarest keeps the classes
+    that a random cut would strand — there is no slack left by the time the
+    common ones are placed, and there does not need to be.
+
+    Args:
+        pairs: ``(video, csv)`` tuples or ``"VIDEO=CSV"`` specs — whichever form
+            comes in is the form that comes back.
+        ratios: ``[(split_name, fraction)]``; fractions are normalized.
+        seed: makes tie-breaking deterministic, so a dataset always splits the
+            same way and a run stays reproducible.
+
+    Returns:
+        ``{split_name: [pair]}``, each list in input order.
+    """
+    import random
+    from collections import defaultdict
+
+    total_fraction = sum(fraction for _, fraction in ratios)
+    if total_fraction <= 0:
+        raise ValueError("Split ratios must sum to a positive value.")
+    names = [name for name, _ in ratios]
+    share = {name: fraction / total_fraction for name, fraction in ratios}
+
+    def parts(pair):
+        if isinstance(pair, (tuple, list)):
+            return str(pair[0]), str(pair[1])
+        video, _, csv_path = str(pair).partition("=")
+        return video.strip(), csv_path.strip()
+
+    strata = {}
+    pool = defaultdict(set)
+    for pair in pairs:
+        video_path, csv_path = parts(pair)
+        labels = _annotation_labels(video_path, csv_path) or {_BG_STRATUM}
+        strata[video_path] = labels
+        for label in labels:
+            pool[label].add(video_path)
+
+    rng = random.Random(seed)
+    quota = {name: share[name] * len(pairs) for name in names}
+    label_quota = {label: {name: share[name] * len(keys) for name in names}
+                   for label, keys in pool.items()}
+    assignment = {}
+    unassigned = set(strata)
+
+    def take(video_path, name):
+        assignment[video_path] = name
+        unassigned.discard(video_path)
+        quota[name] -= 1
+        for label in strata[video_path]:
+            if video_path in pool[label]:
+                pool[label].discard(video_path)
+                label_quota[label][name] -= 1
+
+    while unassigned:
+        candidates = [label for label, keys in pool.items() if keys]
+        if not candidates:
+            break
+        rarest = min(candidates, key=lambda label: (len(pool[label]), label))
+        for video_path in sorted(pool[rarest]):
+            if video_path not in unassigned:
+                continue
+            take(video_path, max(names, key=lambda name: (
+                label_quota[rarest][name], quota[name], rng.random())))
+
+    # Anything whose every stratum emptied first: place it on overall quota.
+    for video_path in sorted(unassigned):
+        take(video_path, max(names, key=lambda name: (quota[name], rng.random())))
+
+    result = {name: [] for name in names}
+    for pair in pairs:
+        result[assignment[parts(pair)[0]]].append(pair)
+    return result
 
 
 def enumerate_virtual_clips(video_path, clip_frames=768, clip_stem=None):
@@ -695,31 +936,30 @@ def _process_video(
     Returns the entry dict, or None when the CSV holds no usable annotation.
     """
     video_name = Path(video_path).stem
-    print(f"  Processing video: {video_name}")
+    _detail(f"Processing video: {video_name}")
 
-    # Load CSV annotations
+    # Load the annotations — the CSV the annotator writes now, or the JSON an
+    # earlier version wrote; `_read_annotation_rows` makes them the same rows.
     annotations = []
     rejected = 0
-    with open(csv_path, "r", encoding="utf-8") as f:
-        reader = _csv_dict_reader(f)
-        for row in reader:
-            if _is_rejected(row):
-                rejected += 1
-                continue
-            annotations.append({
-                "labelId": row["labelId"].strip(),
-                "timestamp": float(row["timestamp"]),
-                "endTimestamp": float(row["endTimestamp"]),
-            })
+    for row in _read_annotation_rows(csv_path, video_name):
+        if _is_rejected(row):
+            rejected += 1
+            continue
+        annotations.append({
+            "labelId": str(row["labelId"]).strip(),
+            "timestamp": float(row["timestamp"]),
+            "endTimestamp": float(row["endTimestamp"]),
+        })
     if rejected:
         print(f"    {len(annotations)} annotations ({rejected} rejected, skipped)")
     else:
-        print(f"    {len(annotations)} annotations")
+        _detail(f"  {len(annotations)} annotations")
 
     # Build / load the PTS table — one canonical timestamp per encoded frame.
     # Replaces the previous cv2 CAP_PROP_POS_MSEC per-frame loop and is correct
     # for both CFR and VFR sources. See pts-based-frame-mapping.md (archived).
-    print(f"    Loading PTS table...")
+    _detail("  Loading PTS table ...")
     pts_array = _load_or_build_pts(video_path)
     total_frames = len(pts_array)
     pts_cache_path = _pts_cache_path(video_path)
@@ -735,7 +975,7 @@ def _process_video(
         # Fallback: derive from PTS span when cv2 can't report it.
         span = float(pts_array[-1] - pts_array[0]) if total_frames > 1 else 0.0
         avg_fps = (total_frames - 1) / span if span > 0 else 30.0
-    print(f"    {total_frames} frames, avg_fps={avg_fps:.3f}, {width}x{height}")
+    _detail(f"  {total_frames} frames, avg_fps={avg_fps:.3f}, {width}x{height}")
 
     # Map annotation times to frame indices via PTS searchsorted.
     for anno in annotations:
@@ -759,7 +999,8 @@ def _process_video(
         })
 
     if not video_annos:
-        print("    no usable annotations — skipped")
+        _detail("  no usable annotations — skipped")
+        print(f"  {video_name}: no usable annotations — skipped")
         return None
 
     # Duration = inter-frame span plus one frame's worth at the local average
@@ -775,7 +1016,7 @@ def _process_video(
         # PTS table reference — present whenever the cache wrote successfully.
         # Loaders that don't know about it ignore it.
         entry["source_pts_table"] = os.path.abspath(pts_cache_path)
-    print(f"    {len(video_annos)} bouts over {entry['duration']:.1f}s (kept whole)")
+    _detail(f"  {len(video_annos)} bouts over {entry['duration']:.1f}s (kept whole)")
 
     if proxy_geometry is not None:
         proxy_path = build_video_proxy(
@@ -789,7 +1030,7 @@ def _process_video(
             # Decode shortcut. `source_*` above stays authoritative for every
             # timestamp; this only redirects which file the frames come from.
             entry["proxy_video"] = os.path.abspath(proxy_path)
-            print(f"    Decoding from proxy ({proxy_geometry.key}): {proxy_path}")
+            _detail(f"  Decoding from proxy ({proxy_geometry.key}): {proxy_path}")
 
     return entry
 
@@ -879,6 +1120,61 @@ TRAIN_SUBSET = "train"
 VALIDATION_SUBSET = "validation"
 
 
+def _print_corpus_summary(entries, class_map):
+    """What the corpus turned out to contain, one row per behavior.
+
+    Fifty-five lines of "this video had 31 bouts" is a file's worth of detail —
+    it goes to prep.log. What is worth looking at before a three-hour run is
+    whether every behavior actually has enough of itself to learn from, and
+    whether the split left any of them thin. That is a table.
+    """
+    videos = Counter()
+    bouts = Counter()
+    labelled = Counter()
+    for entry in entries.values():
+        seen = set()
+        for anno in entry["annotations"]:
+            label = anno["label"]
+            bouts[label] += 1
+            start, end = anno["segment"]
+            labelled[label] += max(0.0, end - start)
+            seen.add(label)
+        for label in seen:
+            videos[label] += 1
+
+    total_video = sum(entry["duration"] for entry in entries.values())
+    active = console()
+    if active is None:
+        print(f"  {'behavior':<20}{'videos':>7}{'bouts':>8}{'labelled':>12}")
+        for label in class_map:
+            print(f"  {label:<20}{videos[label]:>7}{bouts[label]:>8}"
+                  f"{duration(labelled[label]):>12}")
+        print(f"  {'total':<20}{len(entries):>7}{sum(bouts.values()):>8}"
+              f"{duration(sum(labelled.values())):>12}"
+              f"   in {duration(total_video)} of video")
+        return
+
+    from rich.table import Table
+
+    table = Table.grid(padding=(0, 2))
+    table.add_column(width=20)
+    table.add_column(justify="right", width=6)
+    table.add_column(justify="right", width=6)
+    table.add_column(justify="right", width=10)
+    table.add_column()
+    table.add_row("  [dim]behavior[/]", "[dim]videos[/]", "[dim]bouts[/]",
+                  "[dim]labelled[/]", "")
+    for label in class_map:
+        table.add_row(f"  {label}", f"[{ACCENT}]{videos[label]}[/]",
+                      f"[{ACCENT}]{bouts[label]}[/]",
+                      duration(labelled[label]), "")
+    table.add_row("  [bold]total[/]", f"[bold]{len(entries)}[/]",
+                  f"[bold]{sum(bouts.values())}[/]",
+                  f"[bold]{duration(sum(labelled.values()))}[/]",
+                  f"[dim]in {duration(total_video)} of video[/]")
+    active.print(table)
+
+
 def prepare_dataset(dataset_path, subset=TRAIN_SUBSET,
                     included_stems=None, explicit_pairs=None, output_dir=None,
                     proxy_geometry=DEFAULT_PROXY_GEOMETRY, proxy_crf=PROXY_CRF,
@@ -952,51 +1248,75 @@ def prepare_dataset(dataset_path, subset=TRAIN_SUBSET,
             raise FileNotFoundError(
                 f"Selected stems matched no pairs in {dataset_path}. "
                 f"Requested stems: {stems_str}. "
-                f"Expected matching video ({exts}) and .csv files for each stem."
+                f"Expected matching video ({exts}) and annotation files "
+                f"(.csv, or .json from an earlier annotator) for each stem."
             )
         raise FileNotFoundError(
-            f"No video+CSV pairs found in {dataset_path}. "
-            f"Expected matching video ({exts}) and .csv files "
-            "(e.g., video1.mp4 + video1.csv, or video1.mkv + video1.csv)."
+            f"No video+annotation pairs found in {dataset_path}. "
+            f"Expected matching video ({exts}) and annotation files "
+            "(e.g., video1.mp4 + video1.csv, or video1.mkv + video1.json)."
         )
-    print(f"Found {len(pairs)} video-CSV pairs")
+    say(f"[bold]Preparing the {subset} dataset[/]  "
+        f"[{ACCENT}]{len(pairs)}[/][dim] video"
+        f"{'s' if len(pairs) != 1 else ''}[/]")
 
-    # Extract class map from all CSVs
-    csv_paths = [csv_path for _, csv_path in pairs]
-    class_map = _extract_classes_from_csvs(csv_paths)
+    # Extract class map from every annotation file, CSV or JSON
+    class_map = _extract_classes(pairs)
     if not class_map:
-        raise ValueError(f"No labels found in CSV files in {dataset_path}")
-    print(f"Classes: {class_map}")
+        raise ValueError(f"No labels found in the annotation files in {dataset_path}")
 
-    # Process each video
+    # Process each video. The detail goes to prep.log beside the dataset; the
+    # terminal gets a line per video, so 89 of them is 89 lines and not 500.
+    os.makedirs(output_dir, exist_ok=True)
+    detail_path = Path(output_dir) / "prep.log"
     entries = {}
-    for video_path, csv_path in pairs:
-        entry = _process_video(
-            video_path,
-            csv_path,
-            output_dir,
-            proxy_geometry=proxy_geometry,
-            proxy_crf=proxy_crf,
-            proxy_workers=proxy_workers,
-            logger=logger,
-        )
-        if entry is not None:
+    counter_width = len(str(len(pairs)))
+    with _prep_log(detail_path):
+        for index, (video_path, csv_path) in enumerate(pairs, 1):
+            entry = _process_video(
+                video_path,
+                csv_path,
+                output_dir,
+                proxy_geometry=proxy_geometry,
+                proxy_crf=proxy_crf,
+                proxy_workers=proxy_workers,
+                logger=logger,
+            )
+            if entry is None:
+                continue
             entries[Path(video_path).stem] = entry
+            counter = f"{index:>{counter_width}d}/{len(pairs)}"
+            line = (f"  {Path(video_path).stem}   "
+                    f"{len(entry['annotations'])} bouts, "
+                    f"{entry['duration']:.0f}s")
+            _detail(line)
+            # Transient: prep takes a minute and should say where it is, but
+            # a line per video is the wall this replaced.
+            status(f"  [dim]indexing[/] [{ACCENT}]{counter}[/]  "
+                   f"[dim]{Path(video_path).stem}[/]")
+    clear_status()
     if not entries:
         raise ValueError(f"None of the CSVs in {dataset_path} held a usable annotation.")
 
+    _print_corpus_summary(entries, class_map)
+
     database = {name: {**entry, "subset": subset} for name, entry in entries.items()}
-    print(f"Prepared {len(database)} video(s) as `{subset}`")
 
     os.makedirs(output_dir, exist_ok=True)
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump({"database": database}, f, indent=2, ensure_ascii=False)
-    print(f"Dataset JSON saved: {json_path}")
+    _detail(f"Dataset JSON: {json_path}")
 
     # Write classmap
     with open(classmap_path, "w", encoding="utf-8") as f:
         for name in class_map:
             f.write(name + "\n")
-    print(f"Class map saved: {classmap_path}")
+    _detail(f"Class map: {classmap_path}")
+
+    # Which files the index is made of is in the log; what the reader needs
+    # here is that it worked, and where to look if it did not.
+    say(f"[bold]Prepared[/] [{ACCENT}]{len(database)}[/] "
+        f"video{'s' if len(database) != 1 else ''}"
+        f"[dim]  — detail in {detail_path}[/]")
 
     return output_dir, json_path, classmap_path
