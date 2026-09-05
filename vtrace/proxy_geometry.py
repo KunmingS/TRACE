@@ -93,6 +93,14 @@ def _short_side_demand(step_type: str, value) -> Optional[int]:
         if step_type == "VideoResize" and any(v <= 0 for v in dims):
             # scale=(-1, S) / (S, -1): the positive entry is the short side.
             return positive[0]
+        if len(positive) == 2:
+            # An exact (H, W) target. What it needs from the decoded frame is a
+            # short side of min(H, W), not max: the long side arrives for free
+            # from the aspect ratio. Square targets have min == max, which is why
+            # `max` was indistinguishable until a non-square config existed --
+            # for (252, 448) it demanded a 448 short side and so a proxy roughly
+            # three times the pixels the model ever sees.
+            return min(positive)
         return max(positive)
     return None
 

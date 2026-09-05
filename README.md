@@ -232,7 +232,7 @@ top of the file (or override them at launch) to point at your CalMS21 copy —
 the 19 official test videos:
 
 ```bash
-torchrun --nproc_per_node=1 tools/test.py configs/calms21_distill_vmaeB.py \
+python tools/test.py configs/calms21_distill_vmaeB.py \
     --checkpoint calms21_vitB_distilled_best.pth \
     --cfg-options ann=... vid_train=... vid_test=... class_map=...
 ```

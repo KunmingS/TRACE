@@ -28,7 +28,6 @@ from vtrace.model_artifacts import (
 class TrainRequest(BaseModel):
     config_path: str
     model_dir: str
-    nproc: int = 1
     seed: int = 42
     resume: Optional[str] = None
     not_eval: bool = False
@@ -64,7 +63,6 @@ class TestRequest(BaseModel):
     model_dir: str
     config_path: Optional[str] = None
     checkpoint: Optional[str] = None
-    nproc: int = 1
     seed: int = 42
     not_eval: bool = False
     profile: bool = False
@@ -365,14 +363,7 @@ def _resolve_model_request(request):
 
 def _train_command(request: TrainRequest) -> list[str]:
     """Build the subprocess command for a training step."""
-    if request.nproc > 1:
-        cmd = [
-            sys.executable, "-m", "torch.distributed.run",
-            "--nproc_per_node", str(request.nproc),
-            "tools/train.py", request.config_path,
-        ]
-    else:
-        cmd = [sys.executable, "tools/train.py", request.config_path]
+    cmd = [sys.executable, "tools/train.py", request.config_path]
 
     cmd.extend(["--seed", str(request.seed)])
     if request.resume:
@@ -407,14 +398,7 @@ def _train_command(request: TrainRequest) -> list[str]:
 
 def _test_command(request: TestRequest) -> list[str]:
     """Build the subprocess command for a test/inference step."""
-    if request.nproc > 1:
-        cmd = [
-            sys.executable, "-m", "torch.distributed.run",
-            "--nproc_per_node", str(request.nproc),
-            "tools/test.py", request.config_path,
-        ]
-    else:
-        cmd = [sys.executable, "tools/test.py", request.config_path]
+    cmd = [sys.executable, "tools/test.py", request.config_path]
 
     cmd.extend(["--checkpoint", request.checkpoint])
     cmd.extend(["--seed", str(request.seed)])

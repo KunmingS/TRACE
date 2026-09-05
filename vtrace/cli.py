@@ -941,7 +941,6 @@ def train(args):
     request = TrainRequest(
         config_path=config_path,
         model_dir=model_dir,
-        nproc=args.nproc,
         seed=args.seed,
         resume=args.resume,
         not_eval=args.not_eval,
@@ -1008,7 +1007,6 @@ def test(args):
     request = TestRequest(
         model_dir=model_info["model_dir"],
         output_dir=output_dir,
-        nproc=args.nproc,
         seed=args.seed,
         not_eval=args.not_eval,
         profile=args.profile,
@@ -1119,9 +1117,7 @@ def _add_resource_profile_arg(parser, *, include_auto=False):
              + extra + " Use --cfg-options for finer control.")
 
 
-def _add_common_job_args(parser, *, include_nproc=False, include_profile=False, include_auto_tune=False):
-    if include_nproc:
-        parser.add_argument("--nproc", type=int, default=1, help="Number of GPUs (default: 1)")
+def _add_common_job_args(parser, *, include_profile=False, include_auto_tune=False):
     parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
     if include_profile:
         parser.add_argument("--profile", action="store_true",
@@ -1165,7 +1161,7 @@ def _add_train_args(parser):
              "config asks for. Note that vjepa2 also needs "
              "--cfg-options model.backbone.crop=<same value>.")
     _add_resource_profile_arg(parser, include_auto=True)
-    _add_common_job_args(parser, include_nproc=True)
+    _add_common_job_args(parser)
     parser.add_argument("--resume", type=str, default=None, help="Resume from checkpoint path")
     parser.add_argument("--not-eval", action="store_true",
         help="Run the evaluation pass for its predictions only, without scoring them")
@@ -1178,7 +1174,7 @@ def _add_eval_args(parser):
     _add_model_dir_arg(parser)
     _add_pair_args(parser, required=False, label="evaluation")
     _add_resource_profile_arg(parser)
-    _add_common_job_args(parser, include_nproc=True, include_profile=True, include_auto_tune=True)
+    _add_common_job_args(parser, include_profile=True, include_auto_tune=True)
     parser.add_argument("--not-eval", action="store_true",
         help="Produce predictions without scoring them")
     parser.set_defaults(func=test)

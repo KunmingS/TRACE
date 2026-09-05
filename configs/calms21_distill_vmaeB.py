@@ -52,7 +52,7 @@ train.py / eval_engine are NOT modified. Pick ONE of these to load the adapters:
       PY
 
     then:
-      torchrun --nproc_per_node=1 tools/train.py configs/calms21_distill_vmaeB.py \
+      python tools/train.py configs/calms21_distill_vmaeB.py \
         --resume <work_dir>/init_with_distilled_adapters.pth
     (train.py's --resume sets resume_epoch from epoch=-1 -> starts at epoch 0, and
      load_state_dict(strict=False) tolerates the adapter-only init.)

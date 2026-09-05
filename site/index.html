@@ -585,7 +585,7 @@ the folder's full path on the machine that runs the command:</span>
 <span class="t-com"># &lt;runs&gt; → /scratch/$USER/calms21/runs, &lt;train&gt; → /scratch/$USER/calms21/train,</span>
 <span class="t-com"># &lt;test&gt; → /scratch/$USER/calms21/test. `then` chains steps here exactly as</span>
 <span class="t-com"># it does at the prompt — the split happens before any parsing.</span>
-<span class="t-prompt">$</span> <span class="t-cmd">vtrace</span> <span class="t-cmd">train</span> <span class="t-flag">--model</span> maev2b <span class="t-flag">--nproc</span> <span class="t-num">1</span> \
+<span class="t-prompt">$</span> <span class="t-cmd">vtrace</span> <span class="t-cmd">train</span> <span class="t-flag">--model</span> maev2b \
       <span class="t-flag">--output</span> <span class="t-path">/scratch/$USER/calms21/runs</span> \
       <span class="t-flag">--pairs</span> <span class="t-path">/scratch/$USER/calms21/train/mouse001.mp4</span>=<span class="t-path">…/mouse001.csv</span> \
               <span class="t-path">/scratch/$USER/calms21/train/mouse002.mp4</span>=<span class="t-path">…/mouse002.csv</span> \

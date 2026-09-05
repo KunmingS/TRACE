@@ -538,7 +538,6 @@
                 <tr><td><code>--val-interval</code></td><td>the config's own</td><td>Epochs between evaluation passes.</td></tr>
                 <tr><td><code>--input-resolution</code></td><td>the config's own</td><td>112 to 256. Also sets the decode-proxy geometry, so the proxies match what training will read.</td></tr>
                 <tr><td><code>--resource-profile</code></td><td>the config's own</td><td><code>low</code>, <code>balanced</code>, <code>high</code>, or <code>auto</code> to benchmark the dataloader first.</td></tr>
-                <tr><td><code>--nproc</code></td><td><code>1</code></td><td>GPUs to train across.</td></tr>
                 <tr><td><code>--resume</code></td><td>none</td><td>Continue from a checkpoint.</td></tr>
                 <tr><td><code>--cfg-options</code></td><td>none</td><td>Raw <code>key=value</code> config overrides.</td></tr>
               </tbody>
@@ -555,7 +554,7 @@
               <span class="terminal-title">bash — three variations</span>
             </div>
 <pre><code><span class="t-com"># four GPUs, a longer schedule</span>
-<span class="t-prompt">$</span> <span class="t-cmd">vtrace</span> train <span class="t-flag">--nproc</span> <span class="t-num">4</span> <span class="t-flag">--epochs</span> <span class="t-num">20</span> <span class="t-flag">--output</span> <span class="t-path">/data/calms21/runs</span> \
+<span class="t-prompt">$</span> <span class="t-cmd">vtrace</span> train <span class="t-flag">--epochs</span> <span class="t-num">20</span> <span class="t-flag">--output</span> <span class="t-path">/data/calms21/runs</span> \
     <span class="t-flag">--pairs</span> <span class="t-path">/data/calms21/train/*.mp4</span>=…
 
 <span class="t-com"># the heavier preset, at a larger input resolution</span>

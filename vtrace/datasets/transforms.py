@@ -1128,6 +1128,12 @@ class VideoTemporalAugment:
         return results
 
 
+# Frames held back from the end of a file by VideoDecode; see the comment in
+# VideoDecode.__call__ for why this exists rather than a try/except alone.
+EOF_GUARD = 3
+EOF_GUARD_RETRY = 30
+
+
 @PIPELINES.register_module()
 class VideoDecode:
     """Decode the chosen frames into image arrays.
@@ -1146,8 +1152,35 @@ class VideoDecode:
         if offset:
             flat_inds = flat_inds + offset
         # clamp to valid source-frame range
-        flat_inds = np.clip(flat_inds, 0, len(vr) - 1).tolist()
-        imgs = self._get_batch(vr, flat_inds, results).asnumpy()  # [N, H, W, 3]
+        # Keep clear of the last few frames. decord raises
+        #   DECORDError: Unable to handle EOF because it takes too long to
+        #   retrieve last few frames
+        # from get_batch when a requested index sits at the very end of a file,
+        # but only under concurrent load -- the same read succeeds in isolation at
+        # any num_threads, on a proxy that decodes end to end and reports exactly
+        # the source frame count. It is not reproducible on demand and it is not
+        # bad data, so it cannot be fixed by validating the cache.
+        #
+        # It has to be avoided rather than caught, because the sampler guarantees
+        # it will be hit: the final sliding window starts at
+        # `max(0, snippet_num - window_size)` and therefore always includes the
+        # last frame, so every video reaches this every epoch. When it fires it
+        # takes down the whole run, and on a corpus whose first evaluation pass
+        # comes after epoch 0 it lands before any checkpoint exists -- which makes
+        # restart-on-crash loop forever instead of recovering.
+        #
+        # EOF_GUARD frames of a 30 fps video is 0.1 s at the tail of a window that
+        # is 25.6 s long, duplicated from the last frame kept.
+        last = len(vr) - 1
+        flat_inds = np.clip(flat_inds, 0, max(0, last - EOF_GUARD))
+        try:
+            imgs = self._get_batch(vr, flat_inds.tolist(), results).asnumpy()  # [N, H, W, 3]
+        except Exception:
+            # Belt and braces: if it still fires, back off further once rather
+            # than losing the run. A window decoded 1 s short of where it asked
+            # is worth far more than a dead epoch.
+            flat_inds = np.clip(flat_inds, 0, max(0, last - EOF_GUARD_RETRY))
+            imgs = self._get_batch(vr, flat_inds.tolist(), results).asnumpy()
         imgs = imgs.reshape(*frame_inds.shape, *imgs.shape[1:])  # [..., H, W, 3]
         results["imgs"] = list(imgs) if imgs.ndim > 3 else [imgs]
         del results["video_reader"]

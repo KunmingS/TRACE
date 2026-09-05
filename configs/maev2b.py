@@ -28,7 +28,7 @@ crop = 224  # VideoMAE-B native input
 
 _train_pipe = [
     dict(type="PrepareVideoInfo", format="mp4"),
-    dict(type="VideoInit", num_threads=4, resize=(crop, crop)),
+    dict(type="VideoInit", num_threads=2, resize=(crop, crop)),
     dict(type="LoadFrames", num_clips=1, method="sliding_window"),
     dict(type="VideoTemporalAugment", speed_range=(0.7, 1.3), p=0.8),
     dict(type="VideoDecode"),
@@ -42,7 +42,7 @@ _train_pipe = [
 ]
 _val_pipe = [
     dict(type="PrepareVideoInfo", format="mp4"),
-    dict(type="VideoInit", num_threads=4, resize=(crop, crop)),
+    dict(type="VideoInit", num_threads=2, resize=(crop, crop)),
     dict(type="LoadFrames", num_clips=1, method="sliding_window"),
     dict(type="VideoDecode"),
     dict(type="VideoBatchResize", scale=(crop, crop)),
@@ -52,7 +52,7 @@ _val_pipe = [
 ]
 _test_pipe = [
     dict(type="PrepareVideoInfo", format="mp4"),
-    dict(type="VideoInit", num_threads=4, resize=(crop, crop)),
+    dict(type="VideoInit", num_threads=2, resize=(crop, crop)),
     dict(type="LoadFrames", num_clips=1, method="sliding_window"),
     dict(type="VideoDecode"),
     dict(type="VideoBatchResize", scale=(crop, crop)),
