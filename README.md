@@ -93,19 +93,21 @@ skipping what is already on disk. `--split train` / `--split test` limits what
 is pulled, and `--from /path/to/task1_videos_mp4.zip` reads a copy you already
 have.
 
-`vtrace demo predict` labels all 19 test videos with the released checkpoint
-(`--video STEM` for just one, `--model-dir DIR` for a run you trained) and writes a
-`.pred.csv` beside each, plus a small `.pred.scores.npz` of per-frame class scores
+`vtrace demo predict` labels all 19 test videos with the released checkpoint,
+fetching them first if they are not on disk (~11 GB). It writes a `.pred.csv`
+beside each video, plus a small `.pred.scores.npz` of per-frame class scores
 from which it draws the precision-recall curve of each behavior over the whole
-split and reports the frame mAP they integrate to. `vtrace demo train` is a real training run on the full
-benchmark, not a smoke test: 324 iterations per epoch over ten epochs, roughly
-three hours on one modern GPU (~23 GB of VRAM). It cuts 15 of the 70 training
-videos out to pick the best epoch, and when training is done it labels the 19
-test videos with the finished checkpoint exactly as `vtrace demo predict
---model-dir` would — the same per-video table, precision-recall curves and
-frame mAP — so a fresh run and the released model are read the same way. Those
-19 videos never took part in training or epoch selection, so that mAP is the
-run's benchmark figure.
+split and reports the frame mAP they integrate to. `--video STEM` runs just one
+video; `--model-dir DIR` uses a run you trained instead of the released one.
+
+`vtrace demo train` is a real training run on the full benchmark, not a smoke
+test: 324 iterations per epoch over ten epochs, about two hours on one modern
+GPU (~23 GB of VRAM). It cuts 15 of the 70 training videos out to pick the best
+epoch, and when training is done it labels the 19 test videos with the finished
+checkpoint exactly as `vtrace demo predict --model-dir` would — the same
+per-video table, precision-recall curves and frame mAP — so a fresh run and the
+released model are read the same way. Those 19 videos never took part in
+training or epoch selection, so that mAP is the run's benchmark figure.
 
 If you use the demo data, cite CalMS21: Sun et al., *The Multi-Agent Behavior
 Dataset: Mouse Dyadic Social Interactions*, NeurIPS 2021 Datasets & Benchmarks.
@@ -203,10 +205,12 @@ my_video.pred.csv
 ```
 
 Re-running prediction replaces that file rather than accumulating copies — a
-video has exactly one current prediction. The JSON holds the merged behaviour
-bouts with their confidences, in the shape the V-TRACE annotator imports, so the
-same folder opened in `vtrace app` shows the video with its predictions ready for
-review. `--output DIR` writes the files somewhere else, keeping the names.
+video has exactly one current prediction. The file is an annotation CSV like the
+one above, with a `score` column: the merged behaviour bouts with their
+confidences, in the shape the V-TRACE annotator imports, so the same folder
+opened in `vtrace app` shows the video with its predictions ready for review. A
+`# trace-meta:` header line records the class list and the thresholds used.
+`--output DIR` writes the files somewhere else, keeping the names.
 
 ## Shipped research configs and checkpoints
 
