@@ -315,7 +315,7 @@
           <div class="walk-figure">
             <figure class="figure plain">
               <img src="assets/img/ui-recipe.webp" alt="Two cards side by side: V-TRACE recipe with Model set to VideoMAE-B and Temporal head set to From the config, and Output showing the chosen runs folder." loading="lazy" width="1356" height="358">
-              <figcaption>A preset and an output folder. Everything else the run needs is already in the config.</figcaption>
+              <figcaption>A preset, and an output folder only if you want one &mdash; left unpicked, the run lands in <code>runs/</code> where <code>vtrace</code> was started. Everything else the run needs is already in the config.</figcaption>
             </figure>
           </div>
         </article>
@@ -394,7 +394,7 @@
               </div>
               <div class="terminal-body">
                 <div class="composer">
-                  <span class="composer-legend">Paste the command from the annotator, or type one</span>
+                  <span class="composer-legend">run &mdash; paste the command from the annotator, or type one</span>
 <pre><code><span class="t-cmd">train</span>
 <span class="t-flag">--model</span> maev2b
 <span class="t-flag">--output</span> <span class="t-str">'<span class="t-tok">&lt;runs#3f9a2c1e&gt;</span>'</span>
@@ -402,11 +402,11 @@
 <span class="t-cmd">then</span>
 <span class="t-cmd">eval</span>
 <span class="t-flag">--pairs</span> <span class="t-str">'<span class="t-tok">&lt;test#c41e77a0&gt;</span>/mouse071.mp4=<span class="t-tok">&lt;test#c41e77a0&gt;</span>/mouse071.csv'</span></code></pre>
-                  <p class="composer-hint">enter runs it &middot; ctrl-j starts a new line &middot; esc closes the box for a plain prompt</p>
+                  <p class="composer-hint">enter runs it &middot; ctrl-j starts a new line &middot; esc goes back to the list</p>
                 </div>
                 <div class="composer-keys">
                   <span><b>[ Run ]</b><em>enter</em></span>
-                  <span><b>[ Close ]</b><em>esc</em></span>
+                  <span><b>[ Back ]</b><em>esc</em></span>
                 </div>
 <pre><code><span class="t-dim">  &lt;runs#3f9a2c1e&gt;</span>  →  <span class="t-accent">/data/calms21/runs</span>
 <span class="t-dim">  &lt;train#8b1d0c47&gt;</span> →  <span class="t-accent">/data/calms21/train</span>
@@ -525,10 +525,10 @@
 <span class="t-key"> Annotator running — open it in Chrome or Edge</span>
    <span class="t-accent">http://localhost:8765</span>      <span class="t-dim">read and label videos on this computer</span>
 
-<span class="t-key"> Train a model, or predict videos</span>
+<span class="t-key"> Type one of these and press enter:</span>
+
    <span class="t-key">run</span>                        <span class="t-dim">open the command box: paste what the annotator wrote</span>
 
-<span class="t-key"> Try the demo</span>
    <span class="t-key">demo download</span>              <span class="t-dim">the official CalMS21 videos + the detector</span>
    <span class="t-key">demo predict</span>               <span class="t-dim">label the 19 held-out test videos, write predictions</span>
    <span class="t-key">demo train</span>                 <span class="t-dim">train on the 70 official training videos, score the test split</span>
@@ -536,8 +536,8 @@
    <span class="t-key">help</span>                       <span class="t-dim">documentation, on the web</span>
    <span class="t-key">exit</span>                       <span class="t-dim">leave the session</span>
 
-<span class="t-dim"> Paste the command the annotator wrote into the box below, or type one.</span>
-<span class="t-dim"> Esc closes the box for a plain prompt.</span></code></pre>
+<span class="t-dim"> The box below is </span><span class="t-key">run</span><span class="t-dim"> — paste what the annotator wrote, or type one.</span>
+<span class="t-dim"> Esc leaves the box and comes back to this list.</span></code></pre>
           </div>
           <p class="terminal-caption">
             The box opens right under this screen — step 08 above shows it with
@@ -661,7 +661,8 @@ the folder's full path on the machine that runs the command:</span>
             </tr>
             <tr>
               <td><code>vtrace update</code></td>
-              <td>Check PyPI for a newer release and offer to install it.</td>
+              <td>Install a newer release. The session checks at startup and offers this
+                  on the start screen when one exists, so it rarely has to be remembered.</td>
               <td><code>vtrace update --check-only</code></td>
             </tr>
           </tbody>

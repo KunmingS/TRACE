@@ -31,7 +31,7 @@ def _get_clip_pts(pts_path: str, source_frame_offset: int, clip_frame_count: int
     """Return clip-relative PTS slice (seconds, ``float64``).
 
     `pts_path` is the absolute path to the per-source-video PTS array
-    cached as ``<video>.pts.npy`` by ``data_prep._load_or_build_pts``.
+    cached as ``<video>.vtrace/pts.npy`` by ``data_prep._load_or_build_pts``.
     The returned slice is **clip-local**: the first PTS is rebased to 0.
     """
     key = (pts_path, int(source_frame_offset), int(clip_frame_count))

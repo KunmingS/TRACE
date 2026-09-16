@@ -929,6 +929,7 @@ def _pooled_pr_curves(videos):
     """
     import numpy as np
 
+    from vtrace.data_prep import pts_table_path
     from vtrace.evaluations.precision import _average_precision_sklearn_style
 
     pooled_scores, pooled_truth = {}, {}
@@ -936,7 +937,7 @@ def _pooled_pr_curves(videos):
     for video in videos:
         scores_path = video.parent / f"{video.stem}.pred.scores.npz"
         truth_path = video.with_suffix(".csv")
-        sidecar = Path(str(video) + ".pts.npy")
+        sidecar = Path(pts_table_path(video))
         if not (scores_path.is_file() and truth_path.is_file() and sidecar.is_file()):
             continue
         try:
@@ -1098,7 +1099,9 @@ def _video_duration(video: Path) -> float:
     0.0 when there is none — the summary then drops the "share of the
     recording" column rather than inventing a denominator.
     """
-    sidecar = Path(str(video) + ".pts.npy")
+    from vtrace.data_prep import pts_table_path
+
+    sidecar = Path(pts_table_path(video))
     if not sidecar.is_file():
         return 0.0
     try:
@@ -1158,7 +1161,9 @@ def _score_written(csv_path: Path, video: Path):
     import json as _json
 
     truth_path = video.with_suffix(".csv")
-    sidecar = Path(str(video) + ".pts.npy")
+    from vtrace.data_prep import pts_table_path
+
+    sidecar = Path(pts_table_path(video))
     if not truth_path.is_file() or not sidecar.is_file():
         return None
     try:

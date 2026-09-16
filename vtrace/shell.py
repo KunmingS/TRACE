@@ -16,10 +16,14 @@ down still walk the history, which is the part people reach for.
 The session opens on a bordered box, not the one-line prompt. The command most
 people bring is the one the annotator's configuration page wrote — several lines
 of `train --pairs … --output …` with `then eval …` after it — and a box is where
-a pasted block of lines belongs. Enter runs it. Escape closes the box and leaves
-the plain prompt, where `run` opens it again: two places to type, one command
-surface. Pasting into the prompt still works too, on one line or with the
-backslash continuations a copied shell command carries.
+a pasted block of lines belongs. Enter runs it.
+
+The box is what the start screen's `run` opens, and it says so in its own title,
+because the session opens straight into it: without a name, the first thing the
+reader meets is a frame with no account of itself or of the list above it. Escape
+goes back out to the plain prompt, where `run` opens it again — two places to
+type, one command surface. Pasting into the prompt still works too, on one line
+or with the backslash continuations a copied shell command carries.
 
 The loop's job is to survive. Commands fail by calling `sys.exit()` (argparse
 does it for a bad flag, the step runners for a non-zero exit code) and that has
@@ -47,13 +51,13 @@ _CONTINUATION = __import__("re").compile(BACKSLASH + BACKSLASH + r"\s*\n")
 COMMANDS = {
     "app": "Serve the annotator UI (already running in this session)",
     "demo": "Download and run the CalMS21 walkthrough",
-    "run": "Open the command box (paste the command the annotator wrote)",
+    "run": "Open the command box: paste what the annotator wrote",
     "train": "Train a model on video/CSV pairs",
     "eval": "Evaluate a trained model",
     "predict": "Run prediction on videos",
     "then": "Chain steps: train ... then eval ... then predict ...",
     "prepare": "Download model weights and local assets",
-    "update": "Check PyPI for a newer release",
+    "update": "Install the newer release the start screen found",
     "help": "Where the documentation lives",
     "exit": "Leave the session",
 }
@@ -86,7 +90,7 @@ def _to_argv(line: str):
 _HELP_NOTES = (
     "Every command, flag and file format.",
     "",
-    "`run` opens the command box; esc closes it for this prompt.",
+    "`run` opens the command box; esc leaves it for this prompt.",
     "`COMMAND --help` prints one command's flags.",
     "Tab lists what can be typed here.",
 )
@@ -127,7 +131,7 @@ def _print_chain_help() -> None:
     print("""
    then — run steps one after another, stopping at the first failure.
 
-     train --pairs VIDEO=CSV ... --output DIR then eval --pairs VIDEO=CSV
+     train --pairs VIDEO=CSV ... [--output DIR] then eval --pairs VIDEO=CSV
         One run. The eval videos score the model each epoch, and that is
         what writes best.pth. Without them, training keeps every epoch's
         checkpoint and calls none of them best.
@@ -143,7 +147,7 @@ def _print_chain_help() -> None:
    The box the session opens on is for exactly this, drawn below the start
    screen so it stays in view: paste the chain the annotator wrote, or type
    one a step per line (ctrl-j for a new line), then enter runs it. Esc
-   closes the box for the plain prompt, and `run` opens it again.
+   goes back to the plain prompt, and `run` opens the box again.
 """)
 
 
@@ -195,15 +199,22 @@ def run(dispatch, version: str = "") -> int:
     `dispatch` is `vtrace.cli.main`; it is passed in rather than imported so
     the import stays one-directional.
     """
-    # Start the annotator first, so the screen can name the address it is actually
-    # listening on instead of an address the reader would have to go and create.
+    from vtrace import version_check
     from vtrace.cli import serve_in_background
 
+    # Kicked off before the server binds its port, so a launch that does check
+    # PyPI spends the wait on work the session was doing anyway. Almost every
+    # launch answers from a day-old cache and costs nothing at all.
+    version_check.start()
+
+    # The annotator starts next, so the screen can name the address it is
+    # actually listening on instead of one the reader would have to go and create.
     annotator = serve_in_background()
 
     console = splash.get_console()
     splash.print_start_screen(version, interactive=True, console=console,
-                              annotator=annotator)
+                              annotator=annotator,
+                              update=version_check.pending(version))
 
     session = _make_session()
     if session is None:
@@ -232,7 +243,8 @@ def _loop(dispatch, session, console=None) -> int:
             line = composer.compose()
             if line is None:
                 in_box = False
-                print("  Plain prompt. Type a command; `run` reopens the box; `exit` leaves.")
+                print("  Back at the prompt. Type any command from the list above; "
+                      "`run` reopens the box; `exit` leaves.")
                 continue
         else:
             try:

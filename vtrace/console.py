@@ -82,6 +82,29 @@ def is_terminal() -> bool:
     return sys.stdout.isatty()
 
 
+# ── the progress bar ─────────────────────────────────────────────────────────
+# Every bar a run draws — training epochs, validation passes, proxy encodes —
+# is drawn by this, so they all look like the same tool talking. It lives here
+# rather than beside the training plot because prep needs it too, and prep must
+# not import torch to draw a bar.
+
+BAR_WIDTH = 22
+_FULL = "━"
+_HEAD = "╸"
+_EMPTY = "━"
+
+
+def bar_markup(fraction, width=BAR_WIDTH):
+    """The progress bar itself, so every bar in a run looks like the others."""
+    filled = int(fraction * width)
+    if filled >= width:
+        return f"[{ACCENT}]{_FULL * width}[/]"
+    head = _HEAD if filled else ""
+    body = _FULL * filled
+    rest = _EMPTY * (width - filled - len(head))
+    return f"[{ACCENT}]{body}{head}[/][dim]{rest}[/]"
+
+
 # ── a line that is replaced rather than added to ─────────────────────────────
 # Work that takes a minute should say so while it happens, and should not leave
 # a minute of scrollback behind when it is done. `status` redraws one line in

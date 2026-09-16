@@ -36,14 +36,12 @@ import sys
 import time
 
 from vtrace.console import (
-    ACCENT, clear_status, console, duration as _clock, is_terminal, plain,
-    status,
+    ACCENT, BAR_WIDTH, bar_markup, clear_status, console,
+    duration as _clock, is_terminal, plain, status,
 )
 
-BAR_WIDTH = 22
-_FULL = "━"
-_HEAD = "╸"
-_EMPTY = "━"
+__all__ = ["BAR_WIDTH", "bar_markup", "StatusBar", "EpochBar", "LossPlot",
+           "BrailleCanvas", "plot_width", "PLOT_ROWS"]
 
 # Plot geometry. The y-axis labels take a fixed gutter; the plot takes what is
 # left, up to a width where more columns stop adding information.
@@ -54,17 +52,6 @@ _PLOT_MIN = 24
 
 # Braille: bit per dot, indexed [dy][dx] within a 2-wide, 4-tall cell.
 _DOTS = ((0x01, 0x08), (0x02, 0x10), (0x04, 0x20), (0x40, 0x80))
-
-
-def bar_markup(fraction, width=BAR_WIDTH):
-    """The progress bar itself, so every bar in a run looks like the others."""
-    filled = int(fraction * width)
-    if filled >= width:
-        return f"[{ACCENT}]{_FULL * width}[/]"
-    head = _HEAD if filled else ""
-    body = _FULL * filled
-    rest = _EMPTY * (width - filled - len(head))
-    return f"[{ACCENT}]{body}{head}[/][dim]{rest}[/]"
 
 
 class StatusBar:

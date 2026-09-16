@@ -2,7 +2,7 @@
 
 Runs temporal action detection on video files without requiring annotation JSONs.
 Automatically probes videos for frame count, duration, and a per-frame PTS
-table (cached as ``<video>.pts.npy`` next to the source — see
+table (cached as ``<video>.vtrace/pts.npy`` beside the source — see
 ``pts-based-frame-mapping.md (archived)``). Before running the model, source videos
 are split into small cached clips under the prediction work directory so
 inference workers do not keep decoding long raw files.
@@ -76,7 +76,7 @@ def probe_video(filepath):
     - ``fps`` — average fps from decord (display-only; no time ↔ frame
       math goes through it once the PTS table is available). Falls back
       to PTS-span estimation if the container reports an invalid value.
-    - ``pts_path`` — absolute path of the cached ``<video>.pts.npy`` if
+    - ``pts_path`` — absolute path of the cached ``<video>.vtrace/pts.npy`` if
       it was successfully written, else ``None``.
 
     See ``pts-based-frame-mapping.md (archived)`` for the design and why this

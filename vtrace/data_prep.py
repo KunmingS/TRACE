@@ -6,6 +6,12 @@ this module:
 2. Extracts class names from CSVs → classmap.txt
 3. Records fixed-length training segments
 4. Generates dataset.json in TRACE annotation format
+
+Everything preparation leaves beside a source video goes into one folder,
+``<video>.vtrace/`` (the full file name plus the suffix, so ``a.mp4`` and
+``a.mkv`` in the same directory never share one): the per-frame PTS table
+with its validation record, and the decode proxies under ``proxy/``. One
+entry per video in a listing, whatever is cached for it.
 """
 
 import csv
@@ -17,18 +23,24 @@ from pathlib import Path
 
 import shutil
 import subprocess
+import threading
+import time
 
 import cv2
 import numpy as np
 
 from vtrace.console import (
-    ACCENT, clear_status, console, duration, say, status,
+    ACCENT, bar_markup, clear_status, console, duration, is_terminal, say,
+    status,
 )
 from vtrace.model_artifacts import create_model_dir
 from vtrace.proxy_geometry import ProxyGeometry
 
 
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
+
+# The folder beside each source video that holds everything cached for it.
+SIDECAR_SUFFIX = ".vtrace"
 
 # Decode proxies: one downscaled, frame-aligned copy of each source video.
 # Bump PROXY_VERSION whenever the encode recipe changes, so every existing
@@ -38,7 +50,8 @@ PROXY_GOP = 30
 PROXY_CRF = 23
 DEFAULT_PROXY_GEOMETRY = ProxyGeometry(144, True)
 
-_NVENC_CACHE = None
+# Probe results, keyed by the frame size probed: see `_nvenc_available`.
+_NVENC_CACHE = {}
 
 
 def _resolve_proxy_workers(workers=None):
@@ -111,6 +124,152 @@ def _emit_cache_log(logger, message, *, warning=False, detail=False):
         print(f"    {level}{message}")
 
 
+# ── What a long encode says while it runs ────────────────────────────────────
+# A full-length proxy of an overnight recording is hours of ffmpeg, and the
+# frame count is known before it starts — so the wait can be a bar with an ETA
+# rather than a blank screen. Three things belong on that line, because they
+# are the three questions someone stares at a still terminal asking: what is
+# running, how much longer, and did it get the GPU.
+#
+# On screen it is "making a smaller copy", not "encoding a proxy". Whoever is
+# waiting on it is a biologist with a folder of recordings, and "proxy" is a
+# word from the codebase, not from what they asked the tool to do. The line has
+# to say what the wait buys in words that need no glossary.
+
+# How often a non-terminal (a job queue's log, an SSE stream) gets a line. A
+# redraw is free on a terminal and a new line is not, so the two differ by
+# three orders of magnitude.
+_ENCODE_LOG_INTERVAL = 120.0
+_ENCODE_DRAW_INTERVAL = 0.25
+
+
+def _encoder_label(use_nvenc):
+    """How the encoder in use is named on the progress line."""
+    return "GPU NVENC" if use_nvenc else "CPU x264"
+
+
+class _EncodeProgress:
+    """The line one ffmpeg proxy encode redraws while it runs.
+
+    On a terminal this is a single line redrawn in place and wiped at the end —
+    the encode's own progress stops being true the moment it finishes, and the
+    line worth keeping is the summary the caller prints. Everywhere else (a job
+    queue capturing stdout, the annotator's SSE log) there is nothing to redraw
+    into, so the same information goes out as an ordinary line every couple of
+    minutes instead.
+    """
+
+    def __init__(self, total_frames, encoder, prefix="", logger=None):
+        self.total = max(1, int(total_frames))
+        self.encoder = encoder
+        self.prefix = prefix
+        self.logger = logger
+        self.live = is_terminal()
+        self.started = time.monotonic()
+        self.last_draw = 0.0
+        self.last_log = self.started
+        self.frames = 0
+
+    def _eta(self, now):
+        """Seconds left, from our own elapsed/frames rather than ffmpeg's
+        `speed`: an encode that spends its first minutes on a slow stretch of
+        the file would otherwise show an ETA that walks backwards."""
+        if self.frames <= 0:
+            return None
+        elapsed = now - self.started
+        return elapsed / self.frames * (self.total - self.frames)
+
+    def update(self, frames, speed=None):
+        self.frames = min(int(frames), self.total)
+        now = time.monotonic()
+        eta = self._eta(now)
+        percent = int(self.frames * 100 / self.total)
+        tail = self.encoder if not speed or speed == "N/A" else f"{self.encoder} {speed}"
+
+        if self.live:
+            if now - self.last_draw < _ENCODE_DRAW_INTERVAL:
+                return
+            self.last_draw = now
+            eta_text = f"eta {duration(eta)}" if eta is not None else "eta --"
+            status(f"  [dim]{self.prefix}making a smaller copy[/]  "
+                   f"{bar_markup(self.frames / self.total)}  "
+                   f"[{ACCENT}]{percent:>3d}%[/]  [dim]{eta_text}[/]  [dim]{tail}[/]")
+            return
+
+        if now - self.last_log < _ENCODE_LOG_INTERVAL:
+            return
+        self.last_log = now
+        eta_text = f", ~{duration(eta)} left" if eta is not None else ""
+        _emit_cache_log(
+            self.logger,
+            f"Making a smaller copy: {percent}% of {self.total:,} frames"
+            f"{eta_text} ({tail})",
+        )
+
+    def close(self):
+        if self.live:
+            clear_status()
+
+    @property
+    def elapsed(self):
+        return time.monotonic() - self.started
+
+
+def _run_ffmpeg_with_progress(cmd, progress):
+    """Run `cmd`, feeding `progress` from ffmpeg's own `-progress` stream.
+
+    Returns ``(returncode, stderr_text)``, the two things the caller used to
+    take from `subprocess.run`. stdout carries the progress blocks and so can no
+    longer be captured wholesale; stderr is drained by a thread because a full
+    pipe on either stream would deadlock the other.
+    """
+    proc = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, bufsize=1,
+    )
+    errors = []
+
+    def drain_stderr():
+        try:
+            for line in proc.stderr:
+                errors.append(line)
+        except (OSError, ValueError):
+            pass
+
+    reader = threading.Thread(target=drain_stderr, daemon=True)
+    reader.start()
+    speed = None
+    try:
+        for line in proc.stdout:
+            key, sep, value = line.strip().partition("=")
+            if not sep:
+                continue
+            if key == "speed":
+                speed = value.strip()
+            elif key == "frame" and progress is not None:
+                try:
+                    progress.update(int(value), speed)
+                except ValueError:
+                    pass
+    except BaseException:
+        # A Ctrl-C (or the SIGHUP a dropped terminal delivers) must not leave a
+        # multi-hour encode running unattended and unreferenced.
+        proc.kill()
+        raise
+    finally:
+        try:
+            proc.stdout.close()
+        except OSError:
+            pass
+        proc.wait()
+        reader.join(timeout=2)
+        try:
+            proc.stderr.close()
+        except OSError:
+            pass
+    return proc.returncode, "".join(errors)
+
+
 def _cache_progress_interval(total):
     return max(1, min(25, total // 20 if total >= 20 else 1))
 
@@ -124,19 +283,29 @@ def _source_signature(video_path):
     }
 
 
-def _proxy_cache_dir(video_path, geometry, crf):
-    """Sidecar directory holding one decode proxy of ``video_path``.
+def sidecar_dir(video_path):
+    """``<video>.vtrace``: the one folder holding everything cached for a video.
 
-    The key deliberately omits the clip/window length: a proxy is full-length,
-    so changing ``window_size`` no longer invalidates it (the old per-window
-    clip cache keyed on ``f{frames}`` and had to be rebuilt from scratch).
+    Built from the path as given (no ``abspath``), so a relative source keeps a
+    relative sidecar and the callers that record absolute paths resolve them
+    themselves, as they did when the files sat directly beside the video.
+    """
+    return os.fspath(video_path) + SIDECAR_SUFFIX
+
+
+def _proxy_cache_dir(video_path, geometry, crf):
+    """Directory holding one decode proxy of ``video_path``.
+
+    ``<video>.vtrace/proxy/<geometry>_crf<crf>_g<gop>_v<version>``. The key
+    deliberately omits the clip/window length: a proxy is full-length, so
+    changing ``window_size`` no longer invalidates it (the old per-window clip
+    cache keyed on ``f{frames}`` and had to be rebuilt from scratch).
     ``_v{PROXY_VERSION}`` lets a change to the encode recipe invalidate every
     proxy without migrating the manifest schema.
     """
     video_path = os.path.abspath(video_path)
-    folder_name = f"{os.path.basename(video_path)}.trace-proxy"
     cache_key = f"{geometry.key}_crf{int(crf)}_g{PROXY_GOP}_v{PROXY_VERSION}"
-    return os.path.join(os.path.dirname(video_path), folder_name, cache_key)
+    return os.path.join(sidecar_dir(video_path), "proxy", cache_key)
 
 
 def _proxy_path(video_path, geometry, crf):
@@ -209,27 +378,39 @@ def _proxy_frame_count(proxy_path):
         return -1
 
 
-def _nvenc_available():
-    """Whether NVENC can actually encode here.
+def _nvenc_available(size=None):
+    """Whether NVENC can encode a frame of `size` square pixels here.
 
     Listing the encoder is not enough: ffmpeg advertises `h264_nvenc` from the
     build config, so a box with a driver/library mismatch or no GPU still
     reports it and then fails at encode time with "No capable devices found".
     Probe by encoding one synthetic frame.
+
+    The size is part of the question, not a detail of how it is asked. NVENC
+    refuses frames below a minimum dimension — around 160px on current cards —
+    with "Frame Dimension less than the minimum supported value", so a probe at
+    some token size answers "is there a GPU" while the caller asked "can this
+    encode run on it". A 64x64 probe fails on every card ever made, which is
+    how a box with two working GPUs came to encode all of its proxies on the
+    CPU while reporting nothing amiss.
+
+    Proxies are square or wider, so probing `size` x `size` is the conservative
+    case: a geometry whose square passes will pass at its real, wider size.
+    Cached per size, since a run mixes at most a couple of them.
     """
-    global _NVENC_CACHE
-    if _NVENC_CACHE is None:
+    key = int(size) if size else 256
+    if key not in _NVENC_CACHE:
         try:
             result = subprocess.run(
                 ["ffmpeg", "-hide_banner", "-loglevel", "error",
-                 "-f", "lavfi", "-i", "color=black:s=64x64:d=1",
+                 "-f", "lavfi", "-i", f"color=black:s={key}x{key}:d=1",
                  "-frames:v", "1", "-c:v", "h264_nvenc", "-f", "null", "-"],
                 capture_output=True, text=True, timeout=30,
             )
-            _NVENC_CACHE = result.returncode == 0
+            _NVENC_CACHE[key] = result.returncode == 0
         except (OSError, subprocess.SubprocessError):
-            _NVENC_CACHE = False
-    return _NVENC_CACHE
+            _NVENC_CACHE[key] = False
+    return _NVENC_CACHE[key]
 
 
 def _proxy_ffmpeg_cmd(video_path, geometry, crf, out_path, use_nvenc=None):
@@ -243,7 +424,7 @@ def _proxy_ffmpeg_cmd(video_path, geometry, crf, out_path, use_nvenc=None):
     * ``setpts=N/(30*TB)`` — renumbers output PTS monotonically by frame index.
       VFR sources with duplicate timestamps otherwise make the mp4 muxer emit
       non-monotonic DTS. Safe because the proxy's own PTS are never read: the
-      source's ``.pts.npy`` stays the timeline authority.
+      source's ``pts.npy`` stays the timeline authority.
     * fixed short GOP — windows seek to arbitrary frames, and x264's default
       adaptive 250-frame GOP would make every seek decode up to 250 frames of
       slack, giving back most of the speedup.
@@ -254,7 +435,7 @@ def _proxy_ffmpeg_cmd(video_path, geometry, crf, out_path, use_nvenc=None):
         "-vf", f"{geometry.vf}:flags=bicubic,setpts=N/(30*TB)",
         "-fps_mode", "passthrough",
     ]
-    if _nvenc_available() if use_nvenc is None else use_nvenc:
+    if _nvenc_available(geometry.short_side) if use_nvenc is None else use_nvenc:
         # CPU decode + CPU scale + GPU encode. Deliberately no
         # `-hwaccel_output_format cuda`, which would keep frames in VRAM and
         # force the scale_cuda/scale_npp filters instead of the CPU `scale`.
@@ -266,16 +447,25 @@ def _proxy_ffmpeg_cmd(video_path, geometry, crf, out_path, use_nvenc=None):
         "-g", str(PROXY_GOP), "-keyint_min", str(PROXY_GOP), "-sc_threshold", "0",
         "-movflags", "+faststart",
         "-loglevel", "error",
+        # Frame counts on stdout, as key=value blocks, so the wait can be a bar.
+        # `-nostats` drops the human-readable line ffmpeg would also write.
+        "-nostats", "-progress", "pipe:1",
         os.fspath(out_path),
     ]
     return cmd
 
 
-def build_video_proxy(video_path, geometry, crf=PROXY_CRF, source_frames=None, logger=None):
+def build_video_proxy(video_path, geometry, crf=PROXY_CRF, source_frames=None,
+                      logger=None, prefix="", show_progress=True):
     """Build (or reuse) the decode proxy for one video.
 
     Returns the absolute proxy path, or None when no usable proxy exists — a
     missing proxy is never fatal, callers simply decode from the source.
+
+    `show_progress` draws the encode's bar on the one status line. Callers that
+    run several encodes at once pass False: two bars sharing one line render as
+    neither. `prefix` is what goes in front of the label, so a bar that appears
+    part-way through a dataset still says which video it belongs to.
     """
     video_path = os.path.abspath(video_path)
     if source_frames is None:
@@ -299,12 +489,31 @@ def build_video_proxy(video_path, geometry, crf=PROXY_CRF, source_frames=None, l
     os.makedirs(cache_dir, exist_ok=True)
     # Insert .tmp before the extension so ffmpeg can still infer the muxer.
     tmp_path = os.path.join(cache_dir, "proxy.tmp.mp4")
+    # Resolved here rather than left to `_proxy_ffmpeg_cmd`, so the progress
+    # line can name the encoder that is actually about to run.
+    use_nvenc = _nvenc_available(geometry.short_side)
+
+    def encode(nvenc):
+        progress = None
+        if show_progress:
+            progress = _EncodeProgress(
+                source_frames, _encoder_label(nvenc), prefix=prefix, logger=logger
+            )
+            # Drawn before ffmpeg has reported a single frame: the answer to
+            # "is it using the GPU" should not wait on the first progress block.
+            progress.update(0)
+        try:
+            return _run_ffmpeg_with_progress(
+                _proxy_ffmpeg_cmd(video_path, geometry, crf, tmp_path, use_nvenc=nvenc),
+                progress,
+            ), progress
+        finally:
+            if progress is not None:
+                progress.close()
+
     try:
-        result = subprocess.run(
-            _proxy_ffmpeg_cmd(video_path, geometry, crf, tmp_path),
-            capture_output=True, text=True,
-        )
-        if (result.returncode != 0 or not os.path.isfile(tmp_path)) and _nvenc_available():
+        (returncode, stderr), progress = encode(use_nvenc)
+        if (returncode != 0 or not os.path.isfile(tmp_path)) and use_nvenc:
             # The GPU can be usable at probe time and busy/unavailable now.
             # One CPU retry is cheaper than losing the proxy entirely.
             _emit_cache_log(
@@ -312,15 +521,13 @@ def build_video_proxy(video_path, geometry, crf=PROXY_CRF, source_frames=None, l
                 f"NVENC encode failed for {os.path.basename(video_path)}; retrying on CPU",
                 warning=True,
             )
-            result = subprocess.run(
-                _proxy_ffmpeg_cmd(video_path, geometry, crf, tmp_path, use_nvenc=False),
-                capture_output=True, text=True,
-            )
-        if result.returncode != 0 or not os.path.isfile(tmp_path):
+            use_nvenc = False
+            (returncode, stderr), progress = encode(False)
+        if returncode != 0 or not os.path.isfile(tmp_path):
             _emit_cache_log(
                 logger,
                 f"Proxy encode failed for {os.path.basename(video_path)}: "
-                f"{(result.stderr or '').strip()[-400:]}; decoding from source",
+                f"{(stderr or '').strip()[-400:]}; decoding from source",
                 warning=True,
             )
             return None
@@ -330,7 +537,13 @@ def build_video_proxy(video_path, geometry, crf=PROXY_CRF, source_frames=None, l
         # nothing ever compares against the proxy's length except the silent
         # clamp in VideoDecode — a short proxy would feed duplicated trailing
         # frames forever without a single warning.
+        if show_progress:
+            # Indexing a few million frames is not instant either, and a line
+            # that still said "encoding" through it would be a lie.
+            status(f"  [dim]{prefix}checking the copy[/]")
         proxy_frames = _proxy_frame_count(tmp_path)
+        if show_progress:
+            clear_status()
         if proxy_frames != source_frames:
             _emit_cache_log(
                 logger,
@@ -344,6 +557,16 @@ def build_video_proxy(video_path, geometry, crf=PROXY_CRF, source_frames=None, l
         _write_proxy_manifest(
             cache_dir, video_path, geometry, crf, source_frames, proxy_frames
         )
+        # The bar is wiped when it ends, so an encode long enough to have been
+        # waited on leaves one line behind saying what the wait bought. A short
+        # one leaves nothing: 89 demo clips should not print 89 lines.
+        if progress is not None and progress.elapsed >= 60:
+            _emit_cache_log(
+                logger,
+                f"Made a smaller copy of {os.path.basename(video_path)} in "
+                f"{duration(progress.elapsed)} ({_encoder_label(use_nvenc)}, "
+                f"{source_frames:,} frames)",
+            )
         return proxy_path
     finally:
         if os.path.isfile(tmp_path):
@@ -396,7 +619,10 @@ def ensure_video_proxies(video_paths, geometry, crf=PROXY_CRF, workers=None, log
 
     def run(path):
         try:
-            return path, build_video_proxy(path, geometry, crf=crf, logger=logger)
+            return path, build_video_proxy(
+                path, geometry, crf=crf, logger=logger,
+                show_progress=(parallel == 1),
+            )
         except Exception as exc:
             _emit_cache_log(
                 logger,
@@ -427,16 +653,20 @@ def ensure_video_proxies(video_paths, geometry, crf=PROXY_CRF, workers=None, log
     return proxies
 
 
-def _pts_cache_path(video_path):
-    """Path of the cached per-frame PTS table for a source video."""
-    return os.fspath(video_path) + ".pts.npy"
+def pts_table_path(video_path):
+    """``<video>.vtrace/pts.npy``: the cached per-frame PTS table of a source video."""
+    return os.path.join(sidecar_dir(video_path), "pts.npy")
+
+
+# The name the rest of the package grew up with.
+_pts_cache_path = pts_table_path
 
 
 def _pts_meta_path(video_path):
-    """Sidecar carrying the source's mtime+size at the moment the PTS
-    cache was built. Lets us validate the cache from `os.stat` alone,
+    """``<video>.vtrace/pts.meta.json``: the source's mtime+size at the moment
+    the PTS table was built. Lets us validate the table from `os.stat` alone,
     without re-opening the container."""
-    return os.fspath(video_path) + ".pts.meta.json"
+    return os.path.join(sidecar_dir(video_path), "pts.meta.json")
 
 
 def _load_or_build_pts(video_path):
@@ -450,9 +680,9 @@ def _load_or_build_pts(video_path):
     Building it via decord reads only the index (no decoding), so it costs
     seconds even for hours of footage.
 
-    The result is cached to ``<video_path>.pts.npy`` next to the source,
-    paired with a ``<video_path>.pts.meta.json`` sidecar that records the
-    source's mtime (ns) and size at build time.
+    The result is cached as ``pts.npy`` in the source's ``.vtrace`` folder,
+    paired with a ``pts.meta.json`` record of the source's mtime (ns) and
+    size at build time.
 
     Cache invalidation: the cache is rebuilt if either file is missing OR
     the sidecar's recorded mtime/size doesn't match the source's current
@@ -484,6 +714,7 @@ def _load_or_build_pts(video_path):
     n = len(vr)
     pts = np.asarray(vr.get_frame_timestamp(range(n)), dtype=np.float64)[:, 0]
     try:
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
         np.save(cache_path, pts)
         # Re-stat after writing the npy: the source could (legitimately)
         # have been touched while decord was scanning, and we want the
@@ -913,6 +1144,7 @@ def _process_video(
     proxy_crf=PROXY_CRF,
     proxy_workers=None,
     logger=None,
+    prefix="",
 ):
     """Process a single video: map CSV times to frames, build one dataset entry.
 
@@ -960,7 +1192,12 @@ def _process_video(
     # Replaces the previous cv2 CAP_PROP_POS_MSEC per-frame loop and is correct
     # for both CFR and VFR sources. See pts-based-frame-mapping.md (archived).
     _detail("  Loading PTS table ...")
+    # Minutes of index scanning on a multi-hour source, with nothing to count:
+    # decord reports no progress until it is done. So the line says which step
+    # is running and leaves it at that.
+    status(f"  [dim]{prefix}reading timestamps[/]  [dim]{video_name}[/]")
     pts_array = _load_or_build_pts(video_path)
+    clear_status()
     total_frames = len(pts_array)
     pts_cache_path = _pts_cache_path(video_path)
 
@@ -1025,6 +1262,7 @@ def _process_video(
             crf=proxy_crf,
             source_frames=total_frames,
             logger=logger,
+            prefix=prefix,
         )
         if proxy_path:
             # Decode shortcut. `source_*` above stays authoritative for every
@@ -1273,6 +1511,7 @@ def prepare_dataset(dataset_path, subset=TRAIN_SUBSET,
     counter_width = len(str(len(pairs)))
     with _prep_log(detail_path):
         for index, (video_path, csv_path) in enumerate(pairs, 1):
+            counter = f"{index:>{counter_width}d}/{len(pairs)}"
             entry = _process_video(
                 video_path,
                 csv_path,
@@ -1281,11 +1520,11 @@ def prepare_dataset(dataset_path, subset=TRAIN_SUBSET,
                 proxy_crf=proxy_crf,
                 proxy_workers=proxy_workers,
                 logger=logger,
+                prefix=f"{counter}  ",
             )
             if entry is None:
                 continue
             entries[Path(video_path).stem] = entry
-            counter = f"{index:>{counter_width}d}/{len(pairs)}"
             line = (f"  {Path(video_path).stem}   "
                     f"{len(entry['annotations'])} bouts, "
                     f"{entry['duration']:.0f}s")

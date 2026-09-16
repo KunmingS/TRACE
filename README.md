@@ -51,8 +51,9 @@ gives you its address — open `http://localhost:8765` in Chrome or Edge — and
 bordered **command box** opens under the start screen. The box is where the
 command the annotator's configuration page writes goes: paste it, press Enter,
 and it runs. Ordinary commands (`demo predict`, `help`) run from the same box,
-without repeating the program's name. Esc closes the box and leaves the plain
-`vtrace >` prompt, where `run` opens it again and `exit` leaves.
+without repeating the program's name. The box carries the name of the command it
+is — `run` — because the session opens straight into it. Esc goes back out to the
+plain `vtrace >` prompt, where `run` opens it again and `exit` leaves.
 
 The folders in a pasted command are named, not located — `<train#8b1d0c47>` is
 the folder called `train` whose contents hash to those digits — because a
@@ -155,7 +156,9 @@ vtrace train --model maev2b --output /my/runs \
   then eval --pairs /my/testset/video03.mp4=/my/testset/video03.csv \
   then predict --input /path/to/new/videos
 
-# Check PyPI for a newer release, and install it
+# Install a newer release. The session checks for one as it starts and puts
+# `update` on the start screen when there is something to install, so this is
+# rarely something you have to remember to run.
 vtrace update
 ```
 
@@ -176,8 +179,9 @@ have multiple annotation CSVs beside it, such as `video01_draft.csv`,
 training or evaluation pair chooses the annotation file to use for that video.
 A pair names its own files, so there is no folder to set first; relative paths
 resolve against the working directory. Where the run itself goes is a separate
-question and is asked separately: `--output` is required, and the run writes a
-self-contained `model_YYYYMMDD_HHMMSS/` folder there. Evaluation videos are
+question: `--output` answers it, and without the flag the run lands in `runs/`
+under the working directory — never beside the videos. Either way the run
+writes a self-contained `model_YYYYMMDD_HHMMSS/` folder there. Evaluation videos are
 named the same way with `--eval-pairs`, and they are a corpus of their own —
 nothing is held back from the training videos.
 
@@ -188,6 +192,25 @@ holds **`last.pth`** instead and every epoch's checkpoint stays under
 `checkpoint/`. `vtrace eval` and `vtrace predict` read whichever is there, and
 `vtrace eval --model-dir DIR` with no `--pairs` re-scores the run on the same
 videos it validated against.
+
+Training and evaluation both index each video first, and what that costs is
+kept beside the video in one folder named after it:
+
+```
+my_video.mp4
+my_video.csv
+my_video.mp4.vtrace/
+  pts.npy          # per-frame timestamps, so variable-rate recordings map correctly
+  pts.meta.json
+  proxy/           # a downscaled, frame-aligned copy the training reads instead
+```
+
+It is a cache and nothing else: the original is never modified, and deleting the
+folder costs only the time to build it again. The copy under `proxy/` is what
+makes training on hours of footage practical, so it is also the largest thing in
+there. Building one is the longest part of preparing a new video, and the
+session shows a progress bar with a time estimate and whether the GPU took the
+encoding while it runs.
 
 V-TRACE annotation CSVs are time-based:
 

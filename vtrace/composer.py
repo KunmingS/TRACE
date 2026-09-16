@@ -5,12 +5,17 @@ written by the annotator's configuration page and copied: three or four lines
 of `train --pairs … --output …`, with `then eval …` after it. A one-line prompt
 asks the reader to believe a text area is hiding there; this draws the box, so
 there is nothing to believe — a bordered field with a title, a hint under it,
-and a Run and a Close button that can be clicked or tabbed to. Ordinary commands
+and a Run and a Close button that tab reaches. Ordinary commands
 (`demo download`, `help`) run from the same box, so nobody has to know in advance
 which kind of command they are about to type.
 
-Escape closes the box and leaves the plain one-line prompt, where `run` opens the
-box again. Two places to type, one command surface: whatever comes out of either
+The box carries its own name. The start screen is a list of commands to pick
+from and this is what `run` opens, so the frame's title says `run`: a bordered
+field with no name is one the reader has to infer a purpose for, and the session
+opens straight into it before anything has been picked.
+
+Escape goes back — out of the box to the plain one-line prompt, where `run` opens
+it again. Two places to type, one command surface: whatever comes out of either
 is split into argv and handed to the same `main()` a one-shot `vtrace …` call
 goes through. Nothing is executed here; this module only collects a command.
 
@@ -24,18 +29,26 @@ session is a transcript — the start screen, the address the annotator is
 listening on, whatever the last command printed — and a full-screen box would
 hide all of it at the moment the reader is composing the next command against it.
 
+The mouse is left to the terminal. prompt_toolkit can take it over (clickable
+buttons, wheel-scrolling inside the field), but taking it over means the
+terminal stops doing its own job with it: while the box is up, nothing on the
+screen can be selected and the scrollback cannot be scrolled — and the box is up
+whenever the session is waiting for input, which is exactly when someone wants
+to scroll back over what the last command printed or copy a path out of it. So
+mouse tracking stays off. The buttons are reached with tab, and their key is
+printed on them.
+
 Escape cancels, but the binding is deliberately NOT eager. An eager one fires on
-the first escape byte, and every sequence a terminal sends begins with one — with
-mouse tracking on, moving the pointer over the window was enough to make the box
-vanish before it was seen. Without eager, prompt_toolkit waits to see whether
-more bytes arrive that form a known sequence, and only a genuinely lone escape
-key reaches the handler.
+the first escape byte, and every sequence a terminal sends begins with one — an
+arrow key, a function key, a bracketed paste. Without eager, prompt_toolkit
+waits to see whether more bytes arrive that form a known sequence, and only a
+genuinely lone escape key reaches the handler.
 
 Tab moves focus, so the two buttons are reachable from the keyboard.
 """
 from __future__ import annotations
 
-TITLE = " Paste the command from the annotator, or type one "
+TITLE = " run  —  paste the command from the annotator, or type one "
 # The fullest form worth copying: two training pairs, where the run goes, the
 # evaluation videos that decide best.pth, and a prediction pass over new
 # footage. No schedule and no resolution — the model preset already carries
@@ -54,7 +67,7 @@ eval
 then
 predict
 --input /data/new --threshold 0.25"""
-HINT = "enter runs it  ·  ctrl-j starts a new line  ·  esc closes the box for a plain prompt"
+HINT = "enter runs it  ·  ctrl-j starts a new line  ·  esc goes back to the list"
 # Wide enough for a pair of absolute paths either side of an `=` without
 # wrapping, and narrow enough to sit inside a modest terminal.
 _WIDTH = 92
@@ -102,7 +115,6 @@ def compose(initial: str = "") -> str | None:
         multiline=True,
         wrap_lines=True,
         scrollbar=True,
-        focus_on_click=True,
         height=D.exact(_TEXT_HEIGHT),
         style="class:composer.text",
     )
@@ -176,14 +188,14 @@ def compose(initial: str = "") -> str | None:
             style="class:composer.frame",
         ),
         # The key is printed on the button rather than in a legend beside it: a
-        # button reached by tab or by mouse still leaves the question of what
-        # does the same job without leaving the text, and that answer belongs on
-        # the button itself.
+        # button reached by tab still leaves the question of what does the same
+        # job without leaving the text, and that answer belongs on the button
+        # itself.
         VSplit([
             Window(width=2, char=" "),
             Button("Run  enter", handler=submit, width=16),
             Window(width=2, char=" "),
-            Button("Close  esc", handler=cancel, width=16),
+            Button("Back  esc", handler=cancel, width=16),
             Window(),
         ], height=1),
     ], width=D.exact(_WIDTH))
@@ -209,7 +221,9 @@ def compose(initial: str = "") -> str | None:
         layout=Layout(VSplit([box, Window()]), focused_element=text_area),
         key_bindings=bindings,
         style=style,
-        mouse_support=True,
+        # Off, so the terminal keeps selection and scrollback: see the note at
+        # the top of the module.
+        mouse_support=False,
         # Inline: the box is printed where the cursor already is and the
         # transcript above it stays on screen.
         full_screen=False,

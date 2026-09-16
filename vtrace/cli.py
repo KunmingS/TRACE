@@ -247,6 +247,12 @@ MARKER_FILE = ".vtrace-folder"
 # What the page writes when no folder was picked at all. Nothing to look up.
 _EMPTY_TOKENS = {"video folder", "output folder", "eval folder", "model folder",
                  "video.mp4", "video.csv"}
+# Where `train` puts its run folder when `--output` is not given: under the
+# working directory the session was started in. The page leaves the flag out
+# when no output folder was picked, so the one folder a person had to choose by
+# hand is now chosen for them — and the session's own ground, not the videos',
+# is where it lands. Kept in step with the configuration page's output card.
+DEFAULT_OUTPUT_DIR = "runs"
 # Kept in step with VIDEO_EXTENSIONS in the configuration page.
 _VIDEO_SUFFIXES = (".mp4", ".mov", ".avi", ".mkv", ".webm")
 # Extra places to look, for a machine whose data lives nowhere near the working
@@ -255,6 +261,14 @@ _ROOTS_ENV = "VTRACE_ROOTS"
 _SCAN_DEPTH = 3
 _SCAN_LIMIT = 4000
 _SCAN_SKIP = {".git", "__pycache__", "node_modules", "venv", ".venv", "site-packages"}
+# What preparation leaves beside a video (see data_prep.SIDECAR_SUFFIX): a cache,
+# never the folder someone is looking for, and there is one per video.
+_SIDECAR_SUFFIX = ".vtrace"
+
+
+def default_output_dir() -> str:
+    """The folder `train` creates its run in when no `--output` was given."""
+    return os.path.join(os.getcwd(), DEFAULT_OUTPUT_DIR)
 
 
 def folder_fingerprint(path) -> str:
@@ -264,9 +278,9 @@ def folder_fingerprint(path) -> str:
     sorted names of the videos in the folder when there are any, otherwise of
     every visible entry (a run folder has no videos, but it has best.pth and
     classmap.txt), SHA-256'd and cut to eight digits. Videos only, when
-    possible, because that is the list that stays put — preparation drops
-    .pts.npy files and proxy folders beside the videos, and the CSVs beside
-    them are edited, so a fingerprint over everything would break between
+    possible, because that is the list that stays put — preparation drops a
+    `<video>.vtrace` folder beside each video, and the CSVs beside them are
+    edited, so a fingerprint over everything would break between
     copying the command and running it. Hidden entries are skipped on both
     sides (.DS_Store, AppleDouble sidecars, the marker file itself).
 
@@ -358,7 +372,8 @@ def _local_directories(root, limit: int = _SCAN_LIMIT) -> dict:
                 break
             if not entry.is_dir(follow_symlinks=False):
                 continue
-            if entry.name.startswith(".") or entry.name in _SCAN_SKIP:
+            if (entry.name.startswith(".") or entry.name in _SCAN_SKIP
+                    or entry.name.endswith(_SIDECAR_SUFFIX)):
                 continue
             paths = index.setdefault(entry.name, [])
             if entry.path not in paths:
@@ -898,7 +913,12 @@ def train(args):
     cfg = _merged_config(config_path, args.input_resolution)
     geometry = config_geometry(cfg)
 
-    model_dir = create_model_dir(args.output)
+    # No --output: the run goes under the working directory, and says so before
+    # anything is written, so the path is on screen when the person looks for it.
+    output = args.output or default_output_dir()
+    if not args.output:
+        print(f"No --output given, so the run folder goes under {output}")
+    model_dir = create_model_dir(output)
     model_dir, dataset_json, classmap_path = _prepare_pairs_into(
         model_dir, args.explicit_pairs,
         subset=TRAIN_SUBSET, proxy_geometry=geometry,
@@ -1132,11 +1152,14 @@ def _add_common_job_args(parser, *, include_profile=False, include_auto_tune=Fal
 def _add_train_args(parser):
     _add_model_config_args(parser)
     _add_pair_args(parser)
-    # Required, not derived from where the videos happen to live. A corpus is an
-    # input that many runs read; which of them writes its checkpoints beside it
-    # is a decision, and an unasked one puts run folders wherever the data sits.
-    parser.add_argument("--output", type=str, required=True,
-        help="Directory to create the run folder in. The run writes "
+    # Optional, but never derived from where the videos happen to live. A corpus
+    # is an input that many runs read; which of them writes its checkpoints
+    # beside it is a decision, and an unasked one would put run folders wherever
+    # the data sits. Left out, the run goes to `runs/` under the working
+    # directory instead — the session's own ground.
+    parser.add_argument("--output", type=str, default=None,
+        help="Directory to create the run folder in (default: "
+             f"{DEFAULT_OUTPUT_DIR}/ under the working directory). The run writes "
              "model_YYYYMMDD_HHMMSS/ here, holding the checkpoints, the class "
              "map and the resolved config.")
     # Evaluation data turns a training run from "every epoch was saved" into
@@ -1371,11 +1394,16 @@ def main(argv=None):
         # names the first few commands and the prompt runs them. Anywhere else
         # (pipes, CI, `vtrace | less`) print the same screen and return, since there
         # is nobody to type at the prompt.
-        from vtrace import shell, splash
+        from vtrace import shell, splash, version_check
 
         if sys.stdin.isatty() and sys.stdout.isatty():
             return shell.run(main, __version__)
-        splash.print_start_screen(__version__)
+        # Cache only, and no waiting: down a pipe there is nobody to act on a
+        # notice, and a redirected screen is the last place to spend a network
+        # round trip. A session that checked earlier leaves the answer behind.
+        splash.print_start_screen(
+            __version__, update=version_check.pending(__version__, wait=0)
+        )
         return None
     try:
         return handler(args)

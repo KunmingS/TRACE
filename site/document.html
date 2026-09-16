@@ -118,10 +118,10 @@
 <span class="t-key"> Annotator running — open it in Chrome or Edge</span>
    <span class="t-accent">http://localhost:8765</span>      <span class="t-dim">read and label videos on this computer</span>
 
-<span class="t-key"> Train a model, or predict videos</span>
+<span class="t-key"> Type one of these and press enter:</span>
+
    <span class="t-key">run</span>                        <span class="t-dim">open the command box: paste what the annotator wrote</span>
 
-<span class="t-key"> Try the demo</span>
    <span class="t-key">demo download</span>              <span class="t-dim">the official CalMS21 videos + the detector</span>
    <span class="t-key">demo predict</span>               <span class="t-dim">label the 19 held-out test videos, write predictions</span>
    <span class="t-key">demo train</span>                 <span class="t-dim">train on the 70 official training videos, score the test split</span>
@@ -129,8 +129,8 @@
    <span class="t-key">help</span>                       <span class="t-dim">documentation, on the web</span>
    <span class="t-key">exit</span>                       <span class="t-dim">leave the session</span>
 
-<span class="t-dim"> Paste the command the annotator wrote into the box below, or type one.</span>
-<span class="t-dim"> Esc closes the box for a plain prompt.</span></code></pre>
+<span class="t-dim"> The box below is </span><span class="t-key">run</span><span class="t-dim"> — paste what the annotator wrote, or type one.</span>
+<span class="t-dim"> Esc leaves the box and comes back to this list.</span></code></pre>
           </div>
           <p class="terminal-caption">
             Every line on the screen is a real command, so whatever is copied
@@ -155,7 +155,7 @@
             </div>
             <div class="terminal-body">
               <div class="composer">
-                <span class="composer-legend">Paste the command from the annotator, or type one</span>
+                <span class="composer-legend">run &mdash; paste the command from the annotator, or type one</span>
 <pre><code><span class="t-cmd">train</span>
 <span class="t-flag">--model</span> maev2b
 <span class="t-flag">--output</span> <span class="t-str">'<span class="t-tok">&lt;runs#3f9a2c1e&gt;</span>'</span>
@@ -163,11 +163,11 @@
 <span class="t-cmd">then</span>
 <span class="t-cmd">eval</span>
 <span class="t-flag">--pairs</span> <span class="t-str">'<span class="t-tok">&lt;test#c41e77a0&gt;</span>/mouse071.mp4=<span class="t-tok">&lt;test#c41e77a0&gt;</span>/mouse071.csv'</span></code></pre>
-                <p class="composer-hint">enter runs it &middot; ctrl-j starts a new line &middot; esc closes the box for a plain prompt</p>
+                <p class="composer-hint">enter runs it &middot; ctrl-j starts a new line &middot; esc goes back to the list</p>
               </div>
               <div class="composer-keys">
                 <span><b>[ Run ]</b><em>enter</em></span>
-                <span><b>[ Close ]</b><em>esc</em></span>
+                <span><b>[ Back ]</b><em>esc</em></span>
               </div>
 <pre><code><span class="t-dim">  &lt;runs#3f9a2c1e&gt;</span>  →  <span class="t-accent">/data/calms21/runs</span>
 <span class="t-dim">  &lt;train#8b1d0c47&gt;</span> →  <span class="t-accent">/data/calms21/train</span>
@@ -177,10 +177,14 @@
             </div>
           </div>
           <p class="ref-note">
+            The box leaves the mouse to the terminal: while it is open, text on
+            the screen can still be selected and the scrollback still scrolls,
+            so the last command's output stays within reach. The two buttons
+            are reached with <kbd>tab</kbd>, and their key is printed on them.
             Escape cancels, but the binding is deliberately not eager. Every
-            sequence a terminal sends begins with an escape byte — with mouse
-            tracking on, moving the pointer over the window was enough to make
-            an eager box vanish before it was seen.
+            sequence a terminal sends begins with an escape byte — an arrow
+            key, a bracketed paste — and an eager binding would close the box
+            on the first byte of any of them.
           </p>
 
           <h3>The annotator on its own</h3>
@@ -416,20 +420,22 @@
           <h3>What preparation writes</h3>
           <p>
             Preparation runs automatically as the first part of a training or
-            evaluation command. It indexes each video whole and leaves three
-            things beside the source:
+            evaluation command. It indexes each video whole and leaves one
+            folder beside the source, <code>&lt;video&gt;.vtrace/</code>,
+            holding everything cached for that video:
           </p>
           <ul>
             <li>
-              <code>&lt;video&gt;.pts.npy</code> plus a
-              <code>.pts.meta.json</code> sidecar: the per-frame presentation
-              timestamps, so a variable-frame-rate recording maps times to
-              frames correctly instead of assuming a constant rate.
+              <code>pts.npy</code> plus <code>pts.meta.json</code>: the
+              per-frame presentation timestamps, so a variable-frame-rate
+              recording maps times to frames correctly instead of assuming a
+              constant rate, and the source's size and mtime at the moment
+              they were read, which is how a stale table is recognised.
             </li>
             <li>
-              <code>&lt;video&gt;.trace-proxy/&lt;geometry&gt;/proxy.mp4</code>:
-              one downscaled, frame-aligned decode proxy, reused across runs
-              while the source's size and mtime still match.
+              <code>proxy/&lt;geometry&gt;/proxy.mp4</code>: one downscaled,
+              frame-aligned decode proxy, reused across runs while the
+              source's size and mtime still match its <code>manifest.json</code>.
             </li>
             <li>
               <code>dataset.json</code> and <code>classmap.txt</code> in the run
@@ -444,10 +450,10 @@
 <pre><code><span class="t-prompt">$</span> <span class="t-cmd">ls</span> <span class="t-flag">-1</span> <span class="t-path">/data/mouse_study/videos</span>
 <span class="t-out">mouse001.mp4</span>
 <span class="t-out">mouse001.csv                    </span><span class="t-com"># your labels</span>
-<span class="t-out">mouse001.mp4.pts.npy            </span><span class="t-com"># per-frame timestamps</span>
-<span class="t-out">mouse001.mp4.pts.meta.json</span>
-<span class="t-out">mouse001.mp4.trace-proxy/       </span><span class="t-com"># one decode proxy per video</span>
-<span class="t-out">  └── s144_sq_crf23_g30_v1/</span>
+<span class="t-out">mouse001.mp4.vtrace/            </span><span class="t-com"># everything cached for this video</span>
+<span class="t-out">  ├── pts.npy                     </span><span class="t-com"># per-frame timestamps</span>
+<span class="t-out">  ├── pts.meta.json</span>
+<span class="t-out">  └── proxy/s144_sq_crf23_g30_v1/ </span><span class="t-com"># one decode proxy per geometry</span>
 <span class="t-out">        ├── proxy.mp4</span>
 <span class="t-out">        └── manifest.json         </span><span class="t-com"># source signature, for reuse</span>
 <span class="t-out">mouse002.mp4</span>
@@ -461,6 +467,54 @@
             <code>source_pts_table</code>, which stay authoritative for all
             timeline maths, and <code>proxy_video</code>, which only redirects
             which file frames decode from.
+          </p>
+          <h3>Finding out about a new release</h3>
+          <p>
+            The session asks PyPI whether there is a newer V-TRACE while it
+            starts, and when there is, the start screen carries an
+            <code>update</code> row naming the version. Typing
+            <code>update</code> installs it. Nothing appears when you are on the
+            current release, which is why the row is news rather than furniture.
+          </p>
+          <p class="ref-note">
+            The answer is cached in <code>~/.vtrace/update-check.json</code> and
+            refreshed at most once a day, so nearly every launch reads a file and
+            costs nothing measurable. The refresh itself runs on a background
+            thread started before the annotator's server, and the screen waits no
+            more than a second for it — a check that misses that deadline lands
+            in the cache and shows up the next time you start. A machine that
+            cannot reach PyPI records the attempt like any other, so it asks once
+            a day rather than once a launch, and never shows an error for a
+            question nobody asked.
+          </p>
+
+          <h3>Watching a long preparation</h3>
+          <p>
+            An overnight recording is millions of frames, and making its
+            decode copy is the longest single wait the tool has. So it is shown
+            rather than left blank: a bar with the share done, the time still
+            to go, and the encoder that is doing it. The last of those is
+            worth reading — <code>GPU NVENC</code> means the card took the
+            encode, <code>CPU x264</code> means it did not, either because
+            there is no usable card or because the proxy is smaller than
+            NVENC's minimum frame size.
+          </p>
+          <div class="terminal tight">
+            <div class="terminal-bar">
+              <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="terminal-title">vtrace — preparing a long recording</span>
+            </div>
+<pre><code><span class="t-out">Preparing the train dataset</span>  <span class="t-accent">2</span> <span class="t-dim">videos</span>
+<span class="t-dim">  2/2  reading timestamps</span>  <span class="t-dim">2026-06-13 17-06-54-day9</span>
+<span class="t-dim">  2/2  making a smaller copy</span>  <span class="t-accent">━━━━━━╸</span><span class="t-dim">━━━━━━━━━</span>  <span class="t-accent"> 28%</span>  <span class="t-dim">eta 1h 48m</span>  <span class="t-dim">GPU NVENC 12.4x</span></code></pre>
+          </div>
+          <p class="ref-note">
+            The bar is redrawn in place and wiped when it ends, so it leaves no
+            scrollback behind; an encode that ran for more than a minute leaves
+            one line saying how long it took and on what. Where there is no
+            terminal to redraw into — the annotator's job log, a captured run —
+            the same figures are written out as an ordinary line every couple
+            of minutes instead.
           </p>
           <div class="terminal tight">
             <div class="terminal-bar">
@@ -498,10 +552,12 @@
           <p class="section-label">04</p>
           <h2>Training</h2>
           <p>
-            Training takes the pairs, where the run folder goes, and optionally
-            the videos that will score it. <code>--output</code> is required: a
-            corpus is an input many runs read, and which of them writes its
-            checkpoints beside it is a decision worth asking for.
+            Training takes the pairs, optionally where the run folder goes, and
+            optionally the videos that will score it. Without <code>--output</code>
+            the run lands in <code>runs/</code> under the working directory &mdash;
+            never beside the videos: a corpus is an input many runs read, and none
+            of them should write its checkpoints there just because nobody said
+            otherwise.
           </p>
           <div class="terminal tight">
             <div class="terminal-bar">
@@ -530,7 +586,7 @@
               </thead>
               <tbody>
                 <tr><td><code>--pairs</code></td><td>required</td><td>The training videos and their CSVs.</td></tr>
-                <tr><td><code>--output</code></td><td>required</td><td>Where the <code>model_YYYYMMDD_HHMMSS/</code> folder is created.</td></tr>
+                <tr><td><code>--output</code></td><td><code>runs/</code> under the working directory</td><td>Where the <code>model_YYYYMMDD_HHMMSS/</code> folder is created.</td></tr>
                 <tr><td><code>--eval-pairs</code></td><td>none</td><td>Videos the loop scores each epoch against. Their score is what writes <code>best.pth</code>.</td></tr>
                 <tr><td><code>--model</code></td><td><code>maev2b</code></td><td>Model preset. <code>--config</code> overrides it with a config file.</td></tr>
                 <tr><td><code>--epochs</code></td><td>the config's own</td><td>Total epochs. The shipped presets run 10, warming up over 2.</td></tr>

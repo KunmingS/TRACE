@@ -1,9 +1,15 @@
 """The start screen a bare `trace` prints.
 
-A signpost, not a prompt: it names the handful of commands worth typing first and
+A menu, not a signpost. It names the handful of commands worth typing first and
 ticks off the ones already done, so the next step is always the unticked one.
 Every line is a real command, so whatever the reader copies goes through the
 ordinary argument parser.
+
+The commands are one list under one sentence that says they are there to be
+picked. They used to sit under headings — "Train a model, or predict videos",
+"Try the demo" — which read as prose about the tool rather than as a menu, and
+left the reader to work out that the bold words were things to type. Groups are
+still grouped, by a blank line and nothing else.
 
 Rendered with Rich when it is installed — that is where the colour, width and
 NO_COLOR handling come from — and as plain text when it is not.
@@ -43,6 +49,15 @@ def annotator_url() -> str:
     return f"http://localhost:{DEFAULT_GUI_PORT}"
 
 ACCENT = "cyan"
+
+# The line that turns a list of commands into a menu. Two versions, because the
+# session's prompt runs them and a shell's does not.
+_PICK_IN_SESSION = " Type one of these and press enter:"
+_PICK_IN_SHELL = " Run any of these:"
+
+
+def _pick_line(interactive: bool) -> str:
+    return _PICK_IN_SESSION if interactive else _PICK_IN_SHELL
 
 
 def trace_home() -> Path:
@@ -98,6 +113,18 @@ RUN_STEP = ("run", "open the command box: paste what the annotator wrote")
 EXIT_STEP = ("exit", "leave the session")
 
 
+# `update` appears only when there is something to update to. A permanent row
+# saying "check for a newer release" asks the reader to do the checking; the
+# session has already done it by the time this screen is drawn, so the row is
+# either news or absent. Typing `update` still works either way.
+def update_step(latest: str, current: str):
+    """The (command, note) row announcing `latest`, for a reader on `current`."""
+    note = f"V-TRACE {latest} is out"
+    if current:
+        note += f" — you have {current}"
+    return ("vtrace update", note)
+
+
 # Set by `vtrace.shell.run` for as long as the prompt is what runs commands.
 # Anything that prints a command for the reader to type next has to know which
 # of the two places they are standing in: inside the session the program's own
@@ -140,7 +167,8 @@ def get_console():
     return Console()
 
 
-def _rich_screen(console, version: str, interactive: bool, annotator=None) -> None:
+def _rich_screen(console, version: str, interactive: bool, annotator=None,
+                 update: str | None = None) -> None:
     from rich.table import Table
     from rich.text import Text
 
@@ -149,6 +177,8 @@ def _rich_screen(console, version: str, interactive: bool, annotator=None) -> No
     # One shared label width, so the three command blocks line up as a single
     # column instead of each grid measuring only its own rows.
     labels = [_typed(command, interactive) for command, _note, _done in demo_steps()]
+    if update:
+        labels.append(_typed(update_step(update, version)[0], interactive))
     if interactive:
         labels.append(f"   {RUN_STEP[0]}")
         labels.append(f"   {EXIT_STEP[0]}")
@@ -180,13 +210,22 @@ def _rich_screen(console, version: str, interactive: bool, annotator=None) -> No
         console.print(rows([(Text(f"   {_typed('vtrace app', interactive)}", style="bold"),
                              "start the annotator")]))
 
+    console.print()
+    console.print(Text(_pick_line(interactive), style="bold"))
+
+    if update:
+        command, note = update_step(update, version)
+        console.print()
+        console.print(rows([(Text.assemble(
+            (f" {'↑' if _unicode(console.encoding) else '!'} ", "bold " + ACCENT),
+            (_typed(command, interactive), "bold"),
+        ), note)]))
+
     if interactive:
         console.print()
-        console.print(Text(" Train a model, or predict videos", style="bold"))
         console.print(rows([(Text(f"   {RUN_STEP[0]}", style="bold"), RUN_STEP[1])]))
 
     console.print()
-    console.print(Text(" Try the demo", style="bold"))
     entries = []
     for command, note, done in demo_steps():
         # Assemble rather than concatenate: `Text + Text` would carry the mark's
@@ -206,17 +245,28 @@ def _rich_screen(console, version: str, interactive: bool, annotator=None) -> No
     console.print(rows(closing))
     if interactive:
         console.print()
-        console.print(Text(" Paste the command the annotator wrote into the box below, or type one.",
-                           style="dim"))
-        console.print(Text(" Esc closes the box for a plain prompt.", style="dim"))
+        # no_wrap, like the help notes: a wrap would drop the tail of the
+        # sentence to column zero, under the art rather than under the text.
+        console.print(Text.assemble(
+            (" The box below is ", "dim"), ("run", "bold " + ACCENT),
+            (" — paste what the annotator wrote, or type one.", "dim")),
+            no_wrap=True, crop=True)
+        console.print(Text(" Esc leaves the box and comes back to this list.",
+                           style="dim"), no_wrap=True, crop=True)
     console.print()
 
 
-def _plain_screen(version: str, interactive: bool, stream, annotator=None) -> str:
+def _plain_screen(version: str, interactive: bool, stream, annotator=None,
+                  update: str | None = None) -> str:
     encoding = getattr(stream, "encoding", "")
     entries = [(f"   {annotator}", "read and label videos on this computer")
                if annotator
                else (f"   {_typed('vtrace app', interactive)}", "start the annotator")]
+    update_entries = []
+    if update:
+        command, note = update_step(update, version)
+        update_entries = [(f" ! {_typed(command, interactive)}", note)]
+    entries += update_entries
     run_entries = [(f"   {RUN_STEP[0]}", RUN_STEP[1])] if interactive else []
     entries += run_entries
     entries += [((" * " if done else "   ") + _typed(command, interactive), note)
@@ -235,32 +285,37 @@ def _plain_screen(version: str, interactive: bool, stream, annotator=None) -> st
     heading = (" Annotator running — open it in Chrome or Edge" if annotator
                else " Annotate videos in your browser")
     lines += ["", heading, f"{entries[0][0]:<{width}}   {entries[0][1]}"]
+    lines += ["", _pick_line(interactive)]
+    if update_entries:
+        lines += [""]
+        lines += [f"{label:<{width}}   {note}" for label, note in update_entries]
     if run_entries:
-        lines += ["", " Train a model, or predict videos"]
+        lines += [""]
         lines += [f"{label:<{width}}   {note}" for label, note in run_entries]
-    demo_start = 1 + len(run_entries)
-    lines += ["", " Try the demo"]
+    demo_start = 1 + len(update_entries) + len(run_entries)
+    lines += [""]
     lines += [f"{label:<{width}}   {note}"
               for label, note in entries[demo_start:demo_start + 3]]
     lines += [""]
     lines += [f"{label:<{width}}   {note}" for label, note in closing]
     lines += [""]
     if interactive:
-        lines += [" Paste the command the annotator wrote into the box below, or type one.",
-                  " Esc closes the box for a plain prompt.", ""]
+        lines += [" The box below is `run` — paste what the annotator wrote, or type one.",
+                  " Esc leaves the box and comes back to this list.", ""]
     return "\n".join(lines)
 
 
 def print_start_screen(version: str = "", *, interactive: bool = False, console=None,
-                       annotator: str | None = None) -> None:
+                       annotator: str | None = None, update: str | None = None) -> None:
     """Render the start screen to stdout.
 
     `annotator` is the URL of an already-running annotator, when the caller
     started one; the screen then points at it instead of naming the command that
-    would start it.
+    would start it. `update` is a newer version on PyPI, when one was found —
+    see `vtrace.version_check`, which is what decides whether to look.
     """
     console = console or get_console()
     if console is None:
-        print(_plain_screen(version, interactive, sys.stdout, annotator))
+        print(_plain_screen(version, interactive, sys.stdout, annotator, update))
         return
-    _rich_screen(console, version, interactive, annotator)
+    _rich_screen(console, version, interactive, annotator, update)
