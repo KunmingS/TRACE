@@ -916,8 +916,8 @@ the folder's full path on the machine that runs the command:</span>
 <span class="t-out">      </span><span class="t-key">"subset"</span><span class="t-out">:               </span><span class="t-str">"train"</span><span class="t-out">,</span>
 <span class="t-out">      </span><span class="t-key">"source_video"</span><span class="t-out">:         </span><span class="t-str">"…/mouse008_task1_annotator1.mp4"</span><span class="t-out">,</span>
 <span class="t-out">      </span><span class="t-key">"source_frame_offset"</span><span class="t-out">:  </span><span class="t-num">0</span><span class="t-out">,</span>
-<span class="t-out">      </span><span class="t-key">"source_pts_table"</span><span class="t-out">:     </span><span class="t-str">"…/mouse008_task1_annotator1.mp4.pts.npy"</span><span class="t-out">,</span>
-<span class="t-out">      </span><span class="t-key">"proxy_video"</span><span class="t-out">:          </span><span class="t-str">"…/s144_sq_crf23_g30_v1/proxy.mp4"</span><span class="t-out">,</span>
+<span class="t-out">      </span><span class="t-key">"source_pts_table"</span><span class="t-out">:     </span><span class="t-str">"…/mouse008_task1_annotator1.mp4.vtrace/pts.npy"</span><span class="t-out">,</span>
+<span class="t-out">      </span><span class="t-key">"proxy_video"</span><span class="t-out">:          </span><span class="t-str">"…/mouse008_task1_annotator1.mp4.vtrace/proxy/s224_sq_crf23_g30_v1/proxy.mp4"</span><span class="t-out">,</span>
 <span class="t-out">      </span><span class="t-key">"annotations"</span><span class="t-out">: [</span>
 <span class="t-out">        { </span><span class="t-key">"label"</span><span class="t-out">:         </span><span class="t-str">"investigation"</span><span class="t-out">,</span>
 <span class="t-out">          </span><span class="t-key">"segment"</span><span class="t-out">:       [</span><span class="t-num">5.433</span><span class="t-out">, </span><span class="t-num">6.500</span><span class="t-out">],</span>
@@ -932,13 +932,18 @@ the folder's full path on the machine that runs the command:</span>
             <p>
               Preparation runs automatically as the first part of a training or
               evaluation command. It indexes each video whole — nothing is cut
-              into clip files — and writes two sidecars next to the source that
-              later runs reuse.
+              into clip files — and everything it caches for a video goes in one
+              folder beside it, <code>&lt;video&gt;.vtrace/</code>, which later
+              runs reuse.
             </p>
             <dl class="field-list">
-              <div><dt>&lt;video&gt;.pts.npy</dt><dd>The per-frame presentation timestamps, plus a <code>.pts.meta.json</code>. This is what turns the CSV's seconds into frame indices, correctly, whether the recording is constant or variable frame rate.</dd></div>
-              <div><dt>.trace-proxy/</dt><dd>One downscaled, frame-aligned decode proxy per video, reused while the source's size and mtime still match. <code>source_*</code> stays authoritative for every timestamp; this only redirects which file frames come from.</dd></div>
+              <div><dt>pts.npy</dt><dd>The per-frame presentation timestamps, plus a <code>pts.meta.json</code> recording the source's size and mtime. This is what turns the CSV's seconds into frame indices, correctly, whether the recording is constant or variable frame rate.</dd></div>
+              <div><dt>proxy/</dt><dd>One downscaled, frame-aligned decode copy per geometry, reused while the source's size and mtime still match. <code>source_*</code> stays authoritative for every timestamp; this only redirects which file frames come from. It is the largest thing in the folder, and building one is the longest part of preparing a new video.</dd></div>
             </dl>
+            <p class="ref-note">
+              The folder is a cache and nothing else: the original is never
+              modified, and deleting it costs only the time to build it again.
+            </p>
             <p>
               <strong>Nothing is split.</strong> Every video a command names is
               training data, and evaluation videos are a corpus of their own
