@@ -111,6 +111,40 @@ model = dict(
         local_files_only=False,  # allow the first-use download from HuggingFace
     ),
     projection=dict(in_channels=1024, input_noise=0.0005),
+    # The dense per-frame classifier. It is the model's only output head -- the
+    # old point-localization head is gone -- so a config without this block
+    # builds a model that produces no loss at all and cannot train.
+    #
+    # The same block as maev2b, which is also what the tuned V-JEPA 2 sweep base
+    # (configs/calms21_vjepa2.py) runs: both backbones reach the head through a
+    # 512-channel projection, so the widths carry over unchanged. `routing` is
+    # read only when head_type is "routed", so overriding head_type on the
+    # command line leaves it inert rather than conflicting with it.
+    aux_frame_cls=dict(
+        enabled=True,
+        in_channels=512,
+        feat_channels=512,
+        num_layers=2,
+        use_background=True,
+        multilabel=False,
+        target_mode="all",
+        label_smoothing=0.1,
+        class_weight_mode="inv_freq_sqrt",
+        loss_weight=2.0,
+        dropout=0.5,
+        inference_enabled=True,
+        score_fusion_enabled=False,
+        proposal_enabled=True,
+        proposal_mode="dense",
+        proposal_prior="softmax",
+        proposal_min_score=1e-8,
+        proposal_topk=0,
+        proposal_smoothing=9,
+        multiscale=True,
+        mixup_alpha=0.8,
+        head_type="routed",
+        routing=dict(default="dyfadet", conv=[0]),
+    ),
 )
 
 solver = dict(

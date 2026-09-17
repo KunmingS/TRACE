@@ -635,6 +635,22 @@ class DenseLocalizer(SingleStageDetector):
             if bnd_logits is not None:
                 losses["aux_boundary_loss"] = self._aux_boundary_loss(bnd_logits, masks, gt_segments)
 
+        # A model with no head produces no loss, and `sum({}.items())` is the
+        # integer 0 -- which travels all the way to the AMP scaler before
+        # anything objects, and then objects about the wrong thing ("outputs
+        # must be a Tensor"). The per-frame classifier is the only output this
+        # model has, so say that instead.
+        if not losses:
+            raise RuntimeError(
+                "The model produced no losses, so there is nothing to train. "
+                "Its per-frame classifier was not built: the config has no "
+                "`model.aux_frame_cls` block, or the block does not set "
+                "`enabled=True`. That head is the model's only output -- "
+                "compare configs/maev2b.py, which has the full block. Note "
+                "that `--cfg-options model.aux_frame_cls.head_type=...` alone "
+                "does not build it; the block has to exist first."
+            )
+
         # only key has loss will be record
         if self._loss_balancing == "uncertainty":
             cost = 0.0
