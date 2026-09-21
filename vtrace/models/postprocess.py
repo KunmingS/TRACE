@@ -209,30 +209,47 @@ def nms_1d(segs, scores, iou_threshold):
     return torch.stack(keep) if keep else torch.empty(0, dtype=torch.long)
 
 
-def softnms_1d(segs, scores, iou_threshold, sigma, min_score, method, t1, t2):
-    """Soft-NMS with vectorized score decay. Returns (sorted_segs_with_scores [N,3], kept_indices).
+# Overlap groups up to this many rows are swept in lockstep across all groups
+# of that size (see `_softnms_sweep_batched`); larger ones take the plain sweep.
+_LOCKSTEP_MAX_GROUP = 64
 
-    All five per-segment arrays (x1, x2, score, area, orig_idx) are packed into a single (n, 5)
-    tensor so the hot-path row swap and compaction each become a single tensor op instead of
-    looping over five parallel arrays in Python.
+
+def _softnms_decay(ovr, iarea, iou_threshold, sigma, method, t1, t2):
+    """Per-method score decay for one kept segment against the remaining tail."""
+    if method == 0:  # vanilla (hard cutoff)
+        return torch.where(ovr >= iou_threshold, torch.zeros_like(ovr), torch.ones_like(ovr))
+    if method == 1:  # linear
+        return torch.where(ovr >= iou_threshold, 1.0 - ovr, torch.ones_like(ovr))
+    if method == 2:  # gaussian
+        return torch.exp(-(ovr * ovr) / sigma)
+    if method == 3:  # improved gaussian (BMN)
+        threshold = t1 + t2 * iarea
+        return torch.where(ovr >= threshold, torch.exp(-(ovr * ovr) / sigma), torch.ones_like(ovr))
+    return torch.ones_like(ovr)
+
+
+def _softnms_sweep(packed, iou_threshold, sigma, min_score, method, t1, t2, limit=0):
+    """Greedy soft-NMS over one packed ``(n, 5)`` block, reordered in place.
+
+    Returns the number of kept rows; they end up at ``packed[:kept]`` in
+    non-increasing score order. Every step takes the running max and decay only
+    lowers what is left, so the scores come out already sorted — callers rely on
+    that to slice a top-k off the head.
+
+    ``limit`` stops after that many rows are settled. Because the scores come
+    out ordered, the rows it declines to compute are exactly the ones a caller
+    asking for a top-``limit`` would throw away — so it is free, and it is what
+    keeps one dense block from running millions of iterations to produce the
+    2000 bouts anybody reads. Note it bounds only how many rows are *settled*:
+    each step still searches, decays and compacts the whole live range, or the
+    winner could be sitting just past the cap.
     """
-    if segs.numel() == 0:
-        return torch.empty((0, 3)), torch.empty(0, dtype=torch.long)
-
-    n = segs.shape[0]
-    x1 = segs[:, 0]
-    x2 = segs[:, 1]
-    areas = x2 - x1 + 1e-6
-    packed = torch.stack(
-        [x1, x2, scores, areas, torch.arange(n, dtype=segs.dtype)],
-        dim=1,
-    )
-
     i = 0
-    cur_n = n
-    while i < cur_n:
+    live = packed.shape[0]                                  # rows still in play
+    stop = live if limit <= 0 else min(live, limit)
+    while i < stop:
         # Move the max-scored remaining row to position i (one packed row swap).
-        max_pos = i + int(packed[i:cur_n, 2].argmax())
+        max_pos = i + int(packed[i:live, 2].argmax())
         if max_pos != i:
             packed[[i, max_pos]] = packed[[max_pos, i]]
 
@@ -240,40 +257,211 @@ def softnms_1d(segs, scores, iou_threshold, sigma, min_score, method, t1, t2):
         ix2 = packed[i, 1]
         iarea = packed[i, 3]
 
-        if i + 1 < cur_n:
+        if i + 1 < live:
             # Vectorized IoU of kept segment vs. all remaining
-            rem = packed[i + 1:cur_n]
+            rem = packed[i + 1:live]
             inter = (torch.min(ix2, rem[:, 1]) - torch.max(ix1, rem[:, 0])).clamp(min=0)
             ovr = inter / (iarea + rem[:, 3] - inter)
 
-            if method == 0:  # vanilla (hard cutoff)
-                weights = torch.where(ovr >= iou_threshold, torch.zeros_like(ovr), torch.ones_like(ovr))
-            elif method == 1:  # linear
-                weights = torch.where(ovr >= iou_threshold, 1.0 - ovr, torch.ones_like(ovr))
-            elif method == 2:  # gaussian
-                weights = torch.exp(-(ovr * ovr) / sigma)
-            elif method == 3:  # improved gaussian (BMN)
-                threshold = t1 + t2 * iarea
-                weights = torch.where(ovr >= threshold, torch.exp(-(ovr * ovr) / sigma), torch.ones_like(ovr))
-            else:
-                weights = torch.ones_like(ovr)
-
-            packed[i + 1:cur_n, 2] *= weights
+            packed[i + 1:live, 2] *= _softnms_decay(
+                ovr, iarea, iou_threshold, sigma, method, t1, t2)
 
             # Compact: drop rows whose decayed score fell below min_score (one packed-slice op).
-            valid = packed[i + 1:cur_n, 2] >= min_score
+            valid = packed[i + 1:live, 2] >= min_score
             num_valid = int(valid.sum())
-            if num_valid < cur_n - i - 1:
+            if num_valid < live - i - 1:
                 valid_idx = valid.nonzero(as_tuple=True)[0] + (i + 1)
                 packed[i + 1:i + 1 + num_valid] = packed[valid_idx]
-                cur_n = i + 1 + num_valid
+                live = i + 1 + num_valid
+                stop = live if limit <= 0 else min(live, limit)
 
         i += 1
 
-    # Kept rows sit in packed[:i, :] in descending-score order by construction.
-    kept_dets = packed[:i, :3].contiguous()
-    kept_inds = packed[:i, 4].long()
-    return kept_dets, kept_inds
+    return i
+
+
+def _softnms_sweep_batched(groups, iou_threshold, sigma, min_score, method, t1, t2, limit=0):
+    """The same greedy sweep as `_softnms_sweep`, run on ``G`` groups of ``k`` rows in lockstep.
+
+    ``groups`` is ``(G, k, 5)`` packed rows. Each step picks every group's live
+    maximum at once, decays that group's other live rows by their overlap with
+    it, and retires what fell under ``min_score``. Dead rows stay in place with
+    their scores masked rather than being compacted away — at these sizes the
+    compaction is not worth the bookkeeping.
+
+    This exists because of what a long recording looks like after the split: on
+    a 22-hour video the overlap groups are 2.4 million pairs — the two sliding
+    windows' copies of each frame — and a Python loop over them costs minutes
+    for work that is a handful of tensor ops. Returns the kept rows, ``(M, 5)``,
+    with each row's score as it stood when picked. Order is by group and row,
+    not by score; the caller sorts.
+    """
+    G, k, _ = groups.shape
+    x1, x2, areas = groups[..., 0], groups[..., 1], groups[..., 3]
+    scores = groups[..., 2].clone()
+    alive = torch.ones(G, k, dtype=torch.bool)
+    kept = torch.zeros(G, k, dtype=torch.bool)
+    final = scores.clone()
+    rows = torch.arange(G)
+
+    steps = k if limit <= 0 else min(k, limit)
+    for _ in range(steps):
+        j = scores.masked_fill(~alive, float("-inf")).argmax(dim=1)
+        picked = alive[rows, j]                        # groups with a live row left
+        if not bool(picked.any()):
+            break
+        g = rows[picked]
+        jj = j[picked]
+        kept[g, jj] = True
+        final[g, jj] = scores[g, jj]
+        alive[g, jj] = False
+
+        ix1 = x1[rows, j].unsqueeze(1)
+        ix2 = x2[rows, j].unsqueeze(1)
+        iarea = areas[rows, j].unsqueeze(1)
+        inter = (torch.minimum(ix2, x2) - torch.maximum(ix1, x1)).clamp(min=0)
+        ovr = inter / (iarea + areas - inter)
+        weights = _softnms_decay(ovr, iarea, iou_threshold, sigma, method, t1, t2)
+        # A group with nothing left to pick has a meaningless `j`; leave it be.
+        weights = torch.where(picked.unsqueeze(1), weights, torch.ones_like(weights))
+        scores = torch.where(alive, scores * weights, scores)
+        alive &= scores >= min_score
+
+    out = groups[kept]
+    out[:, 2] = final[kept]
+    return out
+
+
+def _overlap_group_bounds(x1, x2):
+    """Row offsets delimiting maximal overlap-connected runs, over rows sorted by ``x1``.
+
+    A row whose start is at or past every preceding row's end shares no overlap
+    with anything before it, and — the rows being sorted by start — nothing after
+    it can reach back past it either. So it opens a group that the preceding ones
+    can never touch. Returns ``n_groups + 1`` offsets, as a tensor: on a long
+    recording there are hundreds of thousands of them and a Python list of the
+    boundaries would cost more than the sweeps it is dividing up.
+    """
+    opens = x1[1:] >= torch.cummax(x2, dim=0).values[:-1]
+    return torch.cat([
+        torch.zeros(1, dtype=torch.long),
+        opens.nonzero(as_tuple=True)[0] + 1,
+        torch.full((1,), x1.shape[0], dtype=torch.long),
+    ])
+
+
+def softnms_1d(segs, scores, iou_threshold, sigma, min_score, method, t1, t2, limit=0):
+    """Soft-NMS with vectorized score decay. Returns (sorted_segs_with_scores [N,3], kept_indices).
+
+    All five per-segment arrays (x1, x2, score, area, orig_idx) are packed into a single (n, 5)
+    tensor so the hot-path row swap and compaction each become a single tensor op instead of
+    looping over five parallel arrays in Python.
+
+    The sweep is quadratic in the block it is handed, so on a long recording it
+    becomes the whole cost of an evaluation: dense proposals arrive one per
+    frame per sliding window, and a 20-hour video puts millions of them into a
+    single call. Three reductions below keep that in hand — an up-front
+    ``min_score`` cut, a split into overlap-connected groups, and stopping once
+    ``limit`` detections are settled. All three preserve the result: the same
+    detections at the same scores, in descending order, down to the rows a
+    top-``limit`` caller would have kept anyway.
+
+    The one thing that moves is the tie-break. When two overlapping segments
+    share a score exactly, one is kept whole and the other decayed, and which
+    is which used to fall out of array position after the sweep's swaps. Rows
+    are now visited in start order, so the earlier segment wins. Both rules are
+    deterministic; neither is meaningful. Scores reach this function rounded
+    to four decimals, so ties are not hypothetical — but the common source, the
+    two sliding windows' copies of one frame, has identical segments, where the
+    choice makes no visible difference.
+    """
+    if segs.numel() == 0:
+        return torch.empty((0, 3)), torch.empty(0, dtype=torch.long)
+
+    n = segs.shape[0]
+    # The packed block carries the original row index as a float column, so the
+    # index has to survive the round trip exactly. float32 stops counting at
+    # 2**24 — past that `arange` repeats values, and the repeats would hand
+    # SoftNMSop the wrong class for a detection. Long recordings are exactly
+    # where that many proposals show up, so widen rather than truncate.
+    pack_dtype = torch.float64 if n > 2 ** 24 else segs.dtype
+    orig_idx = torch.arange(n, dtype=pack_dtype)
+
+    # Anything already under min_score is dropped by the sweep's own first
+    # compaction pass: decay weights never exceed 1, so such a row can only fall
+    # further. Cutting it here is the same output for a fraction of the work, and
+    # mirrors what NMSop has always done for hard NMS. The single best row is
+    # exempt — with every score under the cutoff the sweep still returns it, and
+    # that stays true.
+    if min_score > 0 and n > 1:
+        keep = scores >= min_score
+        if not bool(keep.all()):
+            if not bool(keep.any()):
+                keep = torch.zeros_like(keep)
+                keep[int(scores.argmax())] = True
+            segs, scores, orig_idx = segs[keep], scores[keep], orig_idx[keep]
+            n = segs.shape[0]
+
+    x1 = segs[:, 0].to(pack_dtype)
+    x2 = segs[:, 1].to(pack_dtype)
+    packed = torch.stack(
+        [x1, x2, scores.to(pack_dtype), x2 - x1 + 1e-6, orig_idx],
+        dim=1,
+    )
+
+    # Segments that do not overlap leave each other's scores alone, so the sweep
+    # can run on each overlap-connected group independently. On a long video the
+    # proposals are short bouts scattered over hours, which splits one
+    # multi-million-row quadratic block into many tiny ones. The exception is
+    # vanilla NMS with a non-positive iou_threshold, where `ovr >= 0` suppresses
+    # even disjoint segments — that one keeps the single-block path.
+    if n > 1 and not (method == 0 and iou_threshold <= 0):
+        packed = packed[torch.argsort(packed[:, 0])].contiguous()
+        bounds = _overlap_group_bounds(packed[:, 0], packed[:, 1])
+    else:
+        bounds = torch.tensor([0, n])
+
+    lo, hi = bounds[:-1], bounds[1:]
+    sizes = hi - lo
+
+    # Groups are dispatched by size. A group of one has nothing to suppress it
+    # and comes through as it is — one gather takes all of them. Small groups
+    # are swept in lockstep, all groups of a size at once, because on a long
+    # video there are millions of them and a Python loop over each is the whole
+    # remaining cost. Anything larger is rare and gets the plain sweep, where
+    # compaction pays for itself.
+    blocks = []
+    single_sweep = False            # one plain sweep's output is already sorted
+    for k in torch.unique(sizes).tolist():
+        starts = lo[sizes == k]
+        if k == 1:
+            blocks.append(packed[starts])
+        elif k <= _LOCKSTEP_MAX_GROUP:
+            rows = starts.unsqueeze(1) + torch.arange(k)
+            blocks.append(_softnms_sweep_batched(
+                packed[rows], iou_threshold, sigma, min_score, method, t1, t2, limit=limit))
+        else:
+            for a in starts.tolist():
+                block = packed[a:a + k].contiguous()
+                kept = _softnms_sweep(block, iou_threshold, sigma, min_score, method,
+                                      t1, t2, limit=limit)
+                if kept:
+                    blocks.append(block[:kept])
+                    single_sweep = len(blocks) == 1
+
+    if not blocks:
+        return torch.empty((0, 3)), torch.empty(0, dtype=torch.long)
+    kept_rows = blocks[0] if len(blocks) == 1 else torch.cat(blocks)
+    if not (single_sweep and len(blocks) == 1):
+        # Lone rows arrive in timeline order, lockstep output by group, and each
+        # plain sweep is sorted only within itself. Restore the descending-score
+        # order one sweep over everything would have produced, so a caller
+        # taking the head gets the top detections.
+        kept_rows = kept_rows[torch.argsort(kept_rows[:, 2], descending=True, stable=True)]
+    if limit > 0 and kept_rows.shape[0] > limit:
+        kept_rows = kept_rows[:limit]
+
+    return kept_rows[:, :3].to(segs.dtype).contiguous(), kept_rows[:, 4].long()
 
 
 class NMSop(torch.autograd.Function):
@@ -303,6 +491,10 @@ class SoftNMSop(torch.autograd.Function):
             method=int(method),
             t1=float(t1),
             t2=float(t2),
+            # Only the first `max_num` rows are read below, and they come out
+            # score-ordered, so the sweep can stop there instead of settling
+            # every one of a long video's millions of proposals.
+            limit=int(max_num),
         )
 
         n_segs = min(len(inds), max_num) if max_num > 0 else len(inds)

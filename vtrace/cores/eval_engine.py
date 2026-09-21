@@ -320,6 +320,19 @@ def eval_one_epoch(
                 else:
                     raw_result_dict[k] = v
 
+    def _submit_nms(vid, detections):
+        """Queue one video's cross-window NMS, on the record.
+
+        The proposal count is the one number that explains a slow tail: the
+        sweep is quadratic in it, and a long recording contributes one proposal
+        per frame per window. Without it in the log a stall here looks like a
+        hang with no cause.
+        """
+        completed_videos.add(vid)
+        logger.info(f"Cross-window NMS for '{vid}': {len(detections)} proposals")
+        nms_futures.append(
+            executor.submit(_nms_one_video, vid, detections, cfg.post_processing))
+
     def _submit_nms_for_completed_videos(current_video_ids):
         """Check if any videos in raw_result_dict are no longer in the current batch,
         meaning all their windows have been processed. Submit their NMS."""
@@ -329,10 +342,7 @@ def eval_one_epoch(
             # Videos in raw_result_dict but NOT in current batch and NOT already completed
             ready_videos = set(raw_result_dict.keys()) - current_video_ids - completed_videos
             for vid in ready_videos:
-                detections = raw_result_dict.pop(vid)
-                completed_videos.add(vid)
-                future = executor.submit(_nms_one_video, vid, detections, cfg.post_processing)
-                nms_futures.append(future)
+                _submit_nms(vid, raw_result_dict.pop(vid))
 
     data_iter = iter(test_loader)
     prev_video_ids = set()
@@ -393,6 +403,7 @@ def eval_one_epoch(
     bar.update(num_batches)
 
     # Wait for last batch's post-processing
+    bar.note("post-processing the last window")
     timer.cpu_start("Post-processing (CPU)")
     if pending_postproc is not None:
         pending_postproc.result()
@@ -404,12 +415,10 @@ def eval_one_epoch(
         with result_lock:
             for vid in list(raw_result_dict.keys()):
                 if vid not in completed_videos:
-                    detections = raw_result_dict.pop(vid)
-                    completed_videos.add(vid)
-                    future = executor.submit(_nms_one_video, vid, detections, cfg.post_processing)
-                    nms_futures.append(future)
+                    _submit_nms(vid, raw_result_dict.pop(vid))
 
     # Collect all NMS results
+    bar.note("merging overlapping windows into bouts")
     for future in nms_futures:
         vid, results = future.result()
         final_result_dict[vid] = results

@@ -85,6 +85,17 @@ class StatusBar:
         status(f"  [dim]{self.label}[/]  {bar_markup(step / self.total)}  "
                f"[dim]{step:>{width}d}/{self.total}[/]{eta}")
 
+    def note(self, text):
+        """Replace the bar with a line naming the stage that runs after it.
+
+        A pass is not finished when its last batch is: post-processing and
+        cross-window NMS come after, and on a long recording they can outlast
+        the pass itself. A bar parked at 100% for that stretch reads as a hang,
+        so the caller says what it is waiting on instead.
+        """
+        self.last_draw = 0.0
+        status(f"  [dim]{text}[/]")
+
     def close(self):
         clear_status()
 
