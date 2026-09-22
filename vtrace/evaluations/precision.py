@@ -449,29 +449,42 @@ class Precision:
             all_gt_binary = all_gt_binary[nonempty]
 
         if len(all_labels) == 0 or all_scores.shape[0] == 0:
-            return {"mAP": 0.0, "per_class_AP": {}, "evaluated_labels": []}
+            return {"mAP": None, "per_class_AP": {}, "evaluated_labels": [],
+                    "undefined_AP": list(all_labels)}
 
         # Compute AP for each class
         per_class_AP = {}
         valid_aps = []
+        undefined = []
 
         for label_idx, label in enumerate(all_labels):
             scores = all_scores[:, label_idx]
             labels = all_gt_binary[:, label_idx]
 
-            if np.sum(labels) > 0:
+            if np.sum(labels) == 0:
+                per_class_AP[label] = 0.0
+            elif np.all(labels):
+                # No negatives to rank against, so precision is 1 at every
+                # recall and AP is 1.0 by arithmetic, not by performance. It
+                # ranks nothing, so it cannot say one epoch beat another —
+                # reporting it as a perfect score is how a run comes to pick a
+                # best checkpoint at random. Left out of the mean and named.
+                per_class_AP[label] = None
+                undefined.append(label)
+            else:
                 ap = self.compute_average_precision(scores, labels)
                 per_class_AP[label] = ap
                 valid_aps.append(ap)
-            else:
-                per_class_AP[label] = 0.0
 
-        mAP = np.mean(valid_aps) if len(valid_aps) > 0 else 0.0
+        # None, not 0.0: nothing was measurable, which is not the same as a
+        # model that scored zero. Callers that select on this must skip it.
+        mAP = float(np.mean(valid_aps)) if valid_aps else None
 
         return {
             "mAP": mAP,
             "per_class_AP": per_class_AP,
-            "evaluated_labels": all_labels
+            "evaluated_labels": all_labels,
+            "undefined_AP": undefined,
         }
 
     @staticmethod
@@ -690,6 +703,7 @@ class Precision:
         self.mAP = mAP_metrics["mAP"]
         self.per_class_AP = mAP_metrics["per_class_AP"]
         self.mAP_labels = mAP_metrics["evaluated_labels"]
+        self.undefined_AP = mAP_metrics.get("undefined_AP", [])
 
         # always tune, even when a threshold is pinned: the recommendation is
         # what tells you whether the pinned operating point is a sane one
@@ -720,6 +734,7 @@ class Precision:
             "f1_score": self.f1_score,
             "mAP": self.mAP,
             "per_class_AP": self.per_class_AP,
+            "undefined_AP": self.undefined_AP,
             "mAP_frame_filter": self.map_frame_filter,
             "AP_mode": self.ap_mode,
             "labels": self.unique_labels,
@@ -778,11 +793,23 @@ class Precision:
             map_desc = "all frames, excluding other/background from class average"
         else:
             map_desc = "excluding empty GT frames"
-        pprint(f"\nFrame-based mAP ({map_desc}; AP={self.ap_mode}): {self.mAP*100:.2f}%")
+        if self.mAP is None:
+            pprint(f"\nFrame-based mAP ({map_desc}; AP={self.ap_mode}): not measurable")
+        else:
+            pprint(f"\nFrame-based mAP ({map_desc}; AP={self.ap_mode}): {self.mAP*100:.2f}%")
         pprint(f"Per-class AP:")
         for label in self.mAP_labels:
             ap = self.per_class_AP.get(label, 0.0)
-            pprint(f"  {label}: {ap*100:.2f}%")
+            pprint(f"  {label}: {'n/a' if ap is None else f'{ap*100:.2f}%'}")
+        if self.undefined_AP:
+            named = ", ".join(self.undefined_AP)
+            pprint(
+                f"  AP is undefined for {named}: every scored frame is a positive, "
+                f"so AP is 1.0 by arithmetic and ranks nothing. "
+                + ("Set evaluation.map_frame_filter='all' so background frames "
+                   "count as negatives." if self.map_frame_filter != "all" else
+                   "This split has no frame without a label.")
+            )
 
         # F1-optimal cutoffs measured on THIS subset. Tuned and reported on the
         # same data, so they are an upper bound -- export them from validation and

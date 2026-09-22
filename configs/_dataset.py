@@ -90,4 +90,13 @@ evaluation = dict(
     ground_truth_filename=annotation_path,
     gt_fps=30.0,
     eval_fps=30.0,
+    # Score every frame, background included, so predicting a behaviour where
+    # there is none costs something. The alternative — keeping only frames that
+    # carry a label — cannot see over-prediction at all, and on a single-behaviour
+    # dataset it cannot see anything: every frame it keeps is a positive, which
+    # pins AP to 1.0 whatever the model says. That number then drives best-epoch
+    # selection. These two belong here rather than in each preset, which is how
+    # the vjepa2 preset came to inherit the blind defaults.
+    map_frame_filter="all",
+    ap_mode="sklearn",
 )

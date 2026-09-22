@@ -455,10 +455,17 @@ def eval_one_epoch(
         metrics_dict = evaluator.evaluate()
         evaluator.logging(logger)
         timer.cpu_end("Evaluation")
-        if "average_mAP" in metrics_dict:
-            primary_metric = metrics_dict["average_mAP"]
-        elif "mAP" in metrics_dict:
-            primary_metric = metrics_dict["mAP"]
+        # None when the evaluator could not measure anything — a class whose
+        # every scored frame is a positive has an AP of 1.0 by arithmetic, and
+        # selecting a checkpoint on that is selecting at random. Callers treat
+        # None as "this epoch was not scored" rather than as a zero.
+        primary_metric = metrics_dict.get("average_mAP", metrics_dict.get("mAP"))
+        if primary_metric is None:
+            logger.warning(
+                "No usable validation metric this epoch: mAP is not measurable on "
+                "this split, so no epoch can be called better than another. "
+                "See the per-class AP lines above."
+            )
 
         # Write metrics.json for GUI consumption
         metrics_path = os.path.join(cfg.work_dir, "metrics.json")

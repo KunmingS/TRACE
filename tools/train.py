@@ -321,6 +321,7 @@ def main():
                   max_epoch, accumulation_steps, use_amp, use_ema)
     val_start_epoch = cfg.workflow.get("val_start_epoch", 0)
     best_metric = -1.0
+    scored_any_epoch = False
     # One plot for the run, so the curve carries across epochs instead of
     # restarting — the question it answers is whether the loss is still falling.
     plot = LossPlot(plot_width())
@@ -365,6 +366,7 @@ def main():
 
                 # save best model
                 if primary_metric is not None:
+                    scored_any_epoch = True
                     improved = primary_metric > best_metric
                     if improved:
                         logger.info(f"New best metric: {primary_metric:.4f}, saving best checkpoint...")
@@ -415,7 +417,10 @@ def main():
         logger.info(f"Model folder saved to: {model_dir}")
         logger.info(f"  {label} + classmap.txt + {RESOLVED_CONFIG_NAME} are ready")
         if label == "last.pth":
-            logger.info("  (last.pth, not best.pth: no evaluation data, so no epoch was scored)")
+            why = ("no evaluation data, so no epoch was scored" if test_loader is None
+                   else "the evaluation data produced no usable metric, so no epoch "
+                        "could be ranked — see the mAP lines in the log")
+            logger.info(f"  (last.pth, not best.pth: {why})")
 
 
     logger.info("Training Over...\n")
