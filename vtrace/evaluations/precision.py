@@ -74,8 +74,9 @@ class Precision:
         gt_fps=30.0,
         eval_fps=30.0,
         prediction_min_score=0.001,
-        map_frame_filter="nonempty_gt",
-        ap_mode="interpolated",
+        # Removed. Kept only to answer a config that still names it: see below.
+        map_frame_filter=None,
+        ap_mode="sklearn",
         score_threshold=None,
         per_class_thresholds=None,
         threshold_mode="global",
@@ -83,6 +84,18 @@ class Precision:
         threshold_source=None,
     ):
         super().__init__()
+
+        # mAP is scored over every frame, full stop. The old 'nonempty_gt'
+        # variant kept only frames carrying a label, which cannot see
+        # over-prediction — the false positives all live in the background it
+        # threw away — and on a single-behaviour dataset it measured nothing at
+        # all: every frame it kept was a positive, pinning AP to 1.0. 'all' is
+        # accepted because configs outside this checkout still pass it.
+        if map_frame_filter not in (None, "all"):
+            raise ValueError(
+                f"Precision no longer supports map_frame_filter={map_frame_filter!r}. "
+                "Every frame is scored now, background included; drop the argument."
+            )
 
         if not ground_truth_filename:
             raise IOError("Please input a valid ground truth file.")
@@ -98,13 +111,7 @@ class Precision:
         self.gt_fps = float(gt_fps)
         self.eval_fps = float(eval_fps)
         self.prediction_min_score = float(prediction_min_score)
-        self.map_frame_filter = map_frame_filter
         self.ap_mode = ap_mode
-        if self.map_frame_filter not in ("nonempty_gt", "all"):
-            raise ValueError(
-                "Precision map_frame_filter must be 'nonempty_gt' or 'all', "
-                f"got {self.map_frame_filter!r}"
-            )
         if self.ap_mode not in ("interpolated", "sklearn"):
             raise ValueError(f"Unsupported Precision ap_mode: {self.ap_mode!r}")
 
@@ -384,13 +391,11 @@ class Precision:
         """Build the aligned ``[N_frames, N_classes]`` score and GT matrices.
 
         Every frame of every video common to GT and predictions gets one row, in
-        a deterministic (sorted-by-clip) order. Empty-GT frames are kept and a
-        boolean ``nonempty`` mask is returned alongside, so both mAP flavors and
-        the threshold sweep can be derived from a single pass -- the sweep needs
-        background frames (that is where the false positives are), while
-        ``map_frame_filter='nonempty_gt'`` masks them out.
+        a deterministic (sorted-by-clip) order. Empty-GT frames are kept: they
+        are where the false positives are, so both the mAP and the threshold
+        sweep need them.
 
-        Returns ``(scores, gt_binary, nonempty, labels)``; result is cached.
+        Returns ``(scores, gt_binary, labels)``; result is cached.
         """
         if self._frame_matrices is not None:
             return self._frame_matrices
@@ -410,7 +415,6 @@ class Precision:
         total_frames = sum(self.video_frames[c] for c in common_videos)
         scores = np.zeros((total_frames, len(labels)), dtype=np.float32)
         gt_binary = np.zeros((total_frames, len(labels)), dtype=np.int8)
-        nonempty = np.zeros(total_frames, dtype=bool)
 
         row = 0
         for clip_name in common_videos:
@@ -420,7 +424,6 @@ class Precision:
             for frame_idx in range(self.video_frames[clip_name]):
                 frame_gt_labels = gt_labels_array[frame_idx]
                 if frame_gt_labels:
-                    nonempty[row] = True
                     for label in frame_gt_labels:
                         if label in col:
                             gt_binary[row, col[label]] = 1
@@ -429,24 +432,19 @@ class Precision:
                         scores[row, col[label]] = score
                 row += 1
 
-        self._frame_matrices = (scores, gt_binary, nonempty, labels)
+        self._frame_matrices = (scores, gt_binary, labels)
         return self._frame_matrices
 
     def compute_frame_based_mAP(self):
         """Compute frame-level mean Average Precision.
 
-        For each frame, we have per-class scores from all overlapping predictions.
-        By default, frames with empty GT (no labels) are excluded to preserve
-        TRACE's historical Precision metric. Set ``map_frame_filter='all'`` and
-        ``ap_mode='sklearn'`` to match FERAL's CalMS21-style mAP: all frames are
-        used as one-vs-rest examples and only behavior classes are averaged.
-        Supports multi-label: a frame can have multiple GT labels simultaneously.
+        Every frame of the split is a one-vs-rest example for every class, and
+        only behaviour classes are averaged -- FERAL's CalMS21-style mAP. Keeping
+        the background frames is what makes predicting a behaviour where there is
+        none cost something. Supports multi-label: a frame can carry several GT
+        labels at once.
         """
-        all_scores, all_gt_binary, nonempty, all_labels = self._build_frame_matrices()
-
-        if self.map_frame_filter == "nonempty_gt":
-            all_scores = all_scores[nonempty]
-            all_gt_binary = all_gt_binary[nonempty]
+        all_scores, all_gt_binary, all_labels = self._build_frame_matrices()
 
         if len(all_labels) == 0 or all_scores.shape[0] == 0:
             return {"mAP": None, "per_class_AP": {}, "evaluated_labels": [],
@@ -551,7 +549,7 @@ class Precision:
         *recommendation*: export it from the validation run and pin it via
         ``score_threshold`` when scoring the held-out split.
         """
-        scores, gt_binary, _nonempty, labels = self._build_frame_matrices()
+        scores, gt_binary, labels = self._build_frame_matrices()
         curves = [
             self._build_class_curve(scores[:, i], gt_binary[:, i].astype(bool))
             for i in range(len(labels))
@@ -613,7 +611,7 @@ class Precision:
         count as false positives. Supports multi-label: both GT and predictions
         can carry several labels per frame, and each class is scored separately.
         """
-        scores, gt_binary, _nonempty, labels = self._build_frame_matrices()
+        scores, gt_binary, labels = self._build_frame_matrices()
         thresholds = thresholds or {}
 
         num_labels = len(labels)
@@ -709,7 +707,7 @@ class Precision:
         # what tells you whether the pinned operating point is a sane one
         self.threshold_tuning = self.compute_threshold_tuning()
 
-        _scores, _gt, _nonempty, labels = self._build_frame_matrices()
+        _scores, _gt, labels = self._build_frame_matrices()
         self.eval_thresholds, self.eval_threshold_mode = self._resolve_eval_thresholds(
             labels, self.threshold_tuning
         )
@@ -735,7 +733,6 @@ class Precision:
             "mAP": self.mAP,
             "per_class_AP": self.per_class_AP,
             "undefined_AP": self.undefined_AP,
-            "mAP_frame_filter": self.map_frame_filter,
             "AP_mode": self.ap_mode,
             "labels": self.unique_labels,
             "eval_threshold": self.eval_threshold,
@@ -789,14 +786,9 @@ class Precision:
         pprint(f"Frame-based recall: {recall_str}")
         pprint(f"Frame-based F1-score: {f1_str}")
 
-        if self.map_frame_filter == "all":
-            map_desc = "all frames, excluding other/background from class average"
-        else:
-            map_desc = "excluding empty GT frames"
-        if self.mAP is None:
-            pprint(f"\nFrame-based mAP ({map_desc}; AP={self.ap_mode}): not measurable")
-        else:
-            pprint(f"\nFrame-based mAP ({map_desc}; AP={self.ap_mode}): {self.mAP*100:.2f}%")
+        map_desc = "all frames, excluding other/background from class average"
+        score = "not measurable" if self.mAP is None else f"{self.mAP*100:.2f}%"
+        pprint(f"\nFrame-based mAP ({map_desc}; AP={self.ap_mode}): {score}")
         pprint(f"Per-class AP:")
         for label in self.mAP_labels:
             ap = self.per_class_AP.get(label, 0.0)
@@ -804,11 +796,9 @@ class Precision:
         if self.undefined_AP:
             named = ", ".join(self.undefined_AP)
             pprint(
-                f"  AP is undefined for {named}: every scored frame is a positive, "
-                f"so AP is 1.0 by arithmetic and ranks nothing. "
-                + ("Set evaluation.map_frame_filter='all' so background frames "
-                   "count as negatives." if self.map_frame_filter != "all" else
-                   "This split has no frame without a label.")
+                f"  AP is undefined for {named}: this split has no frame without "
+                "that label, so every example is a positive and AP is 1.0 by "
+                "arithmetic. It ranks nothing and cannot pick a best epoch."
             )
 
         # F1-optimal cutoffs measured on THIS subset. Tuned and reported on the

@@ -104,5 +104,5 @@ post_processing = dict(pre_nms_topk=0, nms=dict(use_soft_nms=False, iou_threshol
 workflow = dict(logging_interval=50, checkpoint_interval=1, val_eval_interval=1, val_start_epoch=2, end_epoch=10)
 evaluation = dict(type="Precision", subset="validation", tiou_thresholds=[0.3, 0.4, 0.5, 0.6, 0.7],
     ground_truth_filename=ann, gt_fps=30.0, eval_fps=30.0, prediction_min_score=0.0,
-    map_frame_filter="all", ap_mode="sklearn")
+    ap_mode="sklearn")
 work_dir = "runs/calms21_vjepa2"
