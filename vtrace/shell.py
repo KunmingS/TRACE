@@ -40,7 +40,7 @@ from pathlib import Path
 from vtrace import composer, splash
 
 # The documentation, kept in one place. Also `Documentation` in pyproject.toml.
-DOCS_URL = "https://kunmings.github.io/TRACE/"
+DOCS_URL = "https://v-trace.org/"
 
 _HISTORY_LIMIT = 1000
 BACKSLASH = chr(92)

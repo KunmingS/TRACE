@@ -7,7 +7,7 @@ recordings in the browser, train a detector on them, and have it annotate the re
 
 ## Documentation
 
-[kunmings.github.io/TRACE](https://kunmings.github.io/TRACE/)
+[v-trace.org](https://v-trace.org/)
 
 ## Install
 

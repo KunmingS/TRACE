@@ -9,7 +9,7 @@ type: software
 version: 1.0.0
 license: Apache-2.0
 repository-code: "https://github.com/KunmingS/TRACE"
-url: "https://kunmings.github.io/TRACE/"
+url: "https://v-trace.org/"
 keywords:
   - ethogram
   - animal behavior
