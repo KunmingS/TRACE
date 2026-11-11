@@ -64,8 +64,8 @@ TEACHER_CROP = 256
 STUDENT_CROP = 224
 TEACHER_EMBED = 1024
 STUDENT_EMBED = 768
-_STUDENT_DEPTH = 12       # ViT-B: 12 blocks. --student large overrides to 24.
-_STUDENT_HEADS = 12       # ViT-B: 12 heads.  --student large overrides to 16.
+_STUDENT_DEPTH = 12       # ViT-B: 12 blocks.
+_STUDENT_HEADS = 12       # ViT-B: 12 heads.
 
 IMAGENET_MEAN_255 = [0.485 * 255, 0.456 * 255, 0.406 * 255]
 IMAGENET_STD_255 = [0.229 * 255, 0.224 * 255, 0.225 * 255]
@@ -287,8 +287,6 @@ def parse_args():
     ap.add_argument("--teacher-ckpt", type=str, default="",
                     help="override off-shelf diving48 teacher with a finetuned encoder "
                          "(encoder.* keys, e.g. a fine-tuned model's extracted encoder)")
-    ap.add_argument("--student", type=str, default="base", choices=["base", "large"],
-                    help="student capacity: base=ViT-B/768/12, large=ViT-L/1024/24 (K400)")
     ap.add_argument("--teacher-layer", type=int, default=-1,
                     help="V-JEPA2 encoder block to tap as the distill TARGET (1-indexed). "
                          "<=0 or >=depth (default -1) = full 24 blocks + final LN (original "
@@ -349,10 +347,6 @@ def save_trainable(model, path):
 
 def main():
     args = parse_args()
-    if args.student == "large":
-        global STUDENT_EMBED, _STUDENT_DEPTH, _STUDENT_HEADS, STUDENT_PRETRAIN
-        STUDENT_EMBED, _STUDENT_DEPTH, _STUDENT_HEADS = 1024, 24, 16
-        STUDENT_PRETRAIN = "pretrained/vit-large-p16_videomaev2-k400.pth"
     os.makedirs(args.out, exist_ok=True)
     logger = _Logger(os.path.join(args.out, "distill.log"))
     ckpt_path = os.path.join(args.out, "distill_adapter.pth")
