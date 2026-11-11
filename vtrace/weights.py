@@ -30,16 +30,6 @@ _MIRROR_URLS: tuple[str, ...] = ()
 
 # basename -> (url, sha256, size_bytes)
 _REGISTRY: dict[str, tuple[str, str, int]] = {
-    "vit-small-p16_videomae-k400-pre_16x4x1_kinetics-400_my.pth": (
-        f"{_RELEASE_BASE}/vit-small-p16_videomae-k400-pre_16x4x1_kinetics-400_my.pth",
-        "4b96b7f403f8ae0396437855b785af6a0064f11a9d76e2268e5a76a04e0de251",
-        90605819,
-    ),
-    "vit-large-p16_videomaev2-k400.pth": (
-        f"{_RELEASE_BASE}/vit-large-p16_videomaev2-k400.pth",
-        "49b2dadc3fa55cc2c682793858dc0adb9224016da8aed6844f128f5f3d19c4f1",
-        607765274,
-    ),
     # ── Released CalMS21 checkpoints + their two pretrained bases. ──
     # Any config or --checkpoint referencing these basenames auto-downloads on miss.
     "vitB_videomaev2_k400.pth": (

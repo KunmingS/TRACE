@@ -7,7 +7,6 @@ pandas>=1.5.0
 tqdm>=4.64.0
 numpy>=1.23.5
 opencv-python-headless>=4.6.0
-fastapi
-uvicorn
-python-multipart
 static-ffmpeg>=2.5
+rich>=13.0
+prompt_toolkit>=3.0

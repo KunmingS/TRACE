@@ -6,7 +6,7 @@ from .detectors import DenseLocalizer, TriDet, SingleStageDetector, BaseDetector
 from .projections import SGPPyramidProj, TriDetProj
 from .necks import FPNIdentity
 from .heads import build_frame_cls_head
-from .bricks import ConvModule, SGPBlock, Scale, TransformerBlock, DropPath, AffineDropPath
+from .bricks import ConvModule, SGPBlock, Scale, DropPath, AffineDropPath
 from .backbones import BackboneWrapper, VisionTransformerAdapter
 
 __all__ = [
@@ -17,6 +17,6 @@ __all__ = [
     "SGPPyramidProj", "FPNIdentity",
     # deprecated aliases (TriDet* -> DenseLocalizer / SGPPyramidProj)
     "TriDet", "TriDetProj",
-    "ConvModule", "SGPBlock", "Scale", "TransformerBlock", "DropPath", "AffineDropPath",
+    "ConvModule", "SGPBlock", "Scale", "DropPath", "AffineDropPath",
     "BackboneWrapper", "VisionTransformerAdapter",
 ]
