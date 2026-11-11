@@ -12,11 +12,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import List, Optional
-
-from pydantic import BaseModel, Field
 
 from vtrace.model_artifacts import (
     create_eval_dir,
@@ -25,7 +23,8 @@ from vtrace.model_artifacts import (
 )
 
 
-class TrainRequest(BaseModel):
+@dataclass
+class TrainRequest:
     config_path: str
     model_dir: str
     seed: int = 42
@@ -44,22 +43,32 @@ class TrainRequest(BaseModel):
     explicit_pairs: Optional[List[str]] = None
 
 
-class TrainTuneProfile(BaseModel):
+@dataclass
+class TrainTuneProfile:
     name: str
     num_workers: int
     decode_threads: int
     prefetch_factor: int
 
 
-class TrainTuneRequest(BaseModel):
+@dataclass
+class TrainTuneRequest:
     config_path: str
     model_dir: str
     annotation_path: str
     class_map: str
     profiles: Optional[List[TrainTuneProfile]] = None
 
+    def __post_init__(self):
+        if self.profiles is not None:
+            self.profiles = [
+                p if isinstance(p, TrainTuneProfile) else TrainTuneProfile(**p)
+                for p in self.profiles
+            ]
 
-class TestRequest(BaseModel):
+
+@dataclass
+class TestRequest:
     model_dir: str
     config_path: Optional[str] = None
     checkpoint: Optional[str] = None
@@ -74,18 +83,19 @@ class TestRequest(BaseModel):
     cfg_options: Optional[dict] = None
 
 
-class InferRequest(BaseModel):
+@dataclass
+class InferRequest:
     model_dir: str
+    input: str
     config_path: Optional[str] = None
     checkpoint: Optional[str] = None
-    input: str
     class_map: Optional[str] = None
     output: Optional[str] = None
     output_dir: Optional[str] = None
     seed: int = 42
     profile: bool = False
     auto_tune: bool = False
-    threshold: float = Field(default=0.0, ge=0.0, le=1.0)
+    threshold: float = 0.0
     # Pick the cutoff per class against the annotation CSV beside each video,
     # when there is one. Only the demo asks for this: it tunes on the video it
     # reports, which is a demonstration, not an evaluation.
@@ -98,8 +108,14 @@ class InferRequest(BaseModel):
     cfg_options: Optional[dict] = None
     included_stems: Optional[List[str]] = None
 
+    def __post_init__(self):
+        self.threshold = float(self.threshold)
+        if not 0.0 <= self.threshold <= 1.0:
+            raise ValueError(f"threshold must be between 0 and 1, got {self.threshold}")
 
-class PrepRequest(BaseModel):
+
+@dataclass
+class PrepRequest:
     work_dir: str
     model_dir: Optional[str] = None
     # `train` or `validation`. Nothing is split during prep; a corpus is one or
@@ -442,7 +458,7 @@ def _train_tune_command(request: TrainTuneRequest) -> list[str]:
         str(Path(request.model_dir) / "train_tune_result.json"),
     ]
     if request.profiles:
-        cmd.extend(["--profiles-json", json.dumps([p.model_dump() for p in request.profiles])])
+        cmd.extend(["--profiles-json", json.dumps([asdict(p) for p in request.profiles])])
     return cmd
 
 
